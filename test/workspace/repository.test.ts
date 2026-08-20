@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, describe, expect, test } from "vitest";
 
@@ -17,9 +18,11 @@ import {
   WorkspaceCorruptError,
   WorkspaceNotInitializedError,
 } from "../../src/workspace/errors.js";
+import { atomicWriteText } from "../../src/workspace/atomic-write.js";
 import { WORKSPACE_DIRECTORIES, workspacePaths } from "../../src/workspace/layout.js";
+import { withWorkspaceLock } from "../../src/workspace/lock.js";
 import { WorkspaceRepository } from "../../src/workspace/repository.js";
-import type { ProjectConfig } from "../../src/workspace/schema.js";
+import { serializeProjectConfig, type ProjectConfig } from "../../src/workspace/schema.js";
 
 const temporaryRoots: string[] = [];
 const demoConfig: ProjectConfig = { schemaVersion: 1, name: "Demo", gitTracking: "none" };
@@ -65,6 +68,46 @@ async function rejected(operation: Promise<unknown>): Promise<Error> {
     return error as Error;
   }
   throw new Error("Expected operation to reject");
+}
+
+async function startGatedWorkspacePublication(
+  root: string,
+  config: ProjectConfig,
+): Promise<{ readonly release: () => void; readonly completed: Promise<void>; readonly state: string; readonly audit: string }> {
+  let markEntered!: () => void;
+  let rejectEntered!: (error: unknown) => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve, reject) => {
+    markEntered = resolve;
+    rejectEntered = reject;
+  });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const paths = workspacePaths(root);
+  const state = `${JSON.stringify({ ...initialState, revision: 9 }, null, 2)}\n`;
+  const audit = '{"winner":"slow"}\n';
+  const completed = withWorkspaceLock(root, async () => {
+    for (const directory of WORKSPACE_DIRECTORIES) {
+      await mkdir(join(paths.root, directory), { recursive: true });
+    }
+    await atomicWriteText(paths.state, state);
+    await atomicWriteText(paths.audit, audit);
+    markEntered();
+    await gate;
+    await atomicWriteText(paths.project, serializeProjectConfig(config));
+  });
+  void completed.catch(rejectEntered);
+  await entered;
+  return { release, completed, state, audit };
+}
+
+function observe<T>(operation: Promise<T>): Promise<
+  { readonly status: "fulfilled"; readonly value: T }
+  | { readonly status: "rejected"; readonly reason: unknown }
+> {
+  return operation.then(
+    (value) => ({ status: "fulfilled" as const, value }),
+    (reason: unknown) => ({ status: "rejected" as const, reason }),
+  );
 }
 
 afterEach(async () => {
@@ -245,6 +288,46 @@ describe("WorkspaceRepository.initialize", () => {
     await expect(first.readProject()).resolves.toEqual(demoConfig);
     await expect(first.readState()).resolves.toEqual(initialState);
   });
+
+  test("waits beyond the old retry window for a slow winner and then resolves configs semantically", async () => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const winner = await startGatedWorkspacePublication(root, demoConfig);
+    const sameResult = observe(repository.initialize({ ...demoConfig }));
+    const differentResult = observe(repository.initialize({
+      schemaVersion: 1,
+      name: "Other",
+      gitTracking: "all",
+    }));
+    let sameSettled = false;
+    let differentSettled = false;
+    void sameResult.then(() => { sameSettled = true; });
+    void differentResult.then(() => { differentSettled = true; });
+    let heldAssertion: unknown;
+
+    try {
+      await delay(3_000);
+      expect(sameSettled).toBe(false);
+      expect(differentSettled).toBe(false);
+    } catch (error: unknown) {
+      heldAssertion = error;
+    } finally {
+      winner.release();
+    }
+    await winner.completed;
+    if (heldAssertion !== undefined) {
+      throw heldAssertion;
+    }
+
+    await expect(sameResult).resolves.toEqual({ status: "fulfilled", value: undefined });
+    await expect(differentResult).resolves.toMatchObject({
+      status: "rejected",
+      reason: expect.objectContaining({ message: expect.stringContaining("already initialized") }),
+    });
+    await expect(readFile(paths.state, "utf8")).resolves.toBe(winner.state);
+    await expect(readFile(paths.audit, "utf8")).resolves.toBe(winner.audit);
+  }, 10_000);
 
   test("allows only one of two different concurrent configurations to win", async () => {
     const root = await temporaryProject();

@@ -24,8 +24,8 @@ const INITIAL_STATE: WorkspaceState = {
   activeWorkItem: null,
   safeMode: false,
 };
-const INITIALIZE_LOCK_ATTEMPTS = 100;
-const INITIALIZE_LOCK_RETRY_MS = 10;
+const INITIALIZE_LOCK_RETRY_INITIAL_MS = 10;
+const INITIALIZE_LOCK_RETRY_MAX_MS = 250;
 
 function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
@@ -75,9 +75,9 @@ export class WorkspaceRepository {
   async initialize(config: ProjectConfig): Promise<void> {
     const normalized = normalizeProjectConfig(config);
     const paths = workspacePaths(this.projectRoot);
-    let lastLockError: WorkspaceLockedError | undefined;
+    let retryDelay = INITIALIZE_LOCK_RETRY_INITIAL_MS;
 
-    for (let attempt = 0; attempt < INITIALIZE_LOCK_ATTEMPTS; attempt += 1) {
+    for (;;) {
       try {
         await withWorkspaceLock(this.projectRoot, async () => {
           const existing = await readExistingProject(paths.project);
@@ -98,20 +98,16 @@ export class WorkspaceRepository {
         if (!isLockContention(error)) {
           throw error;
         }
-        lastLockError = error;
 
         const completed = await readExistingProject(paths.project);
         if (completed !== undefined) {
           assertSameProjectConfig(completed, normalized);
           return;
         }
-        if (attempt + 1 < INITIALIZE_LOCK_ATTEMPTS) {
-          await delay(INITIALIZE_LOCK_RETRY_MS);
-        }
+        await delay(retryDelay);
+        retryDelay = Math.min(retryDelay * 2, INITIALIZE_LOCK_RETRY_MAX_MS);
       }
     }
-
-    throw lastLockError ?? new WorkspaceLockedError("Workspace is locked");
   }
 
   async readProject(): Promise<ProjectConfig> {
