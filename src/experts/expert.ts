@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { isWellFormedUnicode } from "../text/unicode.js";
 
-const EXPERT_KEYS = [
+const BASE_EXPERT_KEYS = [
   "id",
   "nameZh",
   "summaryZh",
@@ -16,18 +16,57 @@ const EXPERT_KEYS = [
   "qualityGates",
   "origin",
   "source",
-  "upstreamSource",
   "contentHash",
 ] as const;
+const TRANSLATED_EXPERT_KEYS = [...BASE_EXPERT_KEYS, "upstreamSource"] as const;
 const SOURCE_REF_KEYS = ["repository", "path", "commit", "license"] as const;
-const LIST_KEYS = [
-  "capabilities",
-  "domains",
-  "projectSignals",
-  "activationConditions",
-  "exclusionConditions",
-  "preferredTasks",
-  "qualityGates",
+const RAW_LENGTH_PADDING = 256;
+const LENGTH_LIMITS = {
+  id: 160,
+  nameZh: 128,
+  summaryZh: 2_048,
+  instructionsZh: 65_536,
+  slug: 64,
+  condition: 4_096,
+  preferredTask: 16,
+  origin: 32,
+  contentHash: 71,
+  repository: 2_048,
+  path: 1_024,
+  commit: 40,
+  license: 3,
+} as const;
+const TOP_LEVEL_STRING_LIMITS = [
+  ["id", LENGTH_LIMITS.id],
+  ["nameZh", LENGTH_LIMITS.nameZh],
+  ["summaryZh", LENGTH_LIMITS.summaryZh],
+  ["instructionsZh", LENGTH_LIMITS.instructionsZh],
+  ["origin", LENGTH_LIMITS.origin],
+  ["contentHash", LENGTH_LIMITS.contentHash],
+] as const;
+const SOURCE_STRING_LIMITS = [
+  ["repository", LENGTH_LIMITS.repository],
+  ["path", LENGTH_LIMITS.path],
+  ["commit", LENGTH_LIMITS.commit],
+  ["license", LENGTH_LIMITS.license],
+] as const;
+const LIST_MAXIMUMS = {
+  capabilities: 128,
+  domains: 64,
+  projectSignals: 128,
+  activationConditions: 128,
+  exclusionConditions: 128,
+  preferredTasks: 5,
+  qualityGates: 128,
+} as const;
+const LIST_LIMITS = [
+  ["capabilities", LIST_MAXIMUMS.capabilities, LENGTH_LIMITS.slug],
+  ["domains", LIST_MAXIMUMS.domains, LENGTH_LIMITS.slug],
+  ["projectSignals", LIST_MAXIMUMS.projectSignals, LENGTH_LIMITS.slug],
+  ["activationConditions", LIST_MAXIMUMS.activationConditions, LENGTH_LIMITS.condition],
+  ["exclusionConditions", LIST_MAXIMUMS.exclusionConditions, LENGTH_LIMITS.condition],
+  ["preferredTasks", LIST_MAXIMUMS.preferredTasks, LENGTH_LIMITS.preferredTask],
+  ["qualityGates", LIST_MAXIMUMS.qualityGates, LENGTH_LIMITS.condition],
 ] as const;
 
 const HAN_CHARACTER = /\p{Script=Han}/u;
@@ -36,6 +75,7 @@ const PORTABLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/;
 const CONTENT_HASH = /^sha256:[0-9a-f]{64}$/;
 const NON_PORTABLE_PATH_CHARACTER = /[\u0000-\u001f\u007f<>:"\\|?*]/u;
+const WINDOWS_RESERVED_BASENAME = /^(?:CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[1-9]|LPT[1-9])$/u;
 
 export class ExpertValidationError extends Error {
   override readonly name = "ExpertValidationError";
@@ -74,12 +114,28 @@ function assertExactPlainObject(
   }
 }
 
-function assertDenseArray(value: unknown, path: string): void {
+function assertRawStringLength(value: unknown, path: string, normalizedLimit: number): void {
+  if (typeof value === "string" && value.length > normalizedLimit + RAW_LENGTH_PADDING) {
+    fail(`${path} raw length exceeds ${normalizedLimit + RAW_LENGTH_PADDING}`);
+  }
+}
+
+function assertBoundedDenseStringArray(
+  value: unknown,
+  path: string,
+  maximumItems: number,
+  maximumItemLength: number,
+): void {
   if (!Array.isArray(value)) {
     return;
   }
 
-  for (let index = 0; index < value.length; index += 1) {
+  const length = value.length;
+  if (length > maximumItems) {
+    fail(`${path} cannot contain more than ${maximumItems} items`);
+  }
+
+  for (let index = 0; index < length; index += 1) {
     if (!Object.prototype.hasOwnProperty.call(value, index)) {
       fail(`${path} must be dense; index ${index} is missing`);
     }
@@ -87,23 +143,52 @@ function assertDenseArray(value: unknown, path: string): void {
 
   for (const key of Reflect.ownKeys(value)) {
     if (key === "length") continue;
-    if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length) {
+    if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length) {
       fail(`${path} contains an unsupported array key`);
     }
+  }
+
+  for (let index = 0; index < length; index += 1) {
+    assertRawStringLength(value[index], `${path}.${index}`, maximumItemLength);
+  }
+}
+
+function assertRawSourceStrings(value: unknown, path: string): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  const source = value as Record<string, unknown>;
+  for (const [key, maximumLength] of SOURCE_STRING_LIMITS) {
+    assertRawStringLength(source[key], `${path}.${key}`, maximumLength);
   }
 }
 
 function assertInputShape(value: unknown): void {
-  assertExactPlainObject(value, "expert", EXPERT_KEYS);
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    assertExactPlainObject(value, "expert", TRANSLATED_EXPERT_KEYS);
     return;
   }
 
   const record = value as Record<string, unknown>;
+  assertExactPlainObject(value, "expert", TRANSLATED_EXPERT_KEYS);
   assertExactPlainObject(record.source, "expert.source", SOURCE_REF_KEYS);
   assertExactPlainObject(record.upstreamSource, "expert.upstreamSource", SOURCE_REF_KEYS);
-  for (const key of LIST_KEYS) {
-    assertDenseArray(record[key], `expert.${key}`);
+  for (const [key, maximumLength] of TOP_LEVEL_STRING_LIMITS) {
+    assertRawStringLength(record[key], `expert.${key}`, maximumLength);
+  }
+  assertRawSourceStrings(record.source, "expert.source");
+  assertRawSourceStrings(record.upstreamSource, "expert.upstreamSource");
+  for (const [key, maximumItems, maximumItemLength] of LIST_LIMITS) {
+    assertBoundedDenseStringArray(
+      record[key],
+      `expert.${key}`,
+      maximumItems,
+      maximumItemLength,
+    );
+  }
+  const origin = typeof record.origin === "string" ? record.origin.trim() : undefined;
+  if (origin === "china_original") {
+    assertExactPlainObject(value, "expert", BASE_EXPERT_KEYS);
   }
 }
 
@@ -115,13 +200,16 @@ function boundedText(label: string, maxLength: number) {
     .refine(isWellFormedUnicode, `${label} must contain well-formed Unicode`);
 }
 
-function localizedText(label: string, maxLength: number) {
+function hanBearingText(label: string, maxLength: number) {
   return boundedText(label, maxLength)
-    .refine((value) => HAN_CHARACTER.test(value), `${label} must contain Chinese text`);
+    .refine(
+      (value) => HAN_CHARACTER.test(value),
+      `${label} must contain at least one Han character`,
+    );
 }
 
 function collisionKey(value: string): string {
-  return value.normalize("NFKC").toLowerCase();
+  return value.normalize("NFKC").toUpperCase().normalize("NFKC");
 }
 
 function uniqueStringArray<T extends z.ZodType<string>>(
@@ -153,6 +241,9 @@ function uniqueStringArray<T extends z.ZodType<string>>(
 
 function isCanonicalHttpsRepository(value: string): boolean {
   try {
+    if (value.includes("%")) {
+      return false;
+    }
     const url = new URL(value);
     if (
       url.protocol !== "https:" ||
@@ -160,6 +251,7 @@ function isCanonicalHttpsRepository(value: string): boolean {
       url.password !== "" ||
       url.search !== "" ||
       url.hash !== "" ||
+      url.hostname.endsWith(".") ||
       url.pathname === "/" ||
       url.pathname.endsWith("/") ||
       url.pathname.includes("//")
@@ -175,8 +267,9 @@ function isCanonicalHttpsRepository(value: string): boolean {
 function isSafeMarkdownPath(value: string): boolean {
   if (
     value.length === 0 ||
-    Buffer.byteLength(value, "utf8") > 1_024 ||
+    Buffer.byteLength(value, "utf8") > LENGTH_LIMITS.path ||
     value.startsWith("/") ||
+    value.includes("%") ||
     NON_PORTABLE_PATH_CHARACTER.test(value) ||
     !value.endsWith(".md")
   ) {
@@ -184,19 +277,26 @@ function isSafeMarkdownPath(value: string): boolean {
   }
 
   const components = value.split("/");
-  return components.every((component) => (
-    component !== "" &&
-    component !== "." &&
-    component !== ".." &&
-    Buffer.byteLength(component, "utf8") <= 255
-  ));
+  return components.every((component) => {
+    const compatibilityForm = component.normalize("NFKC");
+    const basename = compatibilityForm.split(".", 1)[0]!.toUpperCase();
+    return (
+      component !== "" &&
+      component !== "." &&
+      component !== ".." &&
+      !compatibilityForm.endsWith(".") &&
+      !compatibilityForm.endsWith(" ") &&
+      !WINDOWS_RESERVED_BASENAME.test(basename) &&
+      Buffer.byteLength(component, "utf8") <= 255
+    );
+  });
 }
 
-const expertIdSchema = boundedText("expert.id", 160)
+const expertIdSchema = boundedText("expert.id", LENGTH_LIMITS.id)
   .regex(EXPERT_ID, "expert.id must use segmented lowercase portable slugs");
-const slugSchema = boundedText("taxonomy slug", 64)
+const slugSchema = boundedText("taxonomy slug", LENGTH_LIMITS.slug)
   .regex(PORTABLE_SLUG, "taxonomy slug must be lowercase and portable");
-const conditionSchema = boundedText("condition", 4_096);
+const conditionSchema = boundedText("condition", LENGTH_LIMITS.condition);
 const preferredTaskSchema = z.string().trim().pipe(
   z.enum(["clarify", "design", "implement", "verify", "review"]),
 );
@@ -210,56 +310,93 @@ const sourcePathSchema = z.string()
   .pipe(
     z.string()
       .min(1, "source path must not be blank")
-      .max(1_024, "source path is too long"),
+      .max(LENGTH_LIMITS.path, "source path is too long"),
   )
   .refine(isSafeMarkdownPath, "source path must be a safe POSIX-relative Markdown path");
 
 const sourceRefSchema = z.object({
-  repository: boundedText("repository", 2_048)
+  repository: boundedText("repository", LENGTH_LIMITS.repository)
     .refine(isCanonicalHttpsRepository, "repository must be a canonical HTTPS URL"),
   path: sourcePathSchema,
-  commit: boundedText("source commit", 40)
+  commit: boundedText("source commit", LENGTH_LIMITS.commit)
     .regex(FULL_COMMIT_SHA, "source commit must be a lowercase full 40-character SHA"),
   license: z.string().trim()
     .refine((value) => value === "MIT", "source license must be MIT")
     .transform((): "MIT" => "MIT"),
 }).strict();
 
-export const expertSchema = z.object({
+const sharedExpertShape = {
   id: expertIdSchema,
-  nameZh: localizedText("nameZh", 128),
-  summaryZh: localizedText("summaryZh", 2_048),
-  instructionsZh: localizedText("instructionsZh", 65_536),
-  capabilities: uniqueStringArray(slugSchema, "capabilities", 1, 128),
-  domains: uniqueStringArray(slugSchema, "domains", 1, 64),
-  projectSignals: uniqueStringArray(slugSchema, "projectSignals", 0, 128),
-  activationConditions: uniqueStringArray(conditionSchema, "activationConditions", 1, 128),
-  exclusionConditions: uniqueStringArray(conditionSchema, "exclusionConditions", 0, 128),
-  preferredTasks: uniqueStringArray(preferredTaskSchema, "preferredTasks", 1, 5),
-  qualityGates: uniqueStringArray(conditionSchema, "qualityGates", 1, 128),
-  origin: z.string().trim().pipe(z.enum(["upstream_translation", "china_original"])),
+  nameZh: hanBearingText("nameZh", LENGTH_LIMITS.nameZh),
+  summaryZh: hanBearingText("summaryZh", LENGTH_LIMITS.summaryZh),
+  instructionsZh: hanBearingText("instructionsZh", LENGTH_LIMITS.instructionsZh),
+  capabilities: uniqueStringArray(slugSchema, "capabilities", 1, LIST_MAXIMUMS.capabilities),
+  domains: uniqueStringArray(slugSchema, "domains", 1, LIST_MAXIMUMS.domains),
+  projectSignals: uniqueStringArray(slugSchema, "projectSignals", 0, LIST_MAXIMUMS.projectSignals),
+  activationConditions: uniqueStringArray(
+    conditionSchema,
+    "activationConditions",
+    1,
+    LIST_MAXIMUMS.activationConditions,
+  ),
+  exclusionConditions: uniqueStringArray(
+    conditionSchema,
+    "exclusionConditions",
+    0,
+    LIST_MAXIMUMS.exclusionConditions,
+  ),
+  preferredTasks: uniqueStringArray(
+    preferredTaskSchema,
+    "preferredTasks",
+    1,
+    LIST_MAXIMUMS.preferredTasks,
+  ),
+  qualityGates: uniqueStringArray(
+    conditionSchema,
+    "qualityGates",
+    1,
+    LIST_MAXIMUMS.qualityGates,
+  ),
   source: sourceRefSchema,
-  upstreamSource: sourceRefSchema.optional(),
-  contentHash: boundedText("contentHash", 71)
+  contentHash: boundedText("contentHash", LENGTH_LIMITS.contentHash)
     .regex(CONTENT_HASH, "contentHash must be a lowercase SHA-256 digest"),
+} as const;
+
+const translatedExpertSchema = z.object({
+  ...sharedExpertShape,
+  origin: z.literal("upstream_translation"),
+  upstreamSource: sourceRefSchema,
 }).strict().superRefine((expert, context) => {
-  if (expert.origin === "upstream_translation" && expert.upstreamSource === undefined) {
+  if (
+    expert.source.repository === expert.upstreamSource.repository &&
+    expert.source.path === expert.upstreamSource.path &&
+    expert.source.commit === expert.upstreamSource.commit
+  ) {
     context.addIssue({
       code: "custom",
       path: ["upstreamSource"],
-      message: "translated experts require upstreamSource",
-    });
-  }
-  if (expert.origin === "china_original" && expert.upstreamSource !== undefined) {
-    context.addIssue({
-      code: "custom",
-      path: ["upstreamSource"],
-      message: "China-original experts cannot declare upstreamSource",
+      message: "translated source and upstreamSource cannot identify the same source file revision",
     });
   }
 });
 
-export type Expert = z.infer<typeof expertSchema>;
+const chinaOriginalExpertSchema = z.object({
+  ...sharedExpertShape,
+  origin: z.literal("china_original"),
+}).strict();
+
+const normalizedExpertSchema = z.discriminatedUnion("origin", [
+  translatedExpertSchema,
+  chinaOriginalExpertSchema,
+]);
+
+type ParsedExpert = z.infer<typeof normalizedExpertSchema>;
+type ChinaOriginalExpert = Extract<ParsedExpert, { origin: "china_original" }> & {
+  upstreamSource?: never;
+};
+export type Expert =
+  | Extract<ParsedExpert, { origin: "upstream_translation" }>
+  | ChinaOriginalExpert;
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 
 function formatIssue(issue: z.core.$ZodIssue): string {
@@ -271,7 +408,18 @@ function formatIssue(issue: z.core.$ZodIssue): string {
 
 export function parseExpert(value: unknown): Expert {
   assertInputShape(value);
-  const result = expertSchema.safeParse(value);
+  let schemaInput = value;
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.origin === "string") {
+      schemaInput = { ...record, origin: record.origin.trim() };
+    }
+  }
+  const result = normalizedExpertSchema.safeParse(schemaInput);
   if (!result.success) {
     fail(formatIssue(result.error.issues[0]!), result.error);
   }

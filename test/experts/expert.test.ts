@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 
-import { beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, test } from "vitest";
 
-import { parseExpert, type Expert } from "../../src/experts/expert.js";
+import { parseExpert, type Expert, type SourceRef } from "../../src/experts/expert.js";
 
 type MutableExpert = Record<string, unknown> & {
   id: string;
@@ -135,19 +135,49 @@ describe("normalized expert schema", () => {
     const originalWithUpstream = clone(chinaOriginal);
     originalWithUpstream.upstreamSource = clone(translated).upstreamSource!;
     expect(() => parseExpert(originalWithUpstream)).toThrow(/upstreamSource/);
+
+    const originalWithExplicitUndefined = clone(chinaOriginal);
+    (originalWithExplicitUndefined as Record<string, unknown>).upstreamSource = undefined;
+    expect(() => parseExpert(originalWithExplicitUndefined)).toThrow(/upstreamSource/);
+
+    const translationWithIdenticalSource = clone(translated);
+    translationWithIdenticalSource.upstreamSource = structuredClone(translationWithIdenticalSource.source);
+    expect(() => parseExpert(translationWithIdenticalSource)).toThrow(/upstreamSource/i);
   });
 
-  test("accepts translated provenance in the same repository at a different path and commit", () => {
-    const input = clone(translated);
-    input.upstreamSource!.repository = input.source.repository;
-    input.upstreamSource!.path = "upstream/frontend-architect-original.md";
-    input.upstreamSource!.commit = "4".repeat(40);
+  test("accepts same-repository translations when either path or commit differs", () => {
+    for (const differingField of ["path", "commit"] as const) {
+      const input = clone(translated);
+      input.upstreamSource = structuredClone(input.source);
+      input.upstreamSource[differingField] = differingField === "path"
+        ? "upstream/frontend-architect-original.md"
+        : "4".repeat(40);
 
-    const parsed = parseExpert(input);
+      const parsed = parseExpert(input);
 
-    expect(parsed.upstreamSource).toEqual(input.upstreamSource);
-    expect(parsed.upstreamSource!.path).not.toBe(parsed.source.path);
-    expect(parsed.upstreamSource!.commit).not.toBe(parsed.source.commit);
+      expect(parsed.upstreamSource).toEqual(input.upstreamSource);
+      expect(parsed.upstreamSource![differingField]).not.toBe(parsed.source[differingField]);
+    }
+  });
+
+  test("models provenance as a TypeScript discriminated union", () => {
+    const translatedExpert = parseExpert(translated);
+    if (translatedExpert.origin !== "upstream_translation") throw new Error("unexpected fixture origin");
+    expectTypeOf(translatedExpert.upstreamSource).toEqualTypeOf<SourceRef>();
+    const { upstreamSource: _upstreamSource, ...withoutUpstream } = translatedExpert;
+    // @ts-expect-error translated experts require upstreamSource at compile time
+    const invalidTranslation: Expert = withoutUpstream;
+    void invalidTranslation;
+
+    const originalExpert = parseExpert(chinaOriginal);
+    if (originalExpert.origin !== "china_original") throw new Error("unexpected fixture origin");
+    expectTypeOf(originalExpert.upstreamSource).toEqualTypeOf<undefined>();
+    // @ts-expect-error China-original experts cannot carry upstreamSource at compile time
+    const invalidOriginal: Expert = { ...originalExpert, upstreamSource: originalExpert.source };
+    void invalidOriginal;
+    // @ts-expect-error even explicit undefined is forbidden by upstreamSource?: never
+    const invalidOriginalUndefined: Expert = { ...originalExpert, upstreamSource: undefined };
+    void invalidOriginalUndefined;
   });
 
   test("rejects unknown and prototype keys at every object boundary", () => {
@@ -178,6 +208,10 @@ describe("normalized expert schema", () => {
     "https://github.com/jnMetaCode/agency-agents-zh#readme",
     "https://github.com/jnMetaCode/agency-agents-zh/",
     "https://GitHub.com/jnMetaCode/agency-agents-zh",
+    "https://github.com./jnMetaCode/agency-agents-zh",
+    "https://github.com/jnMetaCode/%6fgency-agents-zh",
+    "https://github.com/jnMetaCode%2Fagency-agents-zh",
+    "https://github.com/jnMetaCode/%2e%2e/agency-agents-zh",
   ])("rejects non-canonical repository URL %s", (repository) => {
     const input = clone(translated);
     input.source.repository = repository;
@@ -206,6 +240,17 @@ describe("normalized expert schema", () => {
     "\tengineering/frontend.md",
     "engineering/frontend.md\n",
     "engineering/front\u007fend.md",
+    "engineering/%6frontend.md",
+    "%2e%2e/engineering/frontend.md",
+    "engineering/%2Ffrontend.md",
+    "engineering./frontend.md",
+    "engineering /frontend.md",
+    "CON.md",
+    "windows/prn.extra.md",
+    "windows/AuX.md",
+    "windows/ＣＯＮ.md",
+    "windows/com1.source.md",
+    "windows/LPT9.md",
     `engineering/bad\ud800.md`,
   ])("rejects unsafe source path %s", (path) => {
     const input = clone(translated);
@@ -232,12 +277,83 @@ describe("normalized expert schema", () => {
     expect(() => parseExpert(sparse)).toThrow(/capabilities/i);
   });
 
+  test("rejects Unicode case-fold collisions conservatively", () => {
+    const sharpS = clone(translated);
+    sharpS.qualityGates = ["Straße", "STRASSE"];
+    expect(() => parseExpert(sharpS)).toThrow(/qualityGates/i);
+
+    const sigma = clone(translated);
+    sigma.exclusionConditions = ["σ", "ς"];
+    expect(() => parseExpert(sigma)).toThrow(/exclusionConditions/i);
+  });
+
+  test("fails on an oversized list before traversing its elements or descriptors", () => {
+    let elementReads = 0;
+    let ownKeyReads = 0;
+    let descriptorReads = 0;
+    const huge = new Proxy(new Array<string>(1_000_000), {
+      get(target, property, receiver) {
+        if (property !== "length") elementReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+      ownKeys() {
+        ownKeyReads += 1;
+        throw new Error("oversized arrays must not enumerate keys");
+      },
+      getOwnPropertyDescriptor() {
+        descriptorReads += 1;
+        throw new Error("oversized arrays must not inspect descriptors");
+      },
+    });
+    const input = clone(translated);
+    input.capabilities = huge;
+
+    expect(() => parseExpert(input)).toThrow(/capabilities.*128/i);
+    expect(elementReads).toBe(0);
+    expect(ownKeyReads).toBe(0);
+    expect(descriptorReads).toBe(0);
+  });
+
+  test("rejects a large filled list at the raw boundary", () => {
+    const input = clone(translated);
+    input.capabilities = new Array<string>(129).fill("frontend-architecture");
+
+    expect(() => parseExpert(input)).toThrow(/capabilities.*128/i);
+  });
+
+  test("rejects oversized raw strings before trimming or schema parsing", () => {
+    const millionSpaces = " ".repeat(1_000_000);
+
+    const topLevel = clone(translated);
+    topLevel.instructionsZh = `${millionSpaces}中`;
+    expect(() => parseExpert(topLevel)).toThrow(/instructionsZh.*raw length/i);
+
+    const repository = clone(translated);
+    repository.source.repository = `${millionSpaces}https://github.com/example/repository`;
+    expect(() => parseExpert(repository)).toThrow(/source\.repository.*raw length/i);
+
+    const path = clone(translated);
+    path.source.path = `${millionSpaces}source.md`;
+    expect(() => parseExpert(path)).toThrow(/source\.path.*raw length/i);
+
+    const listItem = clone(translated);
+    listItem.qualityGates = [`${millionSpaces}质量门`];
+    expect(() => parseExpert(listItem)).toThrow(/qualityGates\.0.*raw length/i);
+  });
+
   test("requires Chinese content in the three core localized fields", () => {
     for (const field of ["nameZh", "summaryZh", "instructionsZh"] as const) {
       const input = clone(translated);
       input[field] = "English only";
       expect(() => parseExpert(input)).toThrow(new RegExp(field, "i"));
     }
+  });
+
+  test("describes the localization rule as Han-character presence", () => {
+    const input = clone(translated);
+    input.nameZh = "English only";
+
+    expect(() => parseExpert(input)).toThrow(/at least one Han character/i);
   });
 
   test("rejects blank, malformed, and unreasonably large text", () => {
