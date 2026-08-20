@@ -366,4 +366,90 @@ describe("withWorkspaceLock", () => {
 
     await expect(lockWithReleaseFailure(root, async () => { throw sentinel; })).rejects.toBe(sentinel);
   });
+
+  test("does not enter an operation from an old handle after another owner acquires canonical lock", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    let allowFirstWrite!: () => void;
+    let markFirstReady!: () => void;
+    let releaseSecond!: () => void;
+    let markSecondEntered!: () => void;
+    const firstReady = new Promise<void>((resolve) => { markFirstReady = resolve; });
+    const allowWrite = new Promise<void>((resolve) => { allowFirstWrite = resolve; });
+    const secondEntered = new Promise<void>((resolve) => { markSecondEntered = resolve; });
+    const releaseSecondOperation = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    let firstEnteredOperation = false;
+    const first = createWorkspaceLock(lockRuntime({
+      open: async (...args) => {
+        const handle = await open(...args);
+        return new Proxy(handle, {
+          get(target, property, receiver) {
+            if (property === "writeFile") {
+              return async (...writeArgs: Parameters<typeof target.writeFile>) => {
+                markFirstReady();
+                await allowWrite;
+                return target.writeFile(...writeArgs);
+              };
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }) as Awaited<ReturnType<typeof open>>;
+      },
+    }));
+
+    const firstTask = first(root, async () => { firstEnteredOperation = true; });
+    await firstReady;
+    const stale = oldDate();
+    await utimes(lock, stale, stale);
+
+    const secondTask = withWorkspaceLock(root, async () => {
+      markSecondEntered();
+      await releaseSecondOperation;
+    });
+    await secondEntered;
+    const secondMetadata = await readFile(lock, "utf8");
+
+    allowFirstWrite();
+    await expect(firstTask).rejects.toBeInstanceOf(WorkspaceLockedError);
+    expect(firstEnteredOperation).toBe(false);
+    await expect(readFile(lock, "utf8")).resolves.toBe(secondMetadata);
+
+    releaseSecond();
+    await secondTask;
+  });
+
+  test("does not enter an operation when another owner wins stale recovery reservation", async () => {
+    const root = await temporaryProject();
+    const lock = await writeLock(root, "corrupt stale lock");
+    const stale = oldDate();
+    await utimes(lock, stale, stale);
+    let reclaimerEnteredOperation = false;
+    let markThirdEntered!: () => void;
+    let releaseThird!: () => void;
+    const thirdEntered = new Promise<void>((resolve) => { markThirdEntered = resolve; });
+    const releaseThirdOperation = new Promise<void>((resolve) => { releaseThird = resolve; });
+    let openCalls = 0;
+    let thirdTask: Promise<void> | undefined;
+    const reclaimer = createWorkspaceLock(lockRuntime({
+      open: async (...args) => {
+        openCalls += 1;
+        if (openCalls === 2) {
+          thirdTask = withWorkspaceLock(root, async () => {
+            markThirdEntered();
+            await releaseThirdOperation;
+          });
+          await thirdEntered;
+        }
+        return open(...args);
+      },
+    }));
+
+    await expect(reclaimer(root, async () => { reclaimerEnteredOperation = true; })).rejects.toBeInstanceOf(WorkspaceLockedError);
+    expect(reclaimerEnteredOperation).toBe(false);
+    expect(thirdTask).toBeDefined();
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toHaveLength(1);
+
+    releaseThird();
+    await thirdTask;
+  });
 });
