@@ -1,19 +1,19 @@
 # Third-Party Notices
 
-EZagent Spec contains normalized Chinese expert definitions and provenance metadata derived from the following MIT-licensed projects.
+EZagent Spec includes normalized expert definitions derived from the following MIT-licensed projects.
 
 ## Agency Agents
 
 - Repository: https://github.com/msitarzewski/agency-agents
-- Copyright: `Copyright (c) 2025 Michael Sitarzewski`
-- Included material: normalized expert definitions and provenance metadata derived from reviewed English expert definitions
+- Copyright: Copyright (c) 2025 AgentLand Contributors
+- Included material: source taxonomy and English expert definitions used to trace translated records
 - License: `licenses/agency-agents-MIT.txt`
 
 ## Agency Agents 中文项目
 
 - Repository: https://github.com/jnMetaCode/agency-agents-zh
-- Copyright: `Copyright (c) 2025 Michael Sitarzewski`; `Copyright (c) 2026 jnMetaCode`
-- Included material: normalized Chinese translations, China-original expert definitions, and provenance metadata
+- Copyright: Copyright (c) 2025 Michael Sitarzewski (original English version); Copyright (c) 2026 jnMetaCode (Chinese translation and localization)
+- Included material: Chinese expert translations and China-original expert definitions
 - License: `licenses/agency-agents-zh-MIT.txt`
 
-No upstream orchestration scripts, service integrations, advertisements, update mechanisms, or runtime code from either project are included.
+No orchestration scripts, service integrations, advertisements, or runtime update code from either project are included.

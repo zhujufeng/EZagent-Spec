@@ -8,11 +8,13 @@
     "!dist/src/experts/source-lock.js",
     "!dist/src/experts/importer.js",
     "!dist/src/experts/attested-source-contract.js",
+    "!dist/src/experts/bounded-read.js",
     "README.md",
     "THIRD_PARTY_NOTICES.md",
     "LICENSE*",
     "licenses/**",
-    "catalog/normalized/experts.json"
+    "catalog/normalized/experts.json",
+    "catalog/normalized/catalog.lock.json"
   ],
   "bin": {
     "ezagent": "./dist/src/cli/main.js"
@@ -23,7 +25,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "postbuild": "node scripts/set-cli-executable.mjs",
-    "prepack": "npm run build",
+    "prepack": "npm run catalog:verify && npm run build",
+    "prepublishOnly": "npm run catalog:verify && npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:core": "vitest run test/domain test/workspace test/cli",

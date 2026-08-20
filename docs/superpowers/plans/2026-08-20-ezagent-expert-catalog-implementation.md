@@ -473,6 +473,8 @@ export function validateCatalog(values: unknown[], availableLicenseIds: Set<stri
 
 Use this notice content and copy the two MIT license files verbatim from the reviewed checkouts:
 
+The copyright lines below are a factual correction against the reviewed upstream LICENSE bytes; all other notice wording remains unchanged.
+
 ```markdown
 # Third-Party Notices
 
@@ -481,14 +483,14 @@ EZagent Spec includes normalized expert definitions derived from the following M
 ## Agency Agents
 
 - Repository: https://github.com/msitarzewski/agency-agents
-- Copyright: Copyright (c) 2025 Michael Sitarzewski
+- Copyright: Copyright (c) 2025 AgentLand Contributors
 - Included material: source taxonomy and English expert definitions used to trace translated records
 - License: `licenses/agency-agents-MIT.txt`
 
 ## Agency Agents 中文项目
 
 - Repository: https://github.com/jnMetaCode/agency-agents-zh
-- Copyright: Copyright (c) 2025 Michael Sitarzewski; Copyright (c) 2026 jnMetaCode
+- Copyright: Copyright (c) 2025 Michael Sitarzewski (original English version); Copyright (c) 2026 jnMetaCode (Chinese translation and localization)
 - Included material: Chinese expert translations and China-original expert definitions
 - License: `licenses/agency-agents-zh-MIT.txt`
 
@@ -730,6 +732,7 @@ git commit -m "feat: persist active project experts"
 **Files:**
 - Generate: `catalog/sources.lock.json`
 - Generate: `catalog/normalized/experts.json`
+- Generate: `catalog/normalized/catalog.lock.json`
 - Modify: `catalog/taxonomy.yaml`
 - Modify: `THIRD_PARTY_NOTICES.md`
 - Modify: `licenses/*.txt`
@@ -753,13 +756,13 @@ Expected: the English checkout is pinned to the recorded upstream base and the C
 
 Run: `npm run catalog:lock`
 
-Expected: `catalog/sources.lock.json` contains exactly two records, each with a full 40-character commit SHA.
+Expected: `catalog/sources.lock.json` contains exactly two records, each with a full 40-character commit SHA and a `LICENSE` path/OID/raw-size/SHA-256 attestation read from that immutable commit object rather than either working tree. The later catalog verification must require the checked-in license bytes to match those attestations exactly, including the Chinese repository's resolved locked commit.
 
 - [ ] **Step 4: Run normalization and close taxonomy gaps**
 
 Run: `npm run catalog:import`
 
-Expected on the first pass: either success or deterministic lists of unmapped source divisions and expert paths. Curate every reported entry in `catalog/taxonomy.yaml`, review the mapping against the expert's Chinese definition, rerun, and stop only when import exits `0` with no unknown divisions, missing/extra expert mappings, or duplicate IDs.
+Expected on the first pass: either success or deterministic lists of unmapped source divisions and expert paths. Curate every reported entry in `catalog/taxonomy.yaml`, review the mapping against the expert's Chinese definition, rerun, and stop only when import exits `0` with no unknown divisions, missing/extra expert mappings, or duplicate IDs. The successful import must deterministically regenerate both `catalog/normalized/experts.json` and `catalog/normalized/catalog.lock.json`; rerun it and require both files to remain byte-identical before release.
 
 - [ ] **Step 5: Verify the complete snapshot**
 
@@ -770,7 +773,7 @@ Expected: exit `0`, a measured non-zero expert count, 0 provenance errors, 0 dup
 - [ ] **Step 6: Commit only normalized outputs and notices**
 
 ```bash
-git add catalog/sources.lock.json catalog/normalized/experts.json catalog/taxonomy.yaml THIRD_PARTY_NOTICES.md licenses
+git add catalog/sources.lock.json catalog/normalized/experts.json catalog/normalized/catalog.lock.json catalog/taxonomy.yaml THIRD_PARTY_NOTICES.md licenses
 git commit -m "data: add normalized Chinese expert catalog"
 ```
 

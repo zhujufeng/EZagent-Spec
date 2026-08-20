@@ -20,6 +20,8 @@ export interface ImportExpertsCommandRuntime {
   readonly writeCatalog: (
     experts: readonly Expert[],
     projectRoot: string,
+    sourceLockJsonText: string,
+    taxonomyYamlText: string,
   ) => Promise<void>;
   readonly writeStdout: (message: string) => void;
   readonly writeStderr: (message: string) => void;
@@ -28,10 +30,10 @@ export interface ImportExpertsCommandRuntime {
 const nodeRuntime: ImportExpertsCommandRuntime = Object.freeze<ImportExpertsCommandRuntime>({
   readText: readBoundedTextFile,
   importCatalog: importExpertCatalog,
-  writeCatalog: async (experts, projectRoot) => writeNormalizedCatalog(
+  writeCatalog: async (experts, projectRoot, sourceLockJsonText, taxonomyYamlText) => writeNormalizedCatalog(
     join(projectRoot, "catalog", "normalized", "experts.json"),
     experts,
-    { projectRoot },
+    { projectRoot, sourceLockJsonText, taxonomyYamlText },
   ),
   writeStdout: (message) => { process.stdout.write(message); },
   writeStderr: (message) => { process.stderr.write(message); },
@@ -47,14 +49,16 @@ export async function main(
     runtime.writeStderr(
       "catalog:import safety: do not concurrently replace catalog/normalized or its ancestors while this local release command runs\n",
     );
+    const sourceLockJsonText = await runtime.readText(join(projectRoot, "catalog", "sources.lock.json"));
+    const taxonomyYamlText = await runtime.readText(join(projectRoot, "catalog", "taxonomy.yaml"));
     const experts = await runtime.importCatalog({
       projectRoot,
       englishRoot: join(projectRoot, "vendor-sources", "agency-agents"),
       chineseRoot: join(projectRoot, "vendor-sources", "agency-agents-zh"),
-      sourceLockText: await runtime.readText(join(projectRoot, "catalog", "sources.lock.json")),
-      taxonomyText: await runtime.readText(join(projectRoot, "catalog", "taxonomy.yaml")),
+      sourceLockText: sourceLockJsonText,
+      taxonomyText: taxonomyYamlText,
     });
-    await runtime.writeCatalog(experts, projectRoot);
+    await runtime.writeCatalog(experts, projectRoot, sourceLockJsonText, taxonomyYamlText);
     runtime.writeStdout(`Imported ${experts.length} Chinese experts into ${outputPath}\n`);
     return 0;
   } catch (error: unknown) {

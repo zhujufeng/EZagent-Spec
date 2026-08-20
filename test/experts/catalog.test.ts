@@ -10,6 +10,10 @@ import {
   validateCatalog,
 } from "../../src/experts/catalog.js";
 import {
+  createCatalogArtifactLock,
+  serializeCatalogArtifactLock,
+} from "../../src/experts/importer.js";
+import {
   EXPECTED_THIRD_PARTY_NOTICE,
   main as verifyCatalogMain,
   readCatalogVerificationInputs,
@@ -31,7 +35,7 @@ const NOTICES = new Set([
 
 const ENGLISH_LICENSE = `MIT License
 
-Copyright (c) 2025 Michael Sitarzewski
+Copyright (c) 2025 AgentLand Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -54,8 +58,8 @@ SOFTWARE.
 
 const CHINESE_LICENSE = `MIT License
 
-Copyright (c) 2025 Michael Sitarzewski
-Copyright (c) 2026 jnMetaCode
+Copyright (c) 2025 Michael Sitarzewski (original English version)
+Copyright (c) 2026 jnMetaCode (Chinese translation and localization)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -74,6 +78,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+`;
+
+const REVIEWED_NOTICE = `# Third-Party Notices
+
+EZagent Spec includes normalized expert definitions derived from the following MIT-licensed projects.
+
+## Agency Agents
+
+- Repository: https://github.com/msitarzewski/agency-agents
+- Copyright: Copyright (c) 2025 AgentLand Contributors
+- Included material: source taxonomy and English expert definitions used to trace translated records
+- License: \`licenses/agency-agents-MIT.txt\`
+
+## Agency Agents 中文项目
+
+- Repository: https://github.com/jnMetaCode/agency-agents-zh
+- Copyright: Copyright (c) 2025 Michael Sitarzewski (original English version); Copyright (c) 2026 jnMetaCode (Chinese translation and localization)
+- Included material: Chinese expert translations and China-original expert definitions
+- License: \`licenses/agency-agents-zh-MIT.txt\`
+
+No orchestration scripts, service integrations, advertisements, or runtime update code from either project are included.
 `;
 
 function blobOid(bytes: Uint8Array): string {
@@ -106,9 +131,8 @@ function markdownFile(path: string, normalizedSha256: string) {
 
 async function verificationFixture(): Promise<CatalogVerificationInput> {
   const expert = await fixture("translated");
-  return {
-    normalizedCatalogText: `${JSON.stringify({ schemaVersion: 1, experts: [expert] }, null, 2)}\n`,
-    sourceLockText: `${JSON.stringify({
+  const normalizedCatalogText = `${JSON.stringify({ schemaVersion: 1, experts: [expert] }, null, 2)}\n`;
+  const sourceLockText = `${JSON.stringify({
       schemaVersion: 2,
       sources: [
         {
@@ -138,8 +162,8 @@ async function verificationFixture(): Promise<CatalogVerificationInput> {
           )],
         },
       ],
-    }, null, 2)}\n`,
-    taxonomyText: [
+    }, null, 2)}\n`;
+  const taxonomyText = [
       "schemaVersion: 1",
       "divisions:",
       "  engineering:",
@@ -159,7 +183,17 @@ async function verificationFixture(): Promise<CatalogVerificationInput> {
       "  agency-agents: []",
       "  agency-agents-zh: []",
       "",
-    ].join("\n"),
+    ].join("\n");
+  return {
+    normalizedCatalogText,
+    sourceLockText,
+    taxonomyText,
+    catalogArtifactLockText: serializeCatalogArtifactLock(createCatalogArtifactLock({
+      expertsJsonText: normalizedCatalogText,
+      sourceLockJsonText: sourceLockText,
+      taxonomyYamlText: taxonomyText,
+      expertCount: 1,
+    })),
     thirdPartyNoticeText: EXPECTED_THIRD_PARTY_NOTICE,
     licenseFiles: {
       "agency-agents": Buffer.from(ENGLISH_LICENSE, "utf8"),
@@ -271,6 +305,19 @@ describe("validateCatalog", () => {
       { length: 65 },
       (_, index) => `https://example.invalid/${index}`,
     )))).toThrowError(expect.objectContaining({ code: "NOTICE_REGISTRY_INVALID" }));
+
+    const forgedSet = Object.create(Set.prototype) as Set<string>;
+    let captured: unknown;
+    try {
+      validateCatalog([translated], forgedSet);
+    } catch (error: unknown) {
+      captured = error;
+    }
+    expect(captured).toSatisfy((error: unknown) =>
+      error instanceof CatalogValidationError
+        && error.code === "NOTICE_REGISTRY_INVALID"
+        && error.cause === undefined
+        && !/incompatible|receiver|Set/u.test(error.message));
   });
 });
 
@@ -282,6 +329,42 @@ describe("verifyCatalogProvenance", () => {
       provenanceErrors: [],
       message: "catalog valid: 1 experts, 0 provenance errors",
     });
+  });
+
+  it.each(["nameZh", "summaryZh", "instructionsZh"] as const)(
+    "rejects %s-only snapshot tampering before trusting parsed provenance",
+    async (field) => {
+      const input = await verificationFixture();
+      const parsed = JSON.parse(input.normalizedCatalogText) as { experts: Array<Record<string, string>> };
+      parsed.experts[0]![field] += "篡改";
+      input.normalizedCatalogText = `${JSON.stringify(parsed, null, 2)}\n`;
+      expect(() => verifyCatalogProvenance(input)).toThrowError(expect.objectContaining({
+        code: "CATALOG_PROVENANCE_INVALID",
+        groups: expect.objectContaining({ artifacts: expect.any(Array) }),
+      }));
+    },
+  );
+
+  it.each([
+    ["English tree", (input: CatalogVerificationInput) => {
+      input.sourceLockText = input.sourceLockText.replace("3".repeat(40), "6".repeat(40));
+    }],
+    ["Chinese manifest field", (input: CatalogVerificationInput) => {
+      input.sourceLockText = input.sourceLockText.replace(`sha256:${"a".repeat(64)}`, `sha256:${"e".repeat(64)}`);
+    }],
+    ["license evidence", (input: CatalogVerificationInput) => {
+      input.sourceLockText = input.sourceLockText.replace(licenseFile(ENGLISH_LICENSE).oid, "7".repeat(40));
+    }],
+    ["taxonomy bytes", (input: CatalogVerificationInput) => {
+      input.taxonomyText += "# changed\n";
+    }],
+  ] as const)("rejects %s tampering through the independent artifact attestation", async (_name, mutate) => {
+    const input = await verificationFixture();
+    mutate(input);
+    expect(() => verifyCatalogProvenance(input)).toThrowError(expect.objectContaining({
+      code: "CATALOG_PROVENANCE_INVALID",
+      groups: expect.objectContaining({ artifacts: expect.any(Array) }),
+    }));
   });
 
   it.each([
@@ -340,7 +423,10 @@ describe("verifyCatalogProvenance", () => {
     expect(() => verifyCatalogProvenance(unsorted)).toThrowError(expect.objectContaining({ code: "CATALOG_PROVENANCE_INVALID" }));
 
     const duplicateJson = { ...valid, normalizedCatalogText: '{"schemaVersion":1,"schemaVersion":1,"experts":[]}' };
-    expect(() => verifyCatalogProvenance(duplicateJson)).toThrowError(expect.objectContaining({ code: "CATALOG_INPUT_INVALID" }));
+    expect(() => verifyCatalogProvenance(duplicateJson)).toThrowError(expect.objectContaining({
+      code: "CATALOG_PROVENANCE_INVALID",
+      groups: expect.objectContaining({ artifacts: expect.any(Array) }),
+    }));
 
     const oversized = { ...valid, normalizedCatalogText: " ".repeat(16 * 1_048_576 + 1) };
     expect(() => verifyCatalogProvenance(oversized)).toThrowError(expect.objectContaining({ code: "CATALOG_INPUT_INVALID" }));
@@ -357,6 +443,30 @@ describe("verifyCatalogProvenance", () => {
     Object.defineProperty(accessor, "normalizedCatalogText", { enumerable: true, get: () => valid.normalizedCatalogText });
     expect(() => verifyCatalogProvenance(accessor as unknown as CatalogVerificationInput))
       .toThrowError(expect.objectContaining({ code: "CATALOG_INPUT_INVALID" }));
+
+    const forgedBytes = Object.create(Uint8Array.prototype) as Uint8Array;
+    const forgedInput = {
+      ...valid,
+      licenseFiles: { ...valid.licenseFiles, "agency-agents": forgedBytes },
+    };
+    let captured: unknown;
+    try {
+      verifyCatalogProvenance(forgedInput);
+    } catch (error: unknown) {
+      captured = error;
+    }
+    expect(captured).toSatisfy((error: unknown) =>
+      error instanceof Error
+        && error.name === "CatalogVerificationError"
+        && (error as Error & { code?: string }).code === "CATALOG_INPUT_INVALID"
+        && error.cause === undefined
+        && !/incompatible|receiver|typed array/u.test(error.message));
+
+    const proxyBytes = new Proxy(Buffer.from(ENGLISH_LICENSE, "utf8"), {});
+    expect(() => verifyCatalogProvenance({
+      ...valid,
+      licenseFiles: { ...valid.licenseFiles, "agency-agents": proxyBytes },
+    })).toThrowError(expect.objectContaining({ code: "CATALOG_INPUT_INVALID" }));
   });
 });
 
@@ -403,6 +513,7 @@ describe("verify-catalog command boundary", () => {
       await mkdir(join(root, "catalog", "normalized"), { recursive: true });
       await mkdir(join(root, "licenses"));
       await writeFile(join(root, "catalog", "normalized", "experts.json"), input.normalizedCatalogText);
+      await writeFile(join(root, "catalog", "normalized", "catalog.lock.json"), input.catalogArtifactLockText);
       await writeFile(join(root, "catalog", "sources.lock.json"), input.sourceLockText);
       await writeFile(join(root, "catalog", "taxonomy.yaml"), input.taxonomyText);
       await writeFile(join(root, "THIRD_PARTY_NOTICES.md"), input.thirdPartyNoticeText);
@@ -434,9 +545,16 @@ describe("verify-catalog command boundary", () => {
       readFile(new URL("../../package.json", import.meta.url), "utf8"),
       readFile(new URL("../../src/experts/catalog.ts", import.meta.url), "utf8"),
     ]);
-    expect(notice).toBe(EXPECTED_THIRD_PARTY_NOTICE);
+    expect(EXPECTED_THIRD_PARTY_NOTICE).toBe(REVIEWED_NOTICE);
+    expect(notice).toBe(REVIEWED_NOTICE);
     expect(english).toBe(ENGLISH_LICENSE);
     expect(chinese).toBe(CHINESE_LICENSE);
+    expect(Buffer.byteLength(english, "utf8")).toBe(1_079);
+    expect(createHash("sha256").update(english, "utf8").digest("hex"))
+      .toBe("9a45258434d5cedf0af73c9ad4771373701225038d246c49219026c33677f66f");
+    expect(Buffer.byteLength(chinese, "utf8")).toBe(1_172);
+    expect(createHash("sha256").update(chinese, "utf8").digest("hex"))
+      .toBe("ef7c745c2d79e873d6553fc35c92ecbcf43804a1f1fd1aa47e23d0da2afb1b63");
     const packageJson = JSON.parse(packageText) as { files: string[]; scripts: Record<string, string> };
     const files = packageJson.files;
     expect(files).toEqual(expect.arrayContaining([
@@ -444,17 +562,21 @@ describe("verify-catalog command boundary", () => {
       "THIRD_PARTY_NOTICES.md",
       "licenses/**",
       "catalog/normalized/experts.json",
+      "catalog/normalized/catalog.lock.json",
     ]));
     expect(files).toEqual(expect.arrayContaining([
       "!dist/src/experts/source-lock.js",
       "!dist/src/experts/importer.js",
       "!dist/src/experts/attested-source-contract.js",
+      "!dist/src/experts/bounded-read.js",
     ]));
     expect(runtimeSource).not.toMatch(/node:(?:fs|child_process|http|https|net|tls)|\.\/source-lock|\.\/importer|\bfetch\s*\(/u);
     expect(packageJson.scripts).toMatchObject({
       "catalog:lock": "node --import tsx scripts/lock-catalog-sources.ts",
       "catalog:import": "node --import tsx scripts/import-experts.ts",
       "catalog:verify": "node --import tsx scripts/verify-catalog.ts",
+      prepack: "npm run catalog:verify && npm run build",
+      prepublishOnly: "npm run catalog:verify && npm run build",
     });
   });
 });

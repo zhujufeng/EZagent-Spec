@@ -1,18 +1,24 @@
 import { createHash } from "node:crypto";
+import type { Stats } from "node:fs";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi, type TestContext } from "vitest";
 
+import { readBoundedFileHandle } from "../../src/experts/bounded-read.js";
+
 import {
   importExpertCatalog,
   indexMarkdownFiles,
   nodeMarkdownIndexRuntime,
   normalizeExpertFile,
+  createCatalogArtifactLock,
+  parseCatalogArtifactLockJson,
   parseSourceLockJson,
   parseTaxonomyYaml,
   readBoundedTextFile,
+  serializeCatalogArtifactLock,
   serializeNormalizedCatalog,
   writeNormalizedCatalog,
   type MarkdownManifestEntry,
@@ -68,6 +74,14 @@ function fixtureLicenseFile() {
     oid: blobOid(bytes),
     size: bytes.length,
     sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+  };
+}
+
+function normalizedWriteRuntime(projectRoot: string) {
+  return {
+    projectRoot,
+    sourceLockJsonText: '{"schemaVersion":2,"sources":[]}\n',
+    taxonomyYamlText: "schemaVersion: 1\nexperts: {}\n",
   };
 }
 
@@ -287,7 +301,93 @@ describe("normalizeExpertFile", () => {
   });
 });
 
+describe("catalog artifact attestation", () => {
+  const artifactInputs = {
+    expertsJsonText: '{"schemaVersion":1,"experts":[]}\n',
+    sourceLockJsonText: '{"schemaVersion":2,"sources":[]}\n',
+    taxonomyYamlText: "schemaVersion: 1\nexperts: {}\n",
+    expertCount: 0,
+  };
+
+  it("deterministically binds exact generated and reviewed input bytes", () => {
+    const lock = createCatalogArtifactLock(artifactInputs);
+    expect(lock).toEqual({
+      schemaVersion: 1,
+      expertCount: 0,
+      artifacts: {
+        expertsJson: {
+          bytes: Buffer.byteLength(artifactInputs.expertsJsonText),
+          sha256: `sha256:${createHash("sha256").update(artifactInputs.expertsJsonText).digest("hex")}`,
+        },
+        sourceLockJson: {
+          bytes: Buffer.byteLength(artifactInputs.sourceLockJsonText),
+          sha256: `sha256:${createHash("sha256").update(artifactInputs.sourceLockJsonText).digest("hex")}`,
+        },
+        taxonomyYaml: {
+          bytes: Buffer.byteLength(artifactInputs.taxonomyYamlText),
+          sha256: `sha256:${createHash("sha256").update(artifactInputs.taxonomyYamlText).digest("hex")}`,
+        },
+      },
+    });
+    const text = serializeCatalogArtifactLock(lock);
+    expect(text).toBe(serializeCatalogArtifactLock(createCatalogArtifactLock(artifactInputs)));
+    expect(parseCatalogArtifactLockJson(text)).toEqual(lock);
+  });
+
+  it("strictly rejects Proxy, accessor, extra, malformed, and oversized attestations", () => {
+    const proxy = new Proxy(artifactInputs, { ownKeys: () => { throw new Error("SECRET TRAP"); } });
+    expect(() => createCatalogArtifactLock(proxy)).toThrow("artifact lock input");
+    const accessor = { ...artifactInputs } as Record<string, unknown>;
+    Object.defineProperty(accessor, "expertCount", { enumerable: true, get: () => 0 });
+    expect(() => createCatalogArtifactLock(accessor)).toThrow("artifact lock input");
+    expect(() => createCatalogArtifactLock({ ...artifactInputs, extra: true })).toThrow("artifact lock input");
+
+    const valid = JSON.parse(serializeCatalogArtifactLock(createCatalogArtifactLock(artifactInputs))) as Record<string, unknown>;
+    expect(() => parseCatalogArtifactLockJson(JSON.stringify({ ...valid, extra: true }))).toThrow("artifact lock");
+    expect(() => parseCatalogArtifactLockJson('{"schemaVersion":1,"schemaVersion":1,"expertCount":0,"artifacts":{}}'))
+      .toThrow("artifact lock");
+    expect(() => parseCatalogArtifactLockJson(" ".repeat(1_048_577))).toThrow("artifact lock");
+  });
+});
+
 describe("explicit taxonomy and attested source inventory", () => {
+  it("detects read-time growth without allocating a buffer above the byte limit", async () => {
+    const expected = {
+      dev: 1,
+      ino: 2,
+      size: 4,
+      mtimeMs: 3,
+      ctimeMs: 4,
+      isFile: () => true,
+    } as Stats;
+    const observedBufferSizes: number[] = [];
+    const handle = {
+      stat: async () => expected,
+      read: async (buffer: Buffer, offset: number, length: number, position: number) => {
+        observedBufferSizes.push(buffer.byteLength);
+        if (position === 0) {
+          Buffer.from("safe", "utf8").copy(buffer, offset, 0, length);
+          return { bytesRead: length, buffer };
+        }
+        buffer[offset] = 0x21;
+        return { bytesRead: 1, buffer };
+      },
+    };
+
+    let captured: unknown;
+    try {
+      await readBoundedFileHandle(handle, expected, 4);
+    } catch (error: unknown) {
+      captured = error;
+    }
+    expect(captured).toSatisfy((error: unknown) =>
+      error instanceof Error
+        && error.name === "BoundedFileReadError"
+        && (error as Error & { code?: string }).code === "BOUNDED_FILE_CHANGED"
+        && error.cause === undefined);
+    expect(Math.max(...observedBufferSizes)).toBeLessThanOrEqual(4);
+  });
+
   it("parses origins, different upstream paths, and per-source ignored Markdown", async () => {
     const parsed = parseTaxonomyYaml(await readFile(new URL("../../catalog/taxonomy.yaml", import.meta.url), "utf8"));
     expect(parsed.experts["engineering/frontend-developer.md"]).toMatchObject({ origin: "upstream_translation", upstreamPath: "engineering/engineering-frontend-developer.md" });
@@ -686,13 +786,45 @@ describe("filesystem and publication boundaries", () => {
   it("uses no-clobber publication: identical output is idempotent and differing output requires manual removal", async () => {
     const root = await temporaryRoot();
     const output = join(root, "catalog", "normalized", "experts.json");
-    await writeNormalizedCatalog(output, [], { projectRoot: root } as never);
+    await writeNormalizedCatalog(output, [], normalizedWriteRuntime(root));
     const generated = await readFile(output, "utf8");
-    await expect(writeNormalizedCatalog(output, [], { projectRoot: root } as never)).resolves.toBeUndefined();
+    const artifactLock = join(root, "catalog", "normalized", "catalog.lock.json");
+    const generatedLock = await readFile(artifactLock, "utf8");
+    expect(parseCatalogArtifactLockJson(generatedLock)).toMatchObject({ expertCount: 0 });
+    await expect(writeNormalizedCatalog(output, [], normalizedWriteRuntime(root))).resolves.toBeUndefined();
     expect(await readFile(output, "utf8")).toBe(generated);
+    expect(await readFile(artifactLock, "utf8")).toBe(generatedLock);
     await writeFile(output, "different\n");
-    await expect(writeNormalizedCatalog(output, [], { projectRoot: root } as never)).rejects.toThrow(/exists|remove/iu);
+    await expect(writeNormalizedCatalog(output, [], normalizedWriteRuntime(root))).rejects.toThrow(/exists|remove|pair/iu);
     expect(await readFile(output, "utf8")).toBe("different\n");
+    expect(await readFile(artifactLock, "utf8")).toBe(generatedLock);
+  });
+
+  it("fails closed on either partial artifact pair without filling or deleting it", async () => {
+    for (const present of ["experts", "lock"] as const) {
+      const root = await temporaryRoot();
+      const parent = join(root, "catalog", "normalized");
+      const output = join(parent, "experts.json");
+      const artifactLock = join(parent, "catalog.lock.json");
+      await mkdir(parent, { recursive: true });
+      if (present === "experts") await writeFile(output, serializeNormalizedCatalog([]));
+      else await writeFile(artifactLock, serializeCatalogArtifactLock(createCatalogArtifactLock({
+        expertsJsonText: serializeNormalizedCatalog([]),
+        sourceLockJsonText: normalizedWriteRuntime(root).sourceLockJsonText,
+        taxonomyYamlText: normalizedWriteRuntime(root).taxonomyYamlText,
+        expertCount: 0,
+      })));
+
+      await expect(writeNormalizedCatalog(output, [], normalizedWriteRuntime(root)))
+        .rejects.toThrow(/partial|pair|manual/iu);
+      if (present === "experts") {
+        expect(await readFile(output, "utf8")).toBe(serializeNormalizedCatalog([]));
+        await expect(readFile(artifactLock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        expect(parseCatalogArtifactLockJson(await readFile(artifactLock, "utf8"))).toMatchObject({ expertCount: 0 });
+        await expect(readFile(output, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    }
   });
 
   it("rejects symlink directory chains under the supported static-parent threat model", async (context) => {
@@ -700,7 +832,7 @@ describe("filesystem and publication boundaries", () => {
     const outside = await temporaryRoot();
     const output = join(root, "catalog", "normalized", "experts.json");
     await symlinkOrSkip(context, outside, join(root, "catalog"), "dir");
-    await expect(writeNormalizedCatalog(output, [], { projectRoot: root } as never)).rejects.toThrow("symlink");
+    await expect(writeNormalizedCatalog(output, [], normalizedWriteRuntime(root))).rejects.toThrow("symlink");
     await expect(lstat(join(outside, "normalized", "experts.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -712,7 +844,7 @@ describe("filesystem and publication boundaries", () => {
     const outside = join(root, "outside.json");
     await writeFile(outside, "outside\n");
     await symlinkOrSkip(context, outside, output, "file");
-    await expect(writeNormalizedCatalog(output, [], { projectRoot: root } as never)).rejects.toThrow("symlink");
+    await expect(writeNormalizedCatalog(output, [], normalizedWriteRuntime(root))).rejects.toThrow("symlink");
     expect(await readFile(outside, "utf8")).toBe("outside\n");
   });
 });
@@ -737,11 +869,19 @@ describe("release-only capability boundary", () => {
     expect(await main({ projectRoot: root }, {
       readText: async (path) => path.endsWith("taxonomy.yaml") ? "taxonomy" : "lock",
       importCatalog: async (options) => { expect(options.projectRoot).toBe(root); return []; },
-      writeCatalog: async (_experts, projectRoot) => { writes.push(join(projectRoot, "catalog", "normalized", "experts.json")); },
+      writeCatalog: async (_experts, projectRoot, sourceLockJsonText, taxonomyYamlText) => {
+        expect(sourceLockJsonText).toBe("lock");
+        expect(taxonomyYamlText).toBe("taxonomy");
+        writes.push(join(projectRoot, "catalog", "normalized", "experts.json"));
+        writes.push(join(projectRoot, "catalog", "normalized", "catalog.lock.json"));
+      },
       writeStdout: () => undefined,
       writeStderr: (message) => { messages.push(message); },
     })).toBe(0);
-    expect(writes).toEqual([join(root, "catalog", "normalized", "experts.json")]);
+    expect(writes).toEqual([
+      join(root, "catalog", "normalized", "experts.json"),
+      join(root, "catalog", "normalized", "catalog.lock.json"),
+    ]);
     expect(messages[0]).toContain("do not concurrently replace");
   });
 });

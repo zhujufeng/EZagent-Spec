@@ -31,6 +31,7 @@ import {
   type AttestedMarkdownEntry,
   type AttestedLicenseEntry,
 } from "./attested-source-contract.js";
+import { readBoundedFileHandle } from "./bounded-read.js";
 
 const CONFIG_KEYS = ["schemaVersion", "sources"] as const;
 const CANDIDATE_KEYS = ["id", "repository", "ref", "checkout", "license"] as const;
@@ -1372,7 +1373,8 @@ export const nodeSourceLockPublishRuntime: SourceLockPublishRuntime = {
       if (!stat.isFile() || stat.size < 0 || stat.size > maxBytes) {
         throw new Error("Published source lock is not a bounded regular file");
       }
-      const content = await handle.readFile({ encoding: "utf8" });
+      const bytes = await readBoundedFileHandle(handle, stat, maxBytes);
+      const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       await handle.close();
       handle = undefined;
       return { stat, content };
@@ -1565,7 +1567,11 @@ export const nodeSourceConfigReadRuntime: SourceConfigReadRuntime = {
     const handle = await open(path, fsConstants.O_RDONLY | noFollow);
     return {
       stat: async () => handle.stat(),
-      readText: async () => handle.readFile({ encoding: "utf8" }),
+      readText: async () => {
+        const expected = await handle.stat();
+        const bytes = await readBoundedFileHandle(handle, expected, MAX_CONFIG_BYTES);
+        return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      },
       close: async () => handle.close(),
     };
   },

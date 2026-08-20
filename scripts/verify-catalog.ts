@@ -7,8 +7,15 @@ import { types as nodeTypes } from "node:util";
 
 import { parseDocument } from "yaml";
 
-import { validateCatalog, type CatalogValidationError } from "../src/experts/catalog.js";
-import { parseSourceLockJson, parseTaxonomyYaml, type TaxonomyMeta } from "../src/experts/importer.js";
+import { validateCatalog } from "../src/experts/catalog.js";
+import { readBoundedFileHandle } from "../src/experts/bounded-read.js";
+import {
+  parseCatalogArtifactLockJson,
+  parseSourceLockJson,
+  parseTaxonomyYaml,
+  type CatalogArtifactDigest,
+  type TaxonomyMeta,
+} from "../src/experts/importer.js";
 import {
   MAX_ATTESTED_LICENSE_BYTES,
   MAX_ATTESTED_SOURCE_LOCK_BYTES,
@@ -22,10 +29,12 @@ import type { Expert } from "../src/experts/expert.js";
 const MAX_NORMALIZED_CATALOG_BYTES = 16 * 1_048_576;
 const MAX_TAXONOMY_BYTES = 4 * 1_048_576;
 const MAX_NOTICE_BYTES = 64 * 1_024;
+const MAX_CATALOG_ARTIFACT_LOCK_BYTES = 1_048_576;
 const INPUT_KEYS = [
   "normalizedCatalogText",
   "sourceLockText",
   "taxonomyText",
+  "catalogArtifactLockText",
   "thirdPartyNoticeText",
   "licenseFiles",
 ] as const;
@@ -37,38 +46,39 @@ const LICENSE_PATHS: Readonly<Record<ReviewedCatalogSourceId, string>> = Object.
   "agency-agents-zh": "licenses/agency-agents-zh-MIT.txt",
 });
 const COPYRIGHT_LINES: Readonly<Record<ReviewedCatalogSourceId, readonly string[]>> = Object.freeze({
-  "agency-agents": Object.freeze(["Copyright (c) 2025 Michael Sitarzewski"]),
+  "agency-agents": Object.freeze(["Copyright (c) 2025 AgentLand Contributors"]),
   "agency-agents-zh": Object.freeze([
-    "Copyright (c) 2025 Michael Sitarzewski",
-    "Copyright (c) 2026 jnMetaCode",
+    "Copyright (c) 2025 Michael Sitarzewski (original English version)",
+    "Copyright (c) 2026 jnMetaCode (Chinese translation and localization)",
   ]),
 });
 
 export const EXPECTED_THIRD_PARTY_NOTICE = `# Third-Party Notices
 
-EZagent Spec contains normalized Chinese expert definitions and provenance metadata derived from the following MIT-licensed projects.
+EZagent Spec includes normalized expert definitions derived from the following MIT-licensed projects.
 
 ## Agency Agents
 
 - Repository: https://github.com/msitarzewski/agency-agents
-- Copyright: \`Copyright (c) 2025 Michael Sitarzewski\`
-- Included material: normalized expert definitions and provenance metadata derived from reviewed English expert definitions
+- Copyright: Copyright (c) 2025 AgentLand Contributors
+- Included material: source taxonomy and English expert definitions used to trace translated records
 - License: \`licenses/agency-agents-MIT.txt\`
 
 ## Agency Agents 中文项目
 
 - Repository: https://github.com/jnMetaCode/agency-agents-zh
-- Copyright: \`Copyright (c) 2025 Michael Sitarzewski\`; \`Copyright (c) 2026 jnMetaCode\`
-- Included material: normalized Chinese translations, China-original expert definitions, and provenance metadata
+- Copyright: Copyright (c) 2025 Michael Sitarzewski (original English version); Copyright (c) 2026 jnMetaCode (Chinese translation and localization)
+- Included material: Chinese expert translations and China-original expert definitions
 - License: \`licenses/agency-agents-zh-MIT.txt\`
 
-No upstream orchestration scripts, service integrations, advertisements, update mechanisms, or runtime code from either project are included.
+No orchestration scripts, service integrations, advertisements, or runtime update code from either project are included.
 `;
 
 export interface CatalogVerificationInput {
   normalizedCatalogText: string;
   sourceLockText: string;
   taxonomyText: string;
+  catalogArtifactLockText: string;
   thirdPartyNoticeText: string;
   licenseFiles: Record<ReviewedCatalogSourceId, Uint8Array>;
 }
@@ -112,11 +122,10 @@ class CatalogVerificationReadError extends Error {
   }
 }
 
-function inputFail(cause?: unknown): never {
+function inputFail(): never {
   throw new CatalogVerificationError(
     "CATALOG_INPUT_INVALID",
     Object.freeze({}),
-    cause === undefined ? undefined : { cause },
   );
 }
 
@@ -143,7 +152,7 @@ function ownDataObject(
     }
   } catch (error: unknown) {
     if (error instanceof CatalogVerificationError) throw error;
-    inputFail(error);
+    inputFail();
   }
   return result;
 }
@@ -160,7 +169,7 @@ function boundedText(value: unknown, maximumBytes: number): string {
 
 function boundedBytes(value: unknown): Buffer {
   if (nodeTypes.isProxy(value)
-    || !(value instanceof Uint8Array)
+    || !nodeTypes.isUint8Array(value)
     || value.byteLength < 1
     || value.byteLength > MAX_ATTESTED_LICENSE_BYTES) {
     inputFail();
@@ -181,6 +190,7 @@ function snapshotInput(value: unknown): CatalogVerificationInput {
     normalizedCatalogText: boundedText(input.normalizedCatalogText, MAX_NORMALIZED_CATALOG_BYTES),
     sourceLockText: boundedText(input.sourceLockText, MAX_ATTESTED_SOURCE_LOCK_BYTES),
     taxonomyText: boundedText(input.taxonomyText, MAX_TAXONOMY_BYTES),
+    catalogArtifactLockText: boundedText(input.catalogArtifactLockText, MAX_CATALOG_ARTIFACT_LOCK_BYTES),
     thirdPartyNoticeText: boundedText(input.thirdPartyNoticeText, MAX_NOTICE_BYTES),
     licenseFiles: Object.freeze({
       "agency-agents": boundedBytes(licenses["agency-agents"]),
@@ -197,7 +207,7 @@ function strictJson(text: string): unknown {
     return document.toJS({ maxAliasCount: 0 });
   } catch (error: unknown) {
     if (error instanceof CatalogVerificationError) throw error;
-    inputFail(error);
+    inputFail();
   }
 }
 
@@ -236,7 +246,7 @@ function parseNormalizedCatalog(text: string): {
   try {
     experts = validateCatalog(rawExperts, new Set(Object.values(REVIEWED_CATALOG_SOURCES)));
   } catch (error: unknown) {
-    inputFail(error as CatalogValidationError);
+    inputFail();
   }
   return Object.freeze({ experts, originalIds: Object.freeze(originalIds) });
 }
@@ -273,6 +283,22 @@ function pushGroup(groups: Map<string, string[]>, group: string, message: string
   const values = groups.get(group) ?? [];
   if (!values.includes(message)) values.push(message);
   groups.set(group, values);
+}
+
+function artifactDigestMatches(expected: CatalogArtifactDigest, text: string): boolean {
+  return expected.bytes === Buffer.byteLength(text, "utf8")
+    && expected.sha256 === `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+}
+
+function throwGrouped(groups: Map<string, string[]>): never {
+  const stableGroups: Record<string, readonly string[]> = Object.create(null) as Record<string, readonly string[]>;
+  for (const [group, messages] of [...groups].sort(([left], [right]) => compareCodepoint(left, right))) {
+    stableGroups[group] = Object.freeze([...messages].sort(compareCodepoint));
+  }
+  throw new CatalogVerificationError(
+    "CATALOG_PROVENANCE_INVALID",
+    Object.freeze(stableGroups),
+  );
 }
 
 function checkInventory(
@@ -352,17 +378,37 @@ function checkNotice(groups: Map<string, string[]>, text: string): void {
 /** Pure verification: consumes only already-loaded, bounded offline bytes. */
 export function verifyCatalogProvenance(untrustedInput: unknown): CatalogVerificationReport {
   const input = snapshotInput(untrustedInput);
+  let artifactLock: ReturnType<typeof parseCatalogArtifactLockJson>;
+  try {
+    artifactLock = parseCatalogArtifactLockJson(input.catalogArtifactLockText);
+  } catch {
+    inputFail();
+  }
+  const groups = new Map<string, string[]>();
+  for (const [label, expected, text] of [
+    ["experts.json", artifactLock.artifacts.expertsJson, input.normalizedCatalogText],
+    ["sources.lock.json", artifactLock.artifacts.sourceLockJson, input.sourceLockText],
+    ["taxonomy.yaml", artifactLock.artifacts.taxonomyYaml, input.taxonomyText],
+  ] as const) {
+    if (!artifactDigestMatches(expected, text)) {
+      pushGroup(groups, "artifacts", `${label} bytes do not match catalog.lock.json`);
+    }
+  }
+  if (groups.size > 0) throwGrouped(groups);
+
   const normalized = parseNormalizedCatalog(input.normalizedCatalogText);
   let sourceLock: ReturnType<typeof parseSourceLockJson>;
   let taxonomy: ReturnType<typeof parseTaxonomyYaml>;
   try {
     sourceLock = parseSourceLockJson(input.sourceLockText);
     taxonomy = parseTaxonomyYaml(input.taxonomyText);
-  } catch (error: unknown) {
-    inputFail(error);
+  } catch {
+    inputFail();
   }
 
-  const groups = new Map<string, string[]>();
+  if (artifactLock.expertCount !== normalized.experts.length) {
+    pushGroup(groups, "artifacts", "catalog.lock.json expertCount does not match experts.json");
+  }
   const sortedIds = [...normalized.originalIds].sort(compareCodepoint);
   if (!equalStrings(normalized.originalIds, sortedIds)) {
     pushGroup(groups, "snapshot", "normalized expert records are not sorted by id");
@@ -423,14 +469,7 @@ export function verifyCatalogProvenance(untrustedInput: unknown): CatalogVerific
   checkNotice(groups, input.thirdPartyNoticeText);
 
   if (groups.size > 0) {
-    const stableGroups: Record<string, readonly string[]> = Object.create(null) as Record<string, readonly string[]>;
-    for (const [group, messages] of [...groups].sort(([left], [right]) => compareCodepoint(left, right))) {
-      stableGroups[group] = Object.freeze([...messages].sort(compareCodepoint));
-    }
-    throw new CatalogVerificationError(
-      "CATALOG_PROVENANCE_INVALID",
-      Object.freeze(stableGroups),
-    );
+    throwGrouped(groups);
   }
 
   const message = `catalog valid: ${normalized.experts.length} experts, 0 provenance errors`;
@@ -501,8 +540,7 @@ async function safeReadFixedFile(
     handle = await open(absolute, fsConstants.O_RDONLY | noFollow);
     const openedBefore = await handle.stat();
     if (!sameFile(before, openedBefore)) throw new CatalogVerificationReadError("UNSAFE_INPUT");
-    const bytes = await handle.readFile();
-    if (bytes.length < 1 || bytes.length > maximumBytes) throw new CatalogVerificationReadError("UNSAFE_INPUT");
+    const bytes = await readBoundedFileHandle(handle, openedBefore, maximumBytes);
     const [openedAfter, pathAfter] = await Promise.all([handle.stat(), lstat(absolute)]);
     if (!sameFile(openedBefore, openedAfter) || !sameFile(openedAfter, pathAfter)) {
       throw new CatalogVerificationReadError("UNSAFE_INPUT");
@@ -539,10 +577,11 @@ export async function readCatalogVerificationInputs(projectRootInput: string): P
   if (projectRoot !== projectRootInput || !(await lstat(projectRoot)).isDirectory()) {
     throw new CatalogVerificationReadError("UNSAFE_INPUT");
   }
-  const [normalized, lock, taxonomy, notice, englishLicense, chineseLicense] = await Promise.all([
+  const [normalized, lock, taxonomy, artifactLock, notice, englishLicense, chineseLicense] = await Promise.all([
     safeReadFixedFile(projectRoot, "catalog/normalized/experts.json", MAX_NORMALIZED_CATALOG_BYTES),
     safeReadFixedFile(projectRoot, "catalog/sources.lock.json", MAX_ATTESTED_SOURCE_LOCK_BYTES),
     safeReadFixedFile(projectRoot, "catalog/taxonomy.yaml", MAX_TAXONOMY_BYTES),
+    safeReadFixedFile(projectRoot, "catalog/normalized/catalog.lock.json", MAX_CATALOG_ARTIFACT_LOCK_BYTES),
     safeReadFixedFile(projectRoot, "THIRD_PARTY_NOTICES.md", MAX_NOTICE_BYTES),
     safeReadFixedFile(projectRoot, LICENSE_PATHS["agency-agents"], MAX_ATTESTED_LICENSE_BYTES),
     safeReadFixedFile(projectRoot, LICENSE_PATHS["agency-agents-zh"], MAX_ATTESTED_LICENSE_BYTES),
@@ -551,6 +590,7 @@ export async function readCatalogVerificationInputs(projectRootInput: string): P
     normalizedCatalogText: decodeUtf8(normalized),
     sourceLockText: decodeUtf8(lock),
     taxonomyText: decodeUtf8(taxonomy),
+    catalogArtifactLockText: decodeUtf8(artifactLock),
     thirdPartyNoticeText: decodeUtf8(notice),
     licenseFiles: {
       "agency-agents": englishLicense,

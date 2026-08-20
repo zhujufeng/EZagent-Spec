@@ -74,7 +74,7 @@ function snapshotCatalogArray(value: unknown): readonly unknown[] {
 
 function snapshotLicenseNoticeIds(value: unknown): ReadonlySet<string> {
   if (nodeTypes.isProxy(value)
-    || !(value instanceof Set)
+    || !nodeTypes.isSet(value)
     || Object.getPrototypeOf(value) !== Set.prototype
     || Reflect.ownKeys(value).length !== 0
     || value.size > MAX_LICENSE_NOTICES) {

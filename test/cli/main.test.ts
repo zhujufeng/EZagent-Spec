@@ -105,22 +105,22 @@ describe.sequential("ezagent CLI", () => {
     }
   });
 
-  test("builds a clean runtime-only package without leaving an archive", async () => {
+  test("fails closed without a snapshot and audits the runtime-only package without scripts", async () => {
     const before = (await readdir(PROJECT_ROOT)).sort();
     const cache = await temporaryProject("EZagent npm cache ");
-    await rm(join(PROJECT_ROOT, "dist"), { recursive: true, force: true });
-    let packedStdout: string | undefined;
-    try {
-      const packed = await execa("npm", ["pack", "--dry-run", "--json"], {
-        cwd: PROJECT_ROOT,
-        env: { npm_config_cache: cache },
-      });
-      packedStdout = packed.stdout;
-    } finally {
-      await execa("npm", ["run", "build"], { cwd: PROJECT_ROOT });
-    }
-    if (packedStdout === undefined) throw new Error("npm pack did not produce a manifest");
-    const manifests = JSON.parse(packedStdout) as readonly [{
+    const gated = await execa("npm", ["pack", "--dry-run", "--json"], {
+      cwd: PROJECT_ROOT,
+      env: { npm_config_cache: cache },
+      reject: false,
+    });
+    expect(gated.exitCode).not.toBe(0);
+    expect(`${gated.stdout}\n${gated.stderr}`).toContain("run catalog:lock and catalog:import first");
+
+    const packed = await execa("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], {
+      cwd: PROJECT_ROOT,
+      env: { npm_config_cache: cache },
+    });
+    const manifests = JSON.parse(packed.stdout) as readonly [{
       readonly files: readonly { readonly path: string; readonly mode: number }[];
     }];
     const files = manifests[0].files;
@@ -131,9 +131,17 @@ describe.sequential("ezagent CLI", () => {
     expect(paths).toContain("dist/src/workspace/repository.js");
     expect(paths).toContain("dist/src/domain/state-machine.js");
     expect(paths).toContain("README.md");
+    expect(paths).toContain("THIRD_PARTY_NOTICES.md");
+    expect(paths).toContain("licenses/agency-agents-MIT.txt");
+    expect(paths).toContain("licenses/agency-agents-zh-MIT.txt");
+    expect(paths).toContain("dist/src/experts/catalog.js");
+    expect(paths).not.toContain("dist/src/experts/bounded-read.js");
+    expect(paths).not.toContain("dist/src/experts/importer.js");
+    expect(paths).not.toContain("dist/src/experts/source-lock.js");
     expect(paths).toContain("licenses/UNICODE-LICENSE.txt");
     expect(paths.some((path) => /^(?:src|test|docs|dist\/test)\//u.test(path))).toBe(false);
     expect(paths.some((path) => path.endsWith(".map") || path.endsWith(".d.ts"))).toBe(false);
+    expect((await readdir(PROJECT_ROOT)).some((path) => path.endsWith(".tgz"))).toBe(false);
     expect((await readdir(PROJECT_ROOT)).sort()).toEqual(before);
   });
 

@@ -24,6 +24,7 @@ import {
 
 import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
+import { readBoundedFileHandle } from "./bounded-read.js";
 import { parseExpert, type Expert, type SourceRef } from "./expert.js";
 import {
   assertAttestedSourceLockTextBudget,
@@ -70,6 +71,8 @@ const MAX_DEPTH = 12;
 const MAX_TOTAL_BYTES = MAX_ATTESTED_TOTAL_BYTES;
 const MAX_ENTRIES = 16_384;
 const MAX_TAXONOMY_EXPERTS = 4_096;
+const MAX_CATALOG_ARTIFACT_LOCK_BYTES = 1_048_576;
+const MAX_NORMALIZED_CATALOG_BYTES = 16 * 1_048_576;
 const MAX_DIVISIONS = 128;
 const MAX_TEXT = 4_096;
 const MAX_SLUG = 64;
@@ -163,6 +166,30 @@ export interface ImportExpertCatalogOptions {
 
 export interface NormalizedCatalogWriteRuntime {
   readonly projectRoot: string;
+  readonly sourceLockJsonText: string;
+  readonly taxonomyYamlText: string;
+}
+
+export interface CatalogArtifactDigest {
+  readonly bytes: number;
+  readonly sha256: string;
+}
+
+export interface CatalogArtifactLock {
+  readonly schemaVersion: 1;
+  readonly expertCount: number;
+  readonly artifacts: {
+    readonly expertsJson: CatalogArtifactDigest;
+    readonly sourceLockJson: CatalogArtifactDigest;
+    readonly taxonomyYaml: CatalogArtifactDigest;
+  };
+}
+
+export interface CatalogArtifactLockInput {
+  readonly expertsJsonText: string;
+  readonly sourceLockJsonText: string;
+  readonly taxonomyYamlText: string;
+  readonly expertCount: number;
 }
 
 export class CatalogImportError extends Error {
@@ -209,7 +236,10 @@ export const nodeMarkdownIndexRuntime: MarkdownIndexRuntime = Object.freeze<Mark
     const handle = await open(path, fsConstants.O_RDONLY | noFollow);
     return {
       stat: async () => handle.stat(),
-      readBytes: async () => handle.readFile(),
+      readBytes: async () => {
+        const expected = await handle.stat();
+        return readBoundedFileHandle(handle, expected, MAX_ATTESTED_CHECKOUT_MARKDOWN_BYTES);
+      },
       close: async () => handle.close(),
     };
   },
@@ -967,14 +997,129 @@ export function serializeNormalizedCatalog(expertsInput: readonly Expert[]): str
   return `${JSON.stringify({ schemaVersion: 1, experts }, null, 2)}\n`;
 }
 
+function artifactTextDigest(value: unknown, path: string, maximumBytes: number): CatalogArtifactDigest {
+  if (typeof value !== "string" || value.length === 0 || value.length > maximumBytes) {
+    fail(`${path} must be bounded non-empty text`);
+  }
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes < 1 || bytes > maximumBytes) fail(`${path} must be bounded non-empty UTF-8 text`);
+  return Object.freeze({
+    bytes,
+    sha256: `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`,
+  });
+}
+
+export function createCatalogArtifactLock(value: unknown): CatalogArtifactLock {
+  const input = snapshotObject(value, "catalog artifact lock input", [
+    "expertsJsonText",
+    "sourceLockJsonText",
+    "taxonomyYamlText",
+    "expertCount",
+  ]);
+  for (const key of ["expertsJsonText", "sourceLockJsonText", "taxonomyYamlText", "expertCount"] as const) {
+    if (!Object.hasOwn(input, key)) fail(`catalog artifact lock input.${key} is required`);
+  }
+  if (!Number.isSafeInteger(input.expertCount)
+    || (input.expertCount as number) < 0
+    || (input.expertCount as number) > MAX_FILES) {
+    fail("catalog artifact lock input.expertCount is invalid");
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    expertCount: input.expertCount as number,
+    artifacts: Object.freeze({
+      expertsJson: artifactTextDigest(
+        input.expertsJsonText,
+        "catalog artifact lock input.expertsJsonText",
+        MAX_NORMALIZED_CATALOG_BYTES,
+      ),
+      sourceLockJson: artifactTextDigest(
+        input.sourceLockJsonText,
+        "catalog artifact lock input.sourceLockJsonText",
+        MAX_CONFIG_BYTES,
+      ),
+      taxonomyYaml: artifactTextDigest(
+        input.taxonomyYamlText,
+        "catalog artifact lock input.taxonomyYamlText",
+        MAX_CONFIG_BYTES,
+      ),
+    }),
+  });
+}
+
+function snapshotArtifactDigest(value: unknown, path: string): CatalogArtifactDigest {
+  const object = snapshotObject(value, path, ["bytes", "sha256"]);
+  if (!Number.isSafeInteger(object.bytes)
+    || (object.bytes as number) < 1
+    || (object.bytes as number) > MAX_NORMALIZED_CATALOG_BYTES) {
+    fail(`${path}.bytes is invalid`);
+  }
+  if (typeof object.sha256 !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(object.sha256)) {
+    fail(`${path}.sha256 is invalid`);
+  }
+  return Object.freeze({ bytes: object.bytes as number, sha256: object.sha256 });
+}
+
+function snapshotCatalogArtifactLock(value: unknown): CatalogArtifactLock {
+  const root = snapshotObject(value, "catalog artifact lock", ["schemaVersion", "expertCount", "artifacts"]);
+  if (root.schemaVersion !== 1
+    || !Number.isSafeInteger(root.expertCount)
+    || (root.expertCount as number) < 0
+    || (root.expertCount as number) > MAX_FILES) {
+    fail("catalog artifact lock schemaVersion or expertCount is invalid");
+  }
+  const artifacts = snapshotObject(root.artifacts, "catalog artifact lock.artifacts", [
+    "expertsJson",
+    "sourceLockJson",
+    "taxonomyYaml",
+  ]);
+  for (const key of ["expertsJson", "sourceLockJson", "taxonomyYaml"] as const) {
+    if (!Object.hasOwn(artifacts, key)) fail(`catalog artifact lock.artifacts.${key} is required`);
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    expertCount: root.expertCount as number,
+    artifacts: Object.freeze({
+      expertsJson: snapshotArtifactDigest(artifacts.expertsJson, "catalog artifact lock.artifacts.expertsJson"),
+      sourceLockJson: snapshotArtifactDigest(artifacts.sourceLockJson, "catalog artifact lock.artifacts.sourceLockJson"),
+      taxonomyYaml: snapshotArtifactDigest(artifacts.taxonomyYaml, "catalog artifact lock.artifacts.taxonomyYaml"),
+    }),
+  });
+}
+
+export function serializeCatalogArtifactLock(value: CatalogArtifactLock): string {
+  return `${JSON.stringify(snapshotCatalogArtifactLock(value), null, 2)}\n`;
+}
+
+export function parseCatalogArtifactLockJson(text: string): CatalogArtifactLock {
+  if (typeof text !== "string"
+    || text.length === 0
+    || text.length > MAX_CATALOG_ARTIFACT_LOCK_BYTES
+    || Buffer.byteLength(text, "utf8") > MAX_CATALOG_ARTIFACT_LOCK_BYTES) {
+    fail("catalog artifact lock JSON is outside its byte budget");
+  }
+  try {
+    JSON.parse(text);
+  } catch (error: unknown) {
+    fail("catalog artifact lock must be strict JSON", error);
+  }
+  const parsed = snapshotCatalogArtifactLock(parseOneYamlDocument(text, "catalog artifact lock"));
+  if (text !== serializeCatalogArtifactLock(parsed)) {
+    fail("catalog artifact lock must use deterministic canonical JSON bytes");
+  }
+  return parsed;
+}
+
 /**
- * Publishes the one fixed generated catalog with no-clobber semantics.
+ * Publishes the fixed experts/attestation pair with staged, no-clobber semantics.
  *
  * Threat model: cross-platform Node does not expose openat/renameat-style directory
  * handles, so the invoking user must not concurrently replace catalog/normalized or
  * its ancestors. Under that static-ancestor model, an existing identical target is
  * accepted after ancestor validation and a handle-bound read. A new hard-link
  * publication additionally rechecks every ancestor immediately before and after link.
+ * Node cannot make two links atomically across processes, so a contested partial pair
+ * fails closed and requires manual inspection; it is never overwritten or deleted.
  */
 export async function writeNormalizedCatalog(
   target: string,
@@ -982,12 +1127,19 @@ export async function writeNormalizedCatalog(
   runtime: NormalizedCatalogWriteRuntime,
 ): Promise<void> {
   const content = serializeNormalizedCatalog(experts);
+  const artifactContent = serializeCatalogArtifactLock(createCatalogArtifactLock({
+    expertsJsonText: content,
+    sourceLockJsonText: runtime.sourceLockJsonText,
+    taxonomyYamlText: runtime.taxonomyYamlText,
+    expertCount: experts.length,
+  }));
   const projectRoot = runtime.projectRoot;
   if (!isAbsolute(projectRoot) || projectRoot !== resolve(projectRoot) || !isAbsolute(target) || target !== resolve(target)) {
     fail("normalized catalog project root and target must be absolute normalized paths");
   }
   const requiredTarget = join(projectRoot, "catalog", "normalized", "experts.json");
   if (target !== requiredTarget) fail("normalized catalog target must be the fixed catalog/normalized/experts.json path");
+  const artifactTarget = join(projectRoot, "catalog", "normalized", "catalog.lock.json");
   const parent = dirname(target);
   const delta = relative(projectRoot, target);
   if (delta === "" || delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta)) {
@@ -1048,33 +1200,32 @@ export async function writeNormalizedCatalog(
   const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
     ? 0
     : fsConstants.O_NOFOLLOW;
-  async function inspectExisting(): Promise<"absent" | "identical"> {
+  async function inspectExisting(
+    outputPath: string,
+    expectedContent: string,
+  ): Promise<"absent" | "identical" | "different"> {
     let before: Stats;
     try {
-      before = await lstat(target);
+      before = await lstat(outputPath);
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
       throw error;
     }
-    if (before.isSymbolicLink()) fail("normalized catalog target is a symlink");
-    if (!before.isFile()) fail("normalized catalog target is not a regular file");
-    if (before.size !== Buffer.byteLength(content, "utf8")) {
-      fail("normalized catalog already exists with different bytes; remove it manually after review");
-    }
+    if (before.isSymbolicLink()) fail("normalized catalog artifact target is a symlink");
+    if (!before.isFile()) fail("normalized catalog artifact target is not a regular file");
+    if (before.size !== Buffer.byteLength(expectedContent, "utf8")) return "different";
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      handle = await open(target, fsConstants.O_RDONLY | noFollow);
+      handle = await open(outputPath, fsConstants.O_RDONLY | noFollow);
       const opened = await handle.stat();
-      if (!sameFile(before, opened)) fail("normalized catalog changed before idempotence check");
-      const existing = await handle.readFile();
+      if (!sameFile(before, opened)) fail("normalized catalog artifact changed before idempotence check");
+      const existing = await readBoundedFileHandle(handle, opened, Buffer.byteLength(expectedContent, "utf8"));
       const afterHandle = await handle.stat();
-      const afterPath = await lstat(target);
+      const afterPath = await lstat(outputPath);
       if (!sameFile(opened, afterHandle) || !sameFile(opened, afterPath)) {
-        fail("normalized catalog changed during idempotence check");
+        fail("normalized catalog artifact changed during idempotence check");
       }
-      if (!existing.equals(Buffer.from(content, "utf8"))) {
-        fail("normalized catalog already exists with different bytes; remove it manually after review");
-      }
+      if (!existing.equals(Buffer.from(expectedContent, "utf8"))) return "different";
       await handle.close();
       handle = undefined;
       return "identical";
@@ -1085,40 +1236,64 @@ export async function writeNormalizedCatalog(
     }
   }
 
-  if (await inspectExisting() === "identical") return;
+  const initialExperts = await inspectExisting(target, content);
+  const initialArtifact = await inspectExisting(artifactTarget, artifactContent);
+  if (initialExperts === "identical" && initialArtifact === "identical") return;
+  if (initialExperts !== "absent" || initialArtifact !== "absent") {
+    fail("normalized catalog artifact pair is partial or inconsistent; inspect both files and recover manually without automatic overwrite or deletion");
+  }
   try {
-    const staging = join(parent, `.experts.json.${randomUUID()}.tmp`);
+    const publications = [
+      { target, content, staging: join(parent, `.experts.json.${randomUUID()}.tmp`) },
+      { target: artifactTarget, content: artifactContent, staging: join(parent, `.catalog.lock.json.${randomUUID()}.tmp`) },
+    ] as const;
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     let parentStable = true;
     try {
-      handle = await open(staging, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | noFollow, 0o600);
-      await handle.writeFile(content, "utf8");
-      await handle.sync();
-      const staged = await handle.stat();
-      if (!staged.isFile() || staged.size !== Buffer.byteLength(content, "utf8")) fail("normalized catalog staging write is incomplete");
-      await handle.close();
-      handle = undefined;
+      for (const publication of publications) {
+        handle = await open(publication.staging, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | noFollow, 0o600);
+        await handle.writeFile(publication.content, "utf8");
+        await handle.sync();
+        const staged = await handle.stat();
+        if (!staged.isFile() || staged.size !== Buffer.byteLength(publication.content, "utf8")) {
+          fail("normalized catalog artifact-pair staging write is incomplete");
+        }
+        await handle.close();
+        handle = undefined;
+      }
       if (!await outputAncestorsAreStable()) {
         parentStable = false;
         fail("normalized catalog ancestor changed before publication");
       }
-      try {
-        await link(staging, target);
-      } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        if (await inspectExisting() !== "identical") fail("normalized catalog publication lost a no-clobber race");
+      for (const publication of publications) {
+        try {
+          await link(publication.staging, publication.target);
+        } catch (error: unknown) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          const racedExperts = await inspectExisting(target, content);
+          const racedArtifact = await inspectExisting(artifactTarget, artifactContent);
+          if (racedExperts !== "identical" || racedArtifact !== "identical") {
+            fail("normalized catalog artifact-pair publication became partial or contested; inspect both files and recover manually");
+          }
+          break;
+        }
       }
       if (!await outputAncestorsAreStable()) {
         parentStable = false;
         fail("normalized catalog ancestor changed during publication");
       }
-      if (await inspectExisting() !== "identical") fail("normalized catalog publication is not the reviewed content");
+      if (await inspectExisting(target, content) !== "identical"
+        || await inspectExisting(artifactTarget, artifactContent) !== "identical") {
+        fail("normalized catalog artifact-pair publication is partial; inspect both files and recover manually");
+      }
     } finally {
       if (handle) {
         try { await handle.close(); } catch { /* preserve primary failure */ }
       }
       if (parentStable) {
-        try { await rm(staging, { force: true }); } catch { /* retained staging is safer than masking publication state */ }
+        for (const publication of publications) {
+          try { await rm(publication.staging, { force: true }); } catch { /* retained staging is safer than masking publication state */ }
+        }
       }
     }
   } catch (error: unknown) {
@@ -1138,7 +1313,7 @@ export async function readBoundedTextFile(path: string, maximumBytes = MAX_CONFI
     handle = await open(path, fsConstants.O_RDONLY | noFollow);
     const opened = await handle.stat();
     if (!sameFile(before, opened)) fail("release input changed before read");
-    const bytes = await handle.readFile();
+    const bytes = await readBoundedFileHandle(handle, opened, maximumBytes);
     const after = await handle.stat();
     const pathAfter = await lstat(path);
     if (bytes.length !== opened.size || !sameFile(opened, after) || !sameFile(opened, pathAfter)) fail("release input changed during read");
