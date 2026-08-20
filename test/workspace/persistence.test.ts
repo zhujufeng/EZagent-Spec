@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, open, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { atomicWriteText } from "../../src/workspace/atomic-write.js";
 import { WorkspaceLockedError } from "../../src/workspace/errors.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
-import { withWorkspaceLock } from "../../src/workspace/lock.js";
+import { createWorkspaceLock, type WorkspaceLockRuntime, withWorkspaceLock } from "../../src/workspace/lock.js";
 
 const temporaryRoots: string[] = [];
 
@@ -29,6 +29,22 @@ async function writeLock(projectRoot: string, contents: string): Promise<string>
 
 function oldDate(): Date {
   return new Date(Date.now() - 60_000);
+}
+
+function lockRuntime(overrides: Partial<WorkspaceLockRuntime> = {}): WorkspaceLockRuntime {
+  return {
+    copyFile,
+    mkdir,
+    open,
+    readFile,
+    rename,
+    rm,
+    stat,
+    randomUUID,
+    pid: process.pid,
+    kill: (pid) => { process.kill(pid, 0); },
+    ...overrides,
+  };
 }
 
 async function exitedChildPid(): Promise<number> {
@@ -228,5 +244,114 @@ describe("withWorkspaceLock", () => {
     await withWorkspaceLock(root, async () => undefined);
 
     expect((await readdir(lockDirectory)).filter((entry) => entry.includes("quarantine"))).toEqual([]);
+  });
+
+  test.each([2_147_483_648])(
+    "treats old metadata with PID above the portable maximum as corrupt",
+    async (pid) => {
+      const root = await temporaryProject();
+      const lock = await writeLock(root, JSON.stringify({ token: randomUUID(), pid, createdAt: oldDate().toISOString() }));
+      await utimes(lock, oldDate(), oldDate());
+
+      await expect(withWorkspaceLock(root, async () => "recovered")).resolves.toBe("recovered");
+    },
+  );
+
+  test.each([2_147_483_648])(
+    "keeps fresh metadata with PID above the portable maximum locked",
+    async (pid) => {
+      const root = await temporaryProject();
+      await writeLock(root, JSON.stringify({ token: randomUUID(), pid, createdAt: new Date().toISOString() }));
+
+      await expect(withWorkspaceLock(root, async () => undefined)).rejects.toBeInstanceOf(WorkspaceLockedError);
+    },
+  );
+
+  test("retains an acquisition lock when its identity is unavailable", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    const replacement = "replacement lock";
+    const lockWithUnavailableIdentity = createWorkspaceLock(lockRuntime({
+      open: async (...args) => {
+        const handle = await open(...args);
+        return new Proxy(handle, {
+          get(target, property, receiver) {
+            if (property === "stat") {
+              return async () => ({ ...(await target.stat()), dev: 0, ino: 0 });
+            }
+            if (property === "writeFile") {
+              return async () => {
+                await target.writeFile(replacement, "utf8");
+                throw new Error("write failed");
+              };
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }) as Awaited<ReturnType<typeof open>>;
+      },
+    }));
+
+    await expect(lockWithUnavailableIdentity(root, async () => undefined)).rejects.toThrow("write failed");
+    await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toEqual([]);
+  });
+
+  test("retains canonical and quarantine evidence when release changes after prevalidation", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    const replacement = JSON.stringify({ token: randomUUID(), pid: process.pid, createdAt: new Date().toISOString() });
+    const lockWithReleaseRace = createWorkspaceLock(lockRuntime({
+      rename: async (source, destination) => {
+        if (source === lock) {
+          await writeFile(lock, replacement, "utf8");
+        }
+        await rename(source, destination);
+      },
+    }));
+
+    await expect(lockWithReleaseRace(root, async () => "done")).rejects.toMatchObject({
+      name: "WorkspaceLockedError",
+      message: expect.stringContaining(lock),
+    });
+    await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toHaveLength(1);
+  });
+
+  test("does not recover a stale lock whose content changes between observations", async () => {
+    const root = await temporaryProject();
+    const lock = await writeLock(root, JSON.stringify({ token: randomUUID(), pid: 2_147_483_647, createdAt: oldDate().toISOString() }));
+    const replacement = JSON.stringify({ token: randomUUID(), pid: 2_147_483_647, createdAt: oldDate().toISOString() });
+    const originalMtime = oldDate();
+    await utimes(lock, originalMtime, originalMtime);
+    let canonicalReads = 0;
+    const lockWithStaleRace = createWorkspaceLock(lockRuntime({
+      readFile: async (path, options) => {
+        if (path === lock && ++canonicalReads === 2) {
+          await writeFile(lock, replacement, "utf8");
+          await utimes(lock, originalMtime, originalMtime);
+        }
+        return readFile(path, options);
+      },
+    }));
+
+    await expect(lockWithStaleRace(root, async () => undefined)).rejects.toBeInstanceOf(WorkspaceLockedError);
+    await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toEqual([]);
+  });
+
+  test("preserves a thrown sentinel when release fails", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    const sentinel = { reason: "operation" };
+    const lockWithReleaseFailure = createWorkspaceLock(lockRuntime({
+      rename: async (source, destination) => {
+        if (source === lock) {
+          throw new Error("release failed");
+        }
+        await rename(source, destination);
+      },
+    }));
+
+    await expect(lockWithReleaseFailure(root, async () => { throw sentinel; })).rejects.toBe(sentinel);
   });
 });

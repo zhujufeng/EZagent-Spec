@@ -2,6 +2,7 @@ import { mkdir, open, rename, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 
+// The temporary file is synced before its atomic rename; parent-directory durability remains platform-dependent.
 export async function atomicWriteText(target: string, content: string): Promise<void> {
   const parent = dirname(target);
   const temporary = join(parent, `.${basename(target)}.${process.pid}.${randomUUID()}.tmp`);
