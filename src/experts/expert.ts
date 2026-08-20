@@ -35,6 +35,7 @@ const EXPERT_ID = /^ezagent\.[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+
 const PORTABLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/;
 const CONTENT_HASH = /^sha256:[0-9a-f]{64}$/;
+const NON_PORTABLE_PATH_CHARACTER = /[\u0000-\u001f\u007f<>:"\\|?*]/u;
 
 export class ExpertValidationError extends Error {
   override readonly name = "ExpertValidationError";
@@ -176,8 +177,7 @@ function isSafeMarkdownPath(value: string): boolean {
     value.length === 0 ||
     Buffer.byteLength(value, "utf8") > 1_024 ||
     value.startsWith("/") ||
-    value.includes("\\") ||
-    value.includes("\0") ||
+    NON_PORTABLE_PATH_CHARACTER.test(value) ||
     !value.endsWith(".md")
   ) {
     return false;
@@ -200,12 +200,24 @@ const conditionSchema = boundedText("condition", 4_096);
 const preferredTaskSchema = z.string().trim().pipe(
   z.enum(["clarify", "design", "implement", "verify", "review"]),
 );
+const sourcePathSchema = z.string()
+  .refine(isWellFormedUnicode, "source path must contain well-formed Unicode")
+  .refine(
+    (value) => !NON_PORTABLE_PATH_CHARACTER.test(value),
+    "source path contains a non-portable character",
+  )
+  .transform((value) => value.trim())
+  .pipe(
+    z.string()
+      .min(1, "source path must not be blank")
+      .max(1_024, "source path is too long"),
+  )
+  .refine(isSafeMarkdownPath, "source path must be a safe POSIX-relative Markdown path");
 
 const sourceRefSchema = z.object({
   repository: boundedText("repository", 2_048)
     .refine(isCanonicalHttpsRepository, "repository must be a canonical HTTPS URL"),
-  path: boundedText("source path", 1_024)
-    .refine(isSafeMarkdownPath, "source path must be a safe POSIX-relative Markdown path"),
+  path: sourcePathSchema,
   commit: boundedText("source commit", 40)
     .regex(FULL_COMMIT_SHA, "source commit must be a lowercase full 40-character SHA"),
   license: z.string().trim()
@@ -243,17 +255,6 @@ export const expertSchema = z.object({
       code: "custom",
       path: ["upstreamSource"],
       message: "China-original experts cannot declare upstreamSource",
-    });
-  }
-  if (
-    expert.origin === "upstream_translation" &&
-    expert.upstreamSource !== undefined &&
-    expert.source.repository === expert.upstreamSource.repository
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["upstreamSource", "repository"],
-      message: "translated source and upstreamSource must use different repositories",
     });
   }
 });

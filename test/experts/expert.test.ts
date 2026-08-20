@@ -45,6 +45,45 @@ describe("normalized expert schema", () => {
     expect(parseExpert(fixture).id).toMatch(/^ezagent\./);
   });
 
+  test("accepts intentionally empty optional signal lists", () => {
+    const input = clone(translated);
+    input.projectSignals = [];
+    input.exclusionConditions = [];
+
+    const parsed = parseExpert(input);
+
+    expect(parsed.projectSignals).toEqual([]);
+    expect(parsed.exclusionConditions).toEqual([]);
+  });
+
+  test("accepts Chinese punctuation and well-formed emoji in localized text", () => {
+    const input = clone(translated);
+    input.nameZh = "架构师（前端）🚀";
+    input.summaryZh = "负责边界；关注状态——并验证结果。✅";
+    input.instructionsZh = "请先检查“真实文件”，再给出结论。🧭";
+
+    expect(parseExpert(input)).toMatchObject({
+      nameZh: input.nameZh,
+      summaryZh: input.summaryZh,
+      instructionsZh: input.instructionsZh,
+    });
+  });
+
+  test("accepts instructions at the exact 65,536 UTF-16-unit limit", () => {
+    const input = clone(translated);
+    input.instructionsZh = `中${"a".repeat(65_535)}`;
+
+    expect(input.instructionsZh).toHaveLength(65_536);
+    expect(parseExpert(input).instructionsZh).toHaveLength(65_536);
+  });
+
+  test("accepts a canonical GitHub repository URL with the .git suffix", () => {
+    const input = clone(translated);
+    input.source.repository = "https://github.com/jnMetaCode/agency-agents-zh.git";
+
+    expect(parseExpert(input).source.repository).toBe(input.source.repository);
+  });
+
   test("returns normalized strings without mutating the input", () => {
     const input = clone(translated);
     input.id = `  ${input.id}  `;
@@ -96,10 +135,19 @@ describe("normalized expert schema", () => {
     const originalWithUpstream = clone(chinaOriginal);
     originalWithUpstream.upstreamSource = clone(translated).upstreamSource!;
     expect(() => parseExpert(originalWithUpstream)).toThrow(/upstreamSource/);
+  });
 
-    const sameRepository = clone(translated);
-    sameRepository.upstreamSource!.repository = sameRepository.source.repository;
-    expect(() => parseExpert(sameRepository)).toThrow(/repository/i);
+  test("accepts translated provenance in the same repository at a different path and commit", () => {
+    const input = clone(translated);
+    input.upstreamSource!.repository = input.source.repository;
+    input.upstreamSource!.path = "upstream/frontend-architect-original.md";
+    input.upstreamSource!.commit = "4".repeat(40);
+
+    const parsed = parseExpert(input);
+
+    expect(parsed.upstreamSource).toEqual(input.upstreamSource);
+    expect(parsed.upstreamSource!.path).not.toBe(parsed.source.path);
+    expect(parsed.upstreamSource!.commit).not.toBe(parsed.source.commit);
   });
 
   test("rejects unknown and prototype keys at every object boundary", () => {
@@ -145,6 +193,19 @@ describe("normalized expert schema", () => {
     "engineering/frontend.txt",
     "engineering//frontend.md",
     "engineering/frontend.md\0ignored",
+    "C:/engineering/frontend.md",
+    "C:engineering/frontend.md",
+    "engineering/front:end.md",
+    "engineering/front<end.md",
+    "engineering/front>end.md",
+    "engineering/front\"end.md",
+    "engineering/front|end.md",
+    "engineering/front?end.md",
+    "engineering/front*end.md",
+    "engineering/front\u0001end.md",
+    "\tengineering/frontend.md",
+    "engineering/frontend.md\n",
+    "engineering/front\u007fend.md",
     `engineering/bad\ud800.md`,
   ])("rejects unsafe source path %s", (path) => {
     const input = clone(translated);
