@@ -1,10 +1,13 @@
 import {
+  lstat,
   mkdtemp,
   mkdir,
   readFile,
+  readlink,
   readdir,
   rm,
   stat,
+  symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -69,6 +72,18 @@ async function rejected(operation: Promise<unknown>): Promise<Error> {
     return error as Error;
   }
   throw new Error("Expected operation to reject");
+}
+
+async function createFileSymlink(target: string, path: string): Promise<boolean> {
+  try {
+    await symlink(target, path, "file");
+    return true;
+  } catch (error: unknown) {
+    if (["EACCES", "ENOSYS", "ENOTSUP", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function startGatedWorkspacePublication(
@@ -339,6 +354,7 @@ describe("WorkspaceRepository.initialize", () => {
     const error = await rejected(repository.initialize(demoConfig));
     expect(error).toBeInstanceOf(WorkspaceCorruptError);
     expect(error.message).toContain(paths.audit);
+    expect(error.cause).toMatchObject({ message: expect.stringContaining("expected regular file") });
     await expect(readFile(paths.project, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readFile(paths.state, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 
@@ -346,6 +362,41 @@ describe("WorkspaceRepository.initialize", () => {
     await repository.initialize(demoConfig);
     await expect(repository.readProject()).resolves.toEqual(demoConfig);
     await expect(repository.readState()).resolves.toEqual(initialState);
+  });
+
+  test("rejects linked canonical state and audit without following or modifying external files", async ({ skip }) => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const externalState = join(root, "external-state.json");
+    const externalAudit = join(root, "external-audit.jsonl");
+    const stateContents = JSON.stringify(initialState);
+    await writeFile(externalState, stateContents, "utf8");
+    await writeFile(externalAudit, "", "utf8");
+    await mkdir(join(paths.root, "state"), { recursive: true });
+    await mkdir(join(paths.root, "audit"), { recursive: true });
+    if (!await createFileSymlink(externalState, paths.state)) {
+      skip();
+      return;
+    }
+    if (!await createFileSymlink(externalAudit, paths.audit)) {
+      skip();
+      return;
+    }
+    const before = await Promise.all([stat(externalState), stat(externalAudit)]);
+
+    const error = await rejected(repository.initialize(demoConfig));
+
+    expect(error).toBeInstanceOf(WorkspaceCorruptError);
+    expect(error.message).toContain(paths.state);
+    expect(error.cause).toMatchObject({ message: expect.stringContaining("expected regular file") });
+    await expect(readlink(paths.state)).resolves.toBe(externalState);
+    await expect(readlink(paths.audit)).resolves.toBe(externalAudit);
+    await expect(readFile(externalState, "utf8")).resolves.toBe(stateContents);
+    await expect(readFile(externalAudit, "utf8")).resolves.toBe("");
+    const after = await Promise.all([stat(externalState), stat(externalAudit)]);
+    expect(after.map(({ mtimeMs }) => mtimeMs)).toEqual(before.map(({ mtimeMs }) => mtimeMs));
+    await expect(readFile(paths.project, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("never repairs user files once the project completion marker exists", async () => {
@@ -550,6 +601,82 @@ describe("WorkspaceRepository reads", () => {
     expect(error).toBeInstanceOf(WorkspaceCorruptError);
     expect(error.message).toContain(paths.project);
     expect(error.cause).toBeInstanceOf(Error);
+  });
+
+  test("rejects a linked project marker for both reads and initialization", async ({ skip }) => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const externalProject = join(root, "external-project.yaml");
+    const contents = serializeProjectConfig(demoConfig);
+    await mkdir(paths.root, { recursive: true });
+    await writeFile(externalProject, contents, "utf8");
+    if (!await createFileSymlink(externalProject, paths.project)) {
+      skip();
+      return;
+    }
+    const before = await stat(externalProject);
+
+    const results = await Promise.all([
+      observe(repository.readProject()),
+      observe(repository.initialize(demoConfig)),
+    ]);
+    for (const result of results) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        expect(result.reason).toBeInstanceOf(WorkspaceCorruptError);
+        expect(result.reason).toMatchObject({
+          message: expect.stringContaining(paths.project),
+          cause: expect.objectContaining({ message: expect.stringContaining("expected regular file") }),
+        });
+      }
+    }
+    await expect(readlink(paths.project)).resolves.toBe(externalProject);
+    await expect(readFile(externalProject, "utf8")).resolves.toBe(contents);
+    expect((await stat(externalProject)).mtimeMs).toBe(before.mtimeMs);
+  });
+
+  test("rejects a linked state projection in a completed workspace", async ({ skip }) => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const externalState = join(root, "external-completed-state.json");
+    const contents = JSON.stringify(initialState);
+    await mkdir(join(paths.root, "state"), { recursive: true });
+    await writeFile(paths.project, serializeProjectConfig(demoConfig), "utf8");
+    await writeFile(externalState, contents, "utf8");
+    if (!await createFileSymlink(externalState, paths.state)) {
+      skip();
+      return;
+    }
+    const before = await stat(externalState);
+
+    const error = await rejected(repository.readState());
+
+    expect(error).toBeInstanceOf(WorkspaceCorruptError);
+    expect(error.message).toContain(paths.state);
+    expect(error.cause).toMatchObject({ message: expect.stringContaining("expected regular file") });
+    expect((await lstat(paths.state)).isSymbolicLink()).toBe(true);
+    await expect(readFile(externalState, "utf8")).resolves.toBe(contents);
+    expect((await stat(externalState)).mtimeMs).toBe(before.mtimeMs);
+  });
+
+  test.each(["project", "state"] as const)("rejects a directory used as the %s metadata file", async (kind) => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    if (kind === "state") {
+      await mkdir(paths.state, { recursive: true });
+      await writeFile(paths.project, serializeProjectConfig(demoConfig), "utf8");
+    } else {
+      await mkdir(paths.project, { recursive: true });
+    }
+
+    const error = await rejected(kind === "project" ? repository.readProject() : repository.readState());
+
+    expect(error).toBeInstanceOf(WorkspaceCorruptError);
+    expect(error.message).toContain(paths[kind]);
+    expect(error.cause).toMatchObject({ message: expect.stringContaining("expected regular file") });
   });
 
   test.each([

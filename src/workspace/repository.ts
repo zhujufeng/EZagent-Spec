@@ -39,6 +39,10 @@ interface NormalizedInitializeOptions {
   readonly signal: AbortSignal | undefined;
 }
 
+type WorkspaceTextRead =
+  | { readonly exists: false; readonly cause: unknown }
+  | { readonly exists: true; readonly contents: string };
+
 function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
@@ -78,31 +82,37 @@ function lockWaitTimeout(lock: string, timeoutMs: number): WorkspaceLockedError 
   });
 }
 
-async function readOptionalText(path: string, label: string): Promise<string | undefined> {
+async function readWorkspaceText(path: string, label: string): Promise<WorkspaceTextRead> {
+  let fileStat: Awaited<ReturnType<typeof lstat>>;
   try {
-    await lstat(path);
+    fileStat = await lstat(path);
   } catch (error: unknown) {
     if (isMissing(error)) {
-      return undefined;
+      return { exists: false, cause: error };
     }
     throw new WorkspaceCorruptError(`${label} is unreadable or corrupt: ${path}`, { cause: error });
   }
+  if (!fileStat.isFile()) {
+    const cause = new Error(`${label} expected regular file`);
+    throw new WorkspaceCorruptError(`${label} must be a regular file: ${path}`, { cause });
+  }
 
   try {
-    return await readFile(path, "utf8");
+    // The local-only workflow assumes no adversarial replacement between this lstat and read.
+    return { exists: true, contents: await readFile(path, "utf8") };
   } catch (error: unknown) {
     throw new WorkspaceCorruptError(`${label} is unreadable or corrupt: ${path}`, { cause: error });
   }
 }
 
 async function readExistingProject(path: string): Promise<ProjectConfig | undefined> {
-  const contents = await readOptionalText(path, "workspace project");
-  if (contents === undefined) {
+  const project = await readWorkspaceText(path, "workspace project");
+  if (!project.exists) {
     return undefined;
   }
 
   try {
-    return parseProjectConfig(contents);
+    return parseProjectConfig(project.contents);
   } catch (error: unknown) {
     throw new WorkspaceCorruptError(`workspace project is unreadable or corrupt: ${path}`, { cause: error });
   }
@@ -116,14 +126,14 @@ function isInitialState(state: WorkspaceState): boolean {
 }
 
 async function inspectInitialState(path: string): Promise<boolean> {
-  const contents = await readOptionalText(path, "workspace state");
-  if (contents === undefined) {
+  const stateFile = await readWorkspaceText(path, "workspace state");
+  if (!stateFile.exists) {
     return false;
   }
 
   let state: WorkspaceState;
   try {
-    const value: unknown = JSON.parse(contents);
+    const value: unknown = JSON.parse(stateFile.contents);
     state = parseWorkspaceState(value);
   } catch (error: unknown) {
     throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${path}`, { cause: error });
@@ -136,11 +146,11 @@ async function inspectInitialState(path: string): Promise<boolean> {
 }
 
 async function inspectEmptyAudit(path: string): Promise<boolean> {
-  const contents = await readOptionalText(path, "workspace audit");
-  if (contents === undefined) {
+  const auditFile = await readWorkspaceText(path, "workspace audit");
+  if (!auditFile.exists) {
     return false;
   }
-  if (contents !== "") {
+  if (auditFile.contents !== "") {
     const cause = new Error("uncommitted workspace audit is not empty");
     throw new WorkspaceCorruptError(`workspace audit is not safe to initialize over: ${path}`, { cause });
   }
@@ -209,18 +219,15 @@ export class WorkspaceRepository {
 
   async readProject(): Promise<ProjectConfig> {
     const project = workspacePaths(this.projectRoot).project;
-    let contents: string;
-    try {
-      contents = await readFile(project, "utf8");
-    } catch (error: unknown) {
-      if (isMissing(error)) {
-        throw new WorkspaceNotInitializedError(`workspace is not initialized: ${project}`, { cause: error });
-      }
-      throw new WorkspaceCorruptError(`workspace project is unreadable or corrupt: ${project}`, { cause: error });
+    const projectFile = await readWorkspaceText(project, "workspace project");
+    if (!projectFile.exists) {
+      throw new WorkspaceNotInitializedError(`workspace is not initialized: ${project}`, {
+        cause: projectFile.cause,
+      });
     }
 
     try {
-      return parseProjectConfig(contents);
+      return parseProjectConfig(projectFile.contents);
     } catch (error: unknown) {
       throw new WorkspaceCorruptError(`workspace project is unreadable or corrupt: ${project}`, { cause: error });
     }
@@ -229,15 +236,15 @@ export class WorkspaceRepository {
   async readState(): Promise<WorkspaceState> {
     await this.readProject();
     const state = workspacePaths(this.projectRoot).state;
-    let contents: string;
-    try {
-      contents = await readFile(state, "utf8");
-    } catch (error: unknown) {
-      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${state}`, { cause: error });
+    const stateFile = await readWorkspaceText(state, "workspace state");
+    if (!stateFile.exists) {
+      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${state}`, {
+        cause: stateFile.cause,
+      });
     }
 
     try {
-      const value: unknown = JSON.parse(contents);
+      const value: unknown = JSON.parse(stateFile.contents);
       return parseWorkspaceState(value);
     } catch (error: unknown) {
       throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${state}`, { cause: error });
