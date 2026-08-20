@@ -24,9 +24,12 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "22.15.21",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "3.2.4"
+  },
+  "overrides": {
+    "vite": "6.3.6"
   }
 }
