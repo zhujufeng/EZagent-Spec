@@ -271,7 +271,6 @@ describe("withWorkspaceLock", () => {
   test("fails closed without publishing canonical lock when staged identity is unavailable", async () => {
     const root = await temporaryProject();
     const lock = workspacePaths(root).lock;
-    const replacement = "replacement lock";
     const lockWithUnavailableIdentity = createWorkspaceLock(lockRuntime({
       stat: async (path) => ({ ...(await stat(path)), dev: 0, ino: 0 }),
       open: async (...args) => {
@@ -281,19 +280,13 @@ describe("withWorkspaceLock", () => {
             if (property === "stat") {
               return async () => ({ ...(await target.stat()), dev: 0, ino: 0 });
             }
-            if (property === "writeFile") {
-              return async () => {
-                await target.writeFile(replacement, "utf8");
-                throw new Error("write failed");
-              };
-            }
             return Reflect.get(target, property, receiver);
           },
         }) as Awaited<ReturnType<typeof open>>;
       },
     }));
 
-    await expect(lockWithUnavailableIdentity(root, async () => undefined)).rejects.toThrow("write failed");
+    await expect(lockWithUnavailableIdentity(root, async () => undefined)).rejects.toBeInstanceOf(WorkspaceLockedError);
     await expect(readFile(lock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toEqual([]);
     expect((await readdir(dirname(lock))).filter((entry) => entry.includes(".pending"))).toEqual([]);
