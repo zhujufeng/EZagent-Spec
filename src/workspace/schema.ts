@@ -10,9 +10,24 @@ const workItemStatuses = [
 ] as const;
 const riskLevels = ["consult", "light", "standard", "high"] as const;
 
+function assertAllowedKeys(value: unknown, allowedKeys: readonly string[], label: string): void {
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  const allowed = new Set(allowedKeys);
+  const unknownKey = Object.keys(value).find((key) => !allowed.has(key));
+  if (unknownKey !== undefined) {
+    throw new Error(`${label} contains unsupported key: ${unknownKey}`);
+  }
+}
+
+const projectConfigKeys = ["schemaVersion", "name", "gitTracking"] as const;
+const workspaceStateKeys = ["schemaVersion", "revision", "activeWorkItem", "safeMode"] as const;
+const activeWorkItemKeys = ["id", "kind", "status", "risk", "revision"] as const;
+
 const projectConfigSchema = z.object({
   schemaVersion: z.literal(1),
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   gitTracking: z.enum(["none", "artifacts", "all"]).default("none"),
 }).strict();
 
@@ -43,13 +58,21 @@ export type WorkspaceState = Omit<z.infer<typeof workspaceStateSchema>, "activeW
 };
 
 export function parseProjectConfig(text: string): ProjectConfig {
-  return projectConfigSchema.parse(parseYaml(text));
+  const value: unknown = parseYaml(text);
+  assertAllowedKeys(value, projectConfigKeys, "project config");
+  return projectConfigSchema.parse(value);
 }
 
 export function serializeProjectConfig(config: ProjectConfig): string {
+  assertAllowedKeys(config, projectConfigKeys, "project config");
   return stringifyYaml(projectConfigSchema.parse(config));
 }
 
 export function parseWorkspaceState(value: unknown): WorkspaceState {
+  assertAllowedKeys(value, workspaceStateKeys, "workspace state");
+  if (value !== null && typeof value === "object" && "activeWorkItem" in value) {
+    const activeWorkItem = (value as { activeWorkItem?: unknown }).activeWorkItem;
+    assertAllowedKeys(activeWorkItem, activeWorkItemKeys, "active work item");
+  }
   return workspaceStateSchema.parse(value);
 }
