@@ -187,7 +187,7 @@ describe("withWorkspaceLock", () => {
     await expect(withWorkspaceLock(root, async () => "recovered")).resolves.toBe("recovered");
   });
 
-  test("leaves a replacement lock written during the operation in place", async () => {
+  test("does not quarantine a replacement lock written during the operation", async () => {
     const root = await temporaryProject();
     const lock = workspacePaths(root).lock;
     const replacement = JSON.stringify({

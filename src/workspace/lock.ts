@@ -93,17 +93,16 @@ async function moveToQuarantine(lock: string): Promise<string | undefined> {
   }
 }
 
-async function restoreQuarantine(quarantine: string, lock: string): Promise<boolean> {
+async function retainConflictingQuarantine(quarantine: string, lock: string): Promise<never> {
   try {
     await copyFile(quarantine, lock, constants.COPYFILE_EXCL);
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      return false;
+      throw new WorkspaceLockedError("Workspace is locked and conflicting lock evidence was retained", { cause: error });
     }
-    throw error;
+    throw new WorkspaceLockedError("Workspace lock restore failed and conflicting lock evidence was retained", { cause: error });
   }
-  await rm(quarantine, { force: true });
-  return true;
+  throw new WorkspaceLockedError("Workspace lock changed and conflicting lock evidence was retained");
 }
 
 async function inspectLock(path: string): Promise<QuarantineInspection | undefined> {
@@ -132,10 +131,7 @@ async function discardOrRestore(
     await rm(quarantine, { force: true });
     return true;
   }
-  if (await restoreQuarantine(quarantine, lock)) {
-    return false;
-  }
-  throw new WorkspaceLockedError("Workspace is locked and lock cleanup could not be completed");
+  return retainConflictingQuarantine(quarantine, lock);
 }
 
 async function releaseOwnedLock(lock: string, token: string): Promise<void> {
