@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi, type TestContext } from "vitest";
 
 import {
   createSourceLock,
@@ -76,6 +76,25 @@ async function createLocalSource(root: string): Promise<{ checkout: string; head
     "https://github.com/msitarzewski/agency-agents",
   ]);
   return { checkout, head: (await runGit(checkout, ["rev-parse", "HEAD"])).trim() };
+}
+
+async function symlinkOrSkip(
+  context: TestContext,
+  target: string,
+  path: string,
+  type: "file" | "dir",
+): Promise<void> {
+  try {
+    await symlink(target, path, type);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (process.platform === "win32"
+      && code !== undefined
+      && ["EACCES", "ENOSYS", "ENOTSUP", "EPERM"].includes(code)) {
+      context.skip(`Windows symbolic links unavailable: ${code}`);
+    }
+    throw error;
+  }
 }
 
 afterEach(async () => {
@@ -269,10 +288,18 @@ describe("resolveLocalCheckoutCommit", () => {
     expect(commands.length).toBeGreaterThanOrEqual(6);
     expect(commands.every((args) => args[0] === "-C")).toBe(true);
     expect(commands.every((args) => args.includes("--no-optional-locks"))).toBe(true);
+    expect(commands.every((args) => args.includes("--no-replace-objects"))).toBe(true);
     expect(commands.every((args) => args.includes("protocol.allow=never"))).toBe(true);
+    expect(commands.every((args) => args.includes("gc.auto=0"))).toBe(true);
+    expect(commands.every((args) => args.includes("maintenance.auto=false"))).toBe(true);
     expect(commands.filter((args) => args.includes("rev-parse") && args.includes("--verify"))
       .every((args) => args.includes("--end-of-options"))).toBe(true);
     expect(commands.find((args) => args.includes("status"))).toContain("--ignored=matching");
+    const configIndex = commands.findIndex((args) => args.includes("config"));
+    const firstDangerousIndex = commands.findIndex((args) =>
+      args.includes("status") || args.includes("diff-files") || args.includes("fsck"));
+    expect(configIndex).toBeGreaterThanOrEqual(0);
+    expect(firstDangerousIndex).toBeGreaterThan(configIndex);
     expect(commands.flat()).not.toContain("fetch");
     expect(commands.flat()).not.toContain("pull");
     expect(commands.flat()).not.toContain("clone");
@@ -350,6 +377,63 @@ describe("resolveLocalCheckoutCommit", () => {
     await expect(resolveLocalCheckoutCommit(root, validCandidate())).resolves.toBe(source.head);
   });
 
+  it("rejects executable local filter configuration before Git can run the filter", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await writeFile(join(source.checkout, ".gitattributes"), "README.md filter=proof\n", "utf8");
+    await runGit(source.checkout, ["add", ".gitattributes"]);
+    await runGit(source.checkout, ["commit", "-m", "declare filter attribute"]);
+    const marker = join(root, "FILTER_EXECUTED");
+    const filterCommand = [
+      JSON.stringify(process.execPath),
+      "-e",
+      JSON.stringify("require('node:fs').writeFileSync(process.argv[1], 'executed')"),
+      JSON.stringify(marker),
+    ].join(" ");
+    await runGit(source.checkout, ["config", "filter.proof.clean", filterCommand]);
+    await runGit(source.checkout, ["config", "filter.proof.required", "true"]);
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "CONFIG_UNSAFE", sourceId: "agency-agents" });
+    await expect(readFile(marker, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([
+    ["diff.proof.command", "untrusted-command"],
+    ["diff.proof.textconv", "untrusted-command"],
+    ["core.hooksPath", "untrusted-hooks"],
+    ["core.fsmonitor", "untrusted-command"],
+    ["core.alternateRefsCommand", "untrusted-command"],
+    ["fsck.skipList", "untrusted-skip-list"],
+    ["protocol.file.allow", "always"],
+    ["maintenance.auto", "true"],
+    ["gc.auto", "1"],
+    ["include.path", "untrusted-include"],
+  ])("rejects local Git verification override %s", async (key, value) => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await runGit(source.checkout, ["config", key, value]);
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "CONFIG_UNSAFE", sourceId: "agency-agents" });
+  });
+
+  it("rejects a local config snapshot changed after object verification", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    let fsckCount = 0;
+    const runner: GitRunner = async (args) => {
+      const { stdout } = await execFileAsync("git", [...args], { encoding: "utf8" });
+      if (args.includes("fsck") && ++fsckCount === 1) {
+        await runGit(source.checkout, ["config", "user.provenance-audit", "changed"]);
+      }
+      return stdout;
+    };
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate(), runner))
+      .rejects.toMatchObject({ code: "CONFIG_CHANGED", sourceId: "agency-agents" });
+  });
+
   it("sanitizes an unknown runner failure while retaining it as the cause", async () => {
     const root = await temporaryRoot();
     await createLocalSource(root);
@@ -401,15 +485,42 @@ describe("resolveLocalCheckoutCommit", () => {
       .rejects.toMatchObject({ code: "PARTIAL_CLONE_UNSUPPORTED" });
   });
 
-  it("rejects tracked symbolic links and gitlinks", async () => {
+  it.each([false, true])("rejects %s packed replacement refs under original-object semantics", async (packed) => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await writeFile(join(source.checkout, "README.md"), "replacement tree\n", "utf8");
+    await runGit(source.checkout, ["add", "README.md"]);
+    await runGit(source.checkout, ["commit", "-m", "replacement commit"]);
+    const replacement = (await runGit(source.checkout, ["rev-parse", "HEAD"])).trim();
+    await runGit(source.checkout, ["replace", source.head, replacement]);
+    await runGit(source.checkout, ["reset", "--hard", source.head]);
+    if (packed) await runGit(source.checkout, ["pack-refs", "--all", "--prune"]);
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "REPLACE_REFS_UNSUPPORTED", sourceId: "agency-agents" });
+  });
+
+  it("rejects legacy grafts from the actual local Git metadata directory", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await writeFile(join(source.checkout, ".git", "info", "grafts"), `${source.head}\n`, "utf8");
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "GRAFTS_UNSUPPORTED", sourceId: "agency-agents" });
+  });
+
+  it("rejects tracked symbolic links", async (context) => {
     const symlinkRoot = await temporaryRoot();
     const symlinkSource = await createLocalSource(symlinkRoot);
-    await symlink("README.md", join(symlinkSource.checkout, "LINK.md"), "file");
+    await runGit(symlinkSource.checkout, ["config", "core.symlinks", "true"]);
+    await symlinkOrSkip(context, "README.md", join(symlinkSource.checkout, "LINK.md"), "file");
     await runGit(symlinkSource.checkout, ["add", "LINK.md"]);
     await runGit(symlinkSource.checkout, ["commit", "-m", "tracked symlink"]);
     await expect(resolveLocalCheckoutCommit(symlinkRoot, validCandidate()))
       .rejects.toMatchObject({ code: "TRACKED_SYMLINK_UNSUPPORTED" });
+  });
 
+  it("rejects gitlinks without requiring symbolic-link privileges", async () => {
     const gitlinkRoot = await temporaryRoot();
     const gitlink = await createLocalSource(gitlinkRoot);
     await runGit(gitlink.checkout, [
@@ -524,13 +635,45 @@ describe("resolveLocalCheckoutCommit", () => {
       .rejects.toMatchObject({ code: "CHECKOUT_CHANGED", sourceId: "agency-agents" });
   });
 
-  it("rejects a checkout reached through a symbolic-link directory", async () => {
+  it("detects a worktree modification made after the second object verification", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    let fsckCount = 0;
+    const runner: GitRunner = async (args) => {
+      const { stdout } = await execFileAsync("git", [...args], { encoding: "utf8" });
+      if (args.includes("fsck") && ++fsckCount === 2) {
+        await writeFile(join(source.checkout, "README.md"), "modified after final fsck\n", "utf8");
+      }
+      return stdout;
+    };
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate(), runner))
+      .rejects.toMatchObject({ code: "WORKTREE_DIRTY", sourceId: "agency-agents" });
+  });
+
+  it("rejects a checkout reached through a symbolic-link directory", async (context) => {
     const root = await temporaryRoot();
     const outside = await temporaryRoot();
     await createLocalSource(outside);
-    await symlink(join(outside, "vendor-sources"), join(root, "vendor-sources"), "dir");
+    await symlinkOrSkip(
+      context,
+      join(outside, "vendor-sources"),
+      join(root, "vendor-sources"),
+      "dir",
+    );
 
     await expect(resolveLocalCheckoutCommit(root, validCandidate())).rejects.toThrow("symbolic link");
+  });
+
+  it("rejects a symbolic-link Git metadata directory", async (context) => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    const realGitDirectory = join(root, "real-git-directory");
+    await rename(join(source.checkout, ".git"), realGitDirectory);
+    await symlinkOrSkip(context, realGitDirectory, join(source.checkout, ".git"), "dir");
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "GIT_METADATA_UNSAFE", sourceId: "agency-agents" });
   });
 });
 
@@ -577,6 +720,46 @@ describe("source lock file", () => {
 
     expect(result).toEqual({ published: true, warnings: [] });
     expect(syncDirectory).toHaveBeenCalledExactlyOnceWith(root);
+  });
+
+  it("reports unsupported parent-directory sync as a visible published warning", async () => {
+    const root = await temporaryRoot();
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      syncDirectory: async () => "unsupported",
+    };
+
+    const result = await writeSourceLockFile(join(root, "sources.lock.json"), lock, runtime);
+
+    expect(result).toEqual({
+      published: true,
+      warnings: [{
+        code: "DIRECTORY_SYNC_UNSUPPORTED",
+        message: expect.stringContaining("not supported"),
+      }],
+    });
+  });
+
+  it("reports a genuine parent-directory sync failure without denying publication", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      syncDirectory: async () => {
+        throw Object.assign(new Error("simulated durability failure"), { code: "EIO" });
+      },
+    };
+
+    const result = await writeSourceLockFile(target, lock, runtime);
+
+    expect(result).toEqual({
+      published: true,
+      warnings: [{
+        code: "DIRECTORY_SYNC_FAILED",
+        message: expect.stringContaining("durability could not be confirmed"),
+      }],
+    });
+    expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
   });
 
   it("reports temporary cleanup failure as a published warning instead of a false failure", async () => {
@@ -641,6 +824,46 @@ describe("source lock file", () => {
     expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
   });
 
+  it("rejects and rolls back a staging-file ABA replacement before publication", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const attack = "{\"schemaVersion\":1,\"sources\":[]}\n";
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      link: async (temporary, destination) => {
+        await rm(temporary);
+        await writeFile(temporary, attack, "utf8");
+        await nodeSourceLockPublishRuntime.link(temporary, destination);
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
+      code: "LOCK_STAGING_CHANGED",
+      published: false,
+    });
+    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+  });
+
+  it("verifies published bytes when staging content changes through the same inode", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const attack = serializeSourceLock(lock).replace("a".repeat(40), "b".repeat(40));
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      link: async (temporary, destination) => {
+        await nodeSourceLockPublishRuntime.link(temporary, destination);
+        await writeFile(temporary, attack, "utf8");
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
+      code: "LOCK_STAGING_CHANGED",
+      published: false,
+    });
+    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("cleans staging and leaves no target when link publication fails", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
@@ -656,24 +879,24 @@ describe("source lock file", () => {
     expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
   });
 
-  it("does not follow or replace an existing symbolic-link target", async () => {
+  it("does not follow or replace an existing symbolic-link target", async (context) => {
     const root = await temporaryRoot();
     const victim = join(root, "victim.json");
     const target = join(root, "sources.lock.json");
     await writeFile(victim, "keep\n", "utf8");
-    await symlink(victim, target, "file");
+    await symlinkOrSkip(context, victim, target, "file");
 
     await expect(writeSourceLockFile(target, lock)).rejects.toThrow("already exists");
     expect(await readFile(victim, "utf8")).toBe("keep\n");
     expect((await lstat(target)).isSymbolicLink()).toBe(true);
   });
 
-  it("fails without leaving a file when the target parent is a symbolic link", async () => {
+  it("fails without leaving a file when the target parent is a symbolic link", async (context) => {
     const root = await temporaryRoot();
     const real = join(root, "real");
     const linked = join(root, "linked");
     await mkdir(real);
-    await symlink(real, linked, "dir");
+    await symlinkOrSkip(context, real, linked, "dir");
 
     await expect(writeSourceLockFile(join(linked, "sources.lock.json"), lock))
       .rejects.toThrow("parent directory");
@@ -729,6 +952,34 @@ describe("lockCatalogSources", () => {
     expect(stdout).toContain("release-only");
     expect(stdout).toContain("local");
     expect(stdout).toContain("no network");
+  });
+
+  it("propagates unsupported directory-sync warnings to the CLI notification seam", async () => {
+    const root = await temporaryRoot();
+    await createLocalSource(root);
+    await mkdir(join(root, "catalog"));
+    await writeFile(join(root, "catalog", "sources.yaml"), [
+      "schemaVersion: 1",
+      "sources:",
+      "  - id: agency-agents",
+      "    repository: https://github.com/msitarzewski/agency-agents",
+      "    ref: refs/heads/main",
+      "    checkout: vendor-sources/agency-agents",
+      "    license: MIT",
+      "",
+    ].join("\n"), "utf8");
+    const onPublishWarning = vi.fn();
+    const publishRuntime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      syncDirectory: async () => "unsupported",
+    };
+
+    await lockCatalogSources(root, { publishRuntime, onPublishWarning });
+
+    expect(onPublishWarning).toHaveBeenCalledExactlyOnceWith({
+      code: "DIRECTORY_SYNC_UNSUPPORTED",
+      message: expect.stringContaining("not supported"),
+    });
   });
 
   it("detects sources YAML replacement during its no-follow stable read", async () => {

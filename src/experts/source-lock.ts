@@ -9,7 +9,7 @@ import {
   realpath,
   rm,
 } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { devNull } from "node:os";
 import { types as nodeTypes } from "node:util";
 
@@ -96,6 +96,10 @@ export interface SourceLockTemporaryHandle {
 
 export interface SourceLockPublishRuntime {
   readonly lstat: (path: string) => Promise<Stats>;
+  readonly inspectFileNoFollow: (
+    path: string,
+    maxBytes: number,
+  ) => Promise<{ readonly stat: Stats; readonly content: string }>;
   readonly openTemporary: (path: string) => Promise<SourceLockTemporaryHandle>;
   readonly link: (existingPath: string, newPath: string) => Promise<void>;
   readonly remove: (path: string, options: { readonly force: boolean }) => Promise<void>;
@@ -104,7 +108,8 @@ export interface SourceLockPublishRuntime {
 
 export type SourceLockPublishWarningCode =
   | "TEMP_CLEANUP_FAILED"
-  | "DIRECTORY_SYNC_FAILED";
+  | "DIRECTORY_SYNC_FAILED"
+  | "DIRECTORY_SYNC_UNSUPPORTED";
 
 export interface SourceLockPublishWarning {
   readonly code: SourceLockPublishWarningCode;
@@ -138,6 +143,11 @@ export type LocalCheckoutErrorCode =
   | "WORKTREE_ROOT_MISMATCH"
   | "GIT_COMMAND_FAILED"
   | "GIT_OUTPUT_INVALID"
+  | "CONFIG_UNSAFE"
+  | "CONFIG_CHANGED"
+  | "GIT_METADATA_UNSAFE"
+  | "REPLACE_REFS_UNSUPPORTED"
+  | "GRAFTS_UNSUPPORTED"
   | "ORIGIN_MISMATCH"
   | "WORKTREE_DIRTY"
   | "INDEX_FLAGS_UNSAFE"
@@ -192,7 +202,12 @@ export class SourceLockWriteError extends Error {
   override readonly name = "SourceLockWriteError";
 
   constructor(
-    readonly code: "LOCK_PARENT_INVALID" | "LOCK_PARENT_CHANGED" | "LOCK_EXISTS" | "LOCK_PUBLISH_FAILED",
+    readonly code:
+      | "LOCK_PARENT_INVALID"
+      | "LOCK_PARENT_CHANGED"
+      | "LOCK_STAGING_CHANGED"
+      | "LOCK_EXISTS"
+      | "LOCK_PUBLISH_FAILED",
     readonly published: boolean,
     options?: ErrorOptions,
   ) {
@@ -440,6 +455,7 @@ function isolatedGitEnvironment(): NodeJS.ProcessEnv {
   environment.GIT_CONFIG_GLOBAL = devNull;
   environment.GIT_TERMINAL_PROMPT = "0";
   environment.GIT_NO_LAZY_FETCH = "1";
+  environment.GIT_NO_REPLACE_OBJECTS = "1";
   environment.GCM_INTERACTIVE = "Never";
   return environment;
 }
@@ -474,6 +490,11 @@ function localCheckoutErrorMessage(code: LocalCheckoutErrorCode, sourceId: strin
     case "WORKTREE_ROOT_MISMATCH": return `${prefix} checkout must be the Git worktree root`;
     case "GIT_COMMAND_FAILED": return `${prefix} local Git verification command failed; inspect the checkout and retry`;
     case "GIT_OUTPUT_INVALID": return `${prefix} local Git verification returned invalid output`;
+    case "CONFIG_UNSAFE": return `${prefix} local Git configuration can alter or execute release verification`;
+    case "CONFIG_CHANGED": return `${prefix} local Git configuration changed during verification; keep it static and retry`;
+    case "GIT_METADATA_UNSAFE": return `${prefix} Git metadata directory is not a stable real directory`;
+    case "REPLACE_REFS_UNSUPPORTED": return `${prefix} contains replacement refs; remove them before release locking`;
+    case "GRAFTS_UNSUPPORTED": return `${prefix} contains legacy grafts; remove them before release locking`;
     case "ORIGIN_MISMATCH": return `${prefix} origin does not match the reviewed repository`;
     case "WORKTREE_DIRTY": return `${prefix} checkout must be clean, including tracked, untracked, and ignored files`;
     case "INDEX_FLAGS_UNSAFE": return `${prefix} index uses assume-unchanged, skip-worktree, or an unsupported stage`;
@@ -528,10 +549,15 @@ async function runCheckoutGit(
       "-C",
       checkoutPath,
       "--no-optional-locks",
+      "--no-replace-objects",
       "-c",
       "core.fsmonitor=false",
       "-c",
       "protocol.allow=never",
+      "-c",
+      "gc.auto=0",
+      "-c",
+      "maintenance.auto=false",
       ...args,
     ]);
     if (typeof output !== "string" || output.length > MAX_GIT_OUTPUT) {
@@ -557,12 +583,25 @@ function singleGitOutputLine(output: string, sourceId: string, label: string): s
   return match[1]!;
 }
 
-function parseLocalConfig(output: string, sourceId: string): Map<string, readonly string[]> {
+interface LocalConfigSnapshot {
+  readonly fingerprint: string;
+  readonly entries: ReadonlyMap<string, readonly string[]>;
+}
+
+function parseScopedLocalConfig(output: string, sourceId: string): LocalConfigSnapshot {
   const entries = new Map<string, string[]>();
   const records = output.split("\0");
   if (records.at(-1) !== "") throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
   records.pop();
-  for (const record of records) {
+  if (records.length % 2 !== 0) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
+  const localRecords: string[] = [];
+  for (let index = 0; index < records.length; index += 2) {
+    const scope = records[index]!;
+    const record = records[index + 1]!;
+    if (!["system", "global", "local", "worktree", "command"].includes(scope)) {
+      throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
+    }
+    if (scope !== "local" && scope !== "worktree") continue;
     const separator = record.indexOf("\n");
     if (separator <= 0) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
     const key = record.slice(0, separator).toLowerCase();
@@ -570,28 +609,53 @@ function parseLocalConfig(output: string, sourceId: string): Map<string, readonl
     const values = entries.get(key) ?? [];
     values.push(value);
     entries.set(key, values);
+    localRecords.push(scope, record);
   }
-  return entries;
+  return Object.freeze({
+    fingerprint: localRecords.join("\0"),
+    entries,
+  });
 }
 
 function enabledConfigValue(value: string): boolean {
   return !/^(?:false|no|off|0)$/iu.test(value);
 }
 
+function isUnsafeLocalConfigKey(key: string): boolean {
+  return /^filter\..+\.(?:clean|smudge|process|required)$/u.test(key)
+    || /^diff\..+\.(?:command|textconv)$/u.test(key)
+    || key === "diff.external"
+    || key === "core.fsmonitor"
+    || key === "core.fsmonitorhookversion"
+    || key === "core.alternaterefscommand"
+    || key === "core.hookspath"
+    || key === "core.attributesfile"
+    || key === "include.path"
+    || /^includeif\..+\.path$/u.test(key)
+    || key.startsWith("fsck.")
+    || key.startsWith("protocol.")
+    || key.startsWith("maintenance.")
+    || key.startsWith("gc.");
+}
+
 function assertRepositoryConfig(
-  output: string,
+  config: LocalConfigSnapshot,
   candidate: SourceCandidate,
 ): void {
-  const config = parseLocalConfig(output, candidate.id);
-  const origins = config.get("remote.origin.url") ?? [];
+  for (const key of config.entries.keys()) {
+    if (isUnsafeLocalConfigKey(key)) {
+      throw new LocalCheckoutError("CONFIG_UNSAFE", candidate.id);
+    }
+  }
+  const origins = config.entries.get("remote.origin.url") ?? [];
   if (origins.length !== 1 || origins[0] !== candidate.repository) {
     throw new LocalCheckoutError("ORIGIN_MISMATCH", candidate.id);
   }
-  if ((config.get("core.sparsecheckout") ?? []).some(enabledConfigValue)
-    || (config.get("core.sparsecheckoutcone") ?? []).some(enabledConfigValue)) {
+  if ((config.entries.get("core.sparsecheckout") ?? []).some(enabledConfigValue)
+    || (config.entries.get("core.sparsecheckoutcone") ?? []).some(enabledConfigValue)) {
     throw new LocalCheckoutError("SPARSE_CHECKOUT_UNSUPPORTED", candidate.id);
   }
-  for (const [key, values] of config) {
+  for (const [key, values] of config.entries) {
     if (key === "extensions.partialclone"
       || key.endsWith(".promisor")
       || key.endsWith(".partialclonefilter")) {
@@ -600,6 +664,23 @@ function assertRepositoryConfig(
       }
     }
   }
+}
+
+async function readAndValidateLocalConfig(
+  runner: GitRunner,
+  checkoutPath: string,
+  candidate: SourceCandidate,
+): Promise<LocalConfigSnapshot> {
+  const output = await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["config", "--null", "--list", "--show-scope", "--no-includes"],
+    candidate.id,
+    "GIT_COMMAND_FAILED",
+  );
+  const snapshot = parseScopedLocalConfig(output, candidate.id);
+  assertRepositoryConfig(snapshot, candidate);
+  return snapshot;
 }
 
 function assertSafeIndexFlags(output: string, sourceId: string): void {
@@ -630,28 +711,139 @@ function assertSafeTrackedEntries(output: string, sourceId: string): void {
   }
 }
 
-async function assertNoPromisorMarkers(
+interface GitMetadataSnapshot {
+  readonly gitDirectoryPath: string;
+  readonly gitDirectoryIdentity: DirectoryIdentity;
+  readonly commonDirectoryPath: string;
+  readonly commonDirectoryIdentity: DirectoryIdentity;
+}
+
+function sameCanonicalPath(left: string, right: string): boolean {
+  return process.platform === "win32"
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+async function observeGitMetadataDirectory(
+  checkoutPath: string,
+  output: string,
+  sourceId: string,
+  label: string,
+): Promise<{ readonly path: string; readonly identity: DirectoryIdentity }> {
+  const untrustedPath = singleGitOutputLine(output, sourceId, label);
+  const resolvedPath = resolve(checkoutPath, untrustedPath);
+  let observed: Stats;
+  let canonicalPath: string;
+  try {
+    [observed, canonicalPath] = await Promise.all([
+      lstat(resolvedPath),
+      realpath(resolvedPath),
+    ]);
+  } catch (error: unknown) {
+    throw new LocalCheckoutError("GIT_METADATA_UNSAFE", sourceId, { cause: error });
+  }
+  if (observed.isSymbolicLink()
+    || !observed.isDirectory()
+    || !sameCanonicalPath(canonicalPath, resolvedPath)) {
+    throw new LocalCheckoutError("GIT_METADATA_UNSAFE", sourceId);
+  }
+  return Object.freeze({ path: canonicalPath, identity: observed });
+}
+
+async function observeGitMetadata(
+  runner: GitRunner,
+  checkoutPath: string,
+  sourceId: string,
+): Promise<GitMetadataSnapshot> {
+  const gitDirectory = await observeGitMetadataDirectory(
+    checkoutPath,
+    await runCheckoutGit(
+      runner,
+      checkoutPath,
+      ["rev-parse", "--absolute-git-dir"],
+      sourceId,
+      "GIT_METADATA_UNSAFE",
+    ),
+    sourceId,
+    "Git directory",
+  );
+  const commonDirectory = await observeGitMetadataDirectory(
+    checkoutPath,
+    await runCheckoutGit(
+      runner,
+      checkoutPath,
+      ["rev-parse", "--git-common-dir"],
+      sourceId,
+      "GIT_METADATA_UNSAFE",
+    ),
+    sourceId,
+    "Git common directory",
+  );
+  if (!sameCanonicalPath(gitDirectory.path, commonDirectory.path)) {
+    const nestedPath = relative(commonDirectory.path, gitDirectory.path);
+    if (nestedPath === ""
+      || isAbsolute(nestedPath)
+      || nestedPath === ".."
+      || nestedPath.startsWith(`..${sep}`)
+      || !nestedPath.startsWith(`worktrees${sep}`)) {
+      throw new LocalCheckoutError("GIT_METADATA_UNSAFE", sourceId);
+    }
+  }
+  return Object.freeze({
+    gitDirectoryPath: gitDirectory.path,
+    gitDirectoryIdentity: gitDirectory.identity,
+    commonDirectoryPath: commonDirectory.path,
+    commonDirectoryIdentity: commonDirectory.identity,
+  });
+}
+
+function sameGitMetadata(left: GitMetadataSnapshot, right: GitMetadataSnapshot): boolean {
+  return sameCanonicalPath(left.gitDirectoryPath, right.gitDirectoryPath)
+    && sameIdentity(left.gitDirectoryIdentity, right.gitDirectoryIdentity)
+    && sameCanonicalPath(left.commonDirectoryPath, right.commonDirectoryPath)
+    && sameIdentity(left.commonDirectoryIdentity, right.commonDirectoryIdentity);
+}
+
+async function assertNoGrafts(metadata: GitMetadataSnapshot, sourceId: string): Promise<void> {
+  const infoPath = join(metadata.commonDirectoryPath, "info");
+  let info: Stats;
+  try {
+    info = await lstat(infoPath);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new LocalCheckoutError("GIT_METADATA_UNSAFE", sourceId, { cause: error });
+  }
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new LocalCheckoutError("GIT_METADATA_UNSAFE", sourceId);
+  }
+  try {
+    await lstat(join(infoPath, "grafts"));
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new LocalCheckoutError("GIT_METADATA_UNSAFE", sourceId, { cause: error });
+  }
+  throw new LocalCheckoutError("GRAFTS_UNSUPPORTED", sourceId);
+}
+
+async function assertNoReplacementRefs(
   runner: GitRunner,
   checkoutPath: string,
   sourceId: string,
 ): Promise<void> {
-  const commonDirectoryOutput = await runCheckoutGit(
+  const refs = await runCheckoutGit(
     runner,
     checkoutPath,
-    ["rev-parse", "--git-common-dir"],
+    ["for-each-ref", "--format=%(refname)", "--", "refs/replace/"],
     sourceId,
     "GIT_COMMAND_FAILED",
   );
-  let commonDirectory: string;
-  try {
-    commonDirectory = await realpath(resolve(
-      checkoutPath,
-      singleGitOutputLine(commonDirectoryOutput, sourceId, "Git common directory"),
-    ));
-  } catch (error: unknown) {
-    if (error instanceof LocalCheckoutError) throw error;
-    throw new LocalCheckoutError("GIT_COMMAND_FAILED", sourceId, { cause: error });
-  }
+  if (refs !== "") throw new LocalCheckoutError("REPLACE_REFS_UNSUPPORTED", sourceId);
+}
+
+async function assertNoPromisorMarkers(
+  commonDirectory: string,
+  sourceId: string,
+): Promise<void> {
   let entries: readonly string[];
   try {
     entries = await readdir(join(commonDirectory, "objects", "pack"));
@@ -664,11 +856,94 @@ async function assertNoPromisorMarkers(
   }
 }
 
-async function verifyCheckoutSnapshot(
+async function assertSafeGitProvenance(
+  runner: GitRunner,
+  checkoutPath: string,
+  metadata: GitMetadataSnapshot,
+  sourceId: string,
+): Promise<void> {
+  await assertNoGrafts(metadata, sourceId);
+  await assertNoReplacementRefs(runner, checkoutPath, sourceId);
+  await assertNoPromisorMarkers(metadata.commonDirectoryPath, sourceId);
+}
+
+async function assertSafeIndex(
+  runner: GitRunner,
+  checkoutPath: string,
+  sourceId: string,
+): Promise<void> {
+  assertSafeIndexFlags(await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["ls-files", "-v", "-z"],
+    sourceId,
+    "INDEX_FLAGS_UNSAFE",
+  ), sourceId);
+  assertSafeTrackedEntries(await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["ls-files", "--stage", "-z"],
+    sourceId,
+    "INDEX_FLAGS_UNSAFE",
+  ), sourceId);
+}
+
+async function resolveVerifiedHead(
   runner: GitRunner,
   checkoutPath: string,
   candidate: SourceCandidate,
 ): Promise<string> {
+  const { id } = candidate;
+  const head = singleGitOutputLine(await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"],
+    id,
+    "HEAD_UNRESOLVED",
+  ), id, "HEAD");
+  if (!FULL_COMMIT_SHA.test(head)) throw new LocalCheckoutError("HEAD_UNRESOLVED", id);
+
+  const reviewedCommit = singleGitOutputLine(await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["rev-parse", "--verify", "--end-of-options", `${candidate.ref}^{commit}`],
+    id,
+    "REF_UNRESOLVED",
+  ), id, "reviewed ref");
+  if (!FULL_COMMIT_SHA.test(reviewedCommit)
+    || (COMMIT_PREFIX.test(candidate.ref) && !reviewedCommit.startsWith(candidate.ref))) {
+    throw new LocalCheckoutError("REF_UNRESOLVED", id);
+  }
+  if (reviewedCommit !== head) throw new LocalCheckoutError("REF_MISMATCH", id);
+  return head;
+}
+
+async function assertCleanWorktree(
+  runner: GitRunner,
+  checkoutPath: string,
+  sourceId: string,
+): Promise<void> {
+  const dirt = await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching"],
+    sourceId,
+    "WORKTREE_DIRTY",
+  );
+  if (dirt.length > 0) throw new LocalCheckoutError("WORKTREE_DIRTY", sourceId);
+}
+
+interface CheckoutVerification {
+  readonly commit: string;
+  readonly configFingerprint: string;
+  readonly metadata: GitMetadataSnapshot;
+}
+
+async function verifyCheckoutSnapshot(
+  runner: GitRunner,
+  checkoutPath: string,
+  candidate: SourceCandidate,
+): Promise<CheckoutVerification> {
   const { id } = candidate;
   const inside = singleGitOutputLine(await runCheckoutGit(
     runner,
@@ -697,61 +972,11 @@ async function verifyCheckoutSnapshot(
     throw new LocalCheckoutError("WORKTREE_ROOT_MISMATCH", id);
   }
 
-  const config = await runCheckoutGit(
-    runner,
-    checkoutPath,
-    ["config", "--null", "--list"],
-    id,
-    "GIT_COMMAND_FAILED",
-  );
-  assertRepositoryConfig(config, candidate);
-  await assertNoPromisorMarkers(runner, checkoutPath, id);
-
-  assertSafeIndexFlags(await runCheckoutGit(
-    runner,
-    checkoutPath,
-    ["ls-files", "-v", "-z"],
-    id,
-    "INDEX_FLAGS_UNSAFE",
-  ), id);
-  assertSafeTrackedEntries(await runCheckoutGit(
-    runner,
-    checkoutPath,
-    ["ls-files", "--stage", "-z"],
-    id,
-    "INDEX_FLAGS_UNSAFE",
-  ), id);
-
-  const dirt = await runCheckoutGit(
-    runner,
-    checkoutPath,
-    ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching"],
-    id,
-    "WORKTREE_DIRTY",
-  );
-  if (dirt.length > 0) throw new LocalCheckoutError("WORKTREE_DIRTY", id);
-
-  const head = singleGitOutputLine(await runCheckoutGit(
-    runner,
-    checkoutPath,
-    ["rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"],
-    id,
-    "HEAD_UNRESOLVED",
-  ), id, "HEAD");
-  if (!FULL_COMMIT_SHA.test(head)) throw new LocalCheckoutError("HEAD_UNRESOLVED", id);
-
-  const reviewedCommit = singleGitOutputLine(await runCheckoutGit(
-    runner,
-    checkoutPath,
-    ["rev-parse", "--verify", "--end-of-options", `${candidate.ref}^{commit}`],
-    id,
-    "REF_UNRESOLVED",
-  ), id, "reviewed ref");
-  if (!FULL_COMMIT_SHA.test(reviewedCommit)
-    || (COMMIT_PREFIX.test(candidate.ref) && !reviewedCommit.startsWith(candidate.ref))) {
-    throw new LocalCheckoutError("REF_UNRESOLVED", id);
-  }
-  if (reviewedCommit !== head) throw new LocalCheckoutError("REF_MISMATCH", id);
+  const initialConfig = await readAndValidateLocalConfig(runner, checkoutPath, candidate);
+  const initialMetadata = await observeGitMetadata(runner, checkoutPath, id);
+  await assertSafeGitProvenance(runner, checkoutPath, initialMetadata, id);
+  await assertSafeIndex(runner, checkoutPath, id);
+  const head = await resolveVerifiedHead(runner, checkoutPath, candidate);
 
   await runCheckoutGit(
     runner,
@@ -760,7 +985,28 @@ async function verifyCheckoutSnapshot(
     id,
     "OBJECTS_INCOMPLETE",
   );
-  return head;
+
+  const finalConfig = await readAndValidateLocalConfig(runner, checkoutPath, candidate);
+  if (initialConfig.fingerprint !== finalConfig.fingerprint) {
+    throw new LocalCheckoutError("CONFIG_CHANGED", id);
+  }
+  const finalMetadata = await observeGitMetadata(runner, checkoutPath, id);
+  if (!sameGitMetadata(initialMetadata, finalMetadata)) {
+    throw new LocalCheckoutError("CHECKOUT_CHANGED", id);
+  }
+  await assertSafeGitProvenance(runner, checkoutPath, finalMetadata, id);
+  await assertSafeIndex(runner, checkoutPath, id);
+  const finalHead = await resolveVerifiedHead(runner, checkoutPath, candidate);
+  if (head !== finalHead) throw new LocalCheckoutError("CHECKOUT_CHANGED", id);
+
+  // This is intentionally the final Git semantic check. The future importer must
+  // repeat provenance verification immediately before it reads source content.
+  await assertCleanWorktree(runner, checkoutPath, id);
+  return Object.freeze({
+    commit: finalHead,
+    configFingerprint: finalConfig.fingerprint,
+    metadata: finalMetadata,
+  });
 }
 
 export async function resolveLocalCheckoutCommit(
@@ -786,10 +1032,13 @@ export async function resolveLocalCheckoutCommit(
   const first = await verifyCheckoutSnapshot(runner, checkoutPath, candidate);
   const second = await verifyCheckoutSnapshot(runner, checkoutPath, candidate);
   const after = await requireRealDirectory(checkoutPath, candidate.id);
-  if (!sameIdentity(before, after) || first !== second) {
+  if (!sameIdentity(before, after)
+    || first.commit !== second.commit
+    || first.configFingerprint !== second.configFingerprint
+    || !sameGitMetadata(first.metadata, second.metadata)) {
     throw new LocalCheckoutError("CHECKOUT_CHANGED", candidate.id);
   }
-  return second;
+  return second.commit;
 }
 
 function snapshotLockedSource(value: unknown, path: string): LockedSource {
@@ -820,7 +1069,12 @@ export function serializeSourceLock(lock: SourceLock): string {
 }
 
 function sourceLockWriteErrorMessage(
-  code: "LOCK_PARENT_INVALID" | "LOCK_PARENT_CHANGED" | "LOCK_EXISTS" | "LOCK_PUBLISH_FAILED",
+  code:
+    | "LOCK_PARENT_INVALID"
+    | "LOCK_PARENT_CHANGED"
+    | "LOCK_STAGING_CHANGED"
+    | "LOCK_EXISTS"
+    | "LOCK_PUBLISH_FAILED",
   published: boolean,
 ): string {
   switch (code) {
@@ -828,6 +1082,9 @@ function sourceLockWriteErrorMessage(
     case "LOCK_PARENT_CHANGED": return published
       ? "Source lock parent changed after publication; inspect the published target before retrying"
       : "Source lock parent changed before publication; keep catalog static and retry";
+    case "LOCK_STAGING_CHANGED": return published
+      ? "Source lock staging changed and the published target could not be safely rolled back; inspect it before retrying"
+      : "Source lock staging changed before publication and was rejected";
     case "LOCK_EXISTS": return "Source lock already exists; remove it explicitly after review to relock";
     case "LOCK_PUBLISH_FAILED": return published
       ? "Source lock was published but post-publication verification failed"
@@ -848,6 +1105,24 @@ function isUnsupportedDirectorySync(error: unknown): boolean {
 
 export const nodeSourceLockPublishRuntime: SourceLockPublishRuntime = {
   lstat,
+  inspectFileNoFollow: async (path, maxBytes) => {
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size < 0 || stat.size > maxBytes) {
+        throw new Error("Published source lock is not a bounded regular file");
+      }
+      const content = await handle.readFile({ encoding: "utf8" });
+      await handle.close();
+      handle = undefined;
+      return { stat, content };
+    } finally {
+      if (handle !== undefined) {
+        try { await handle.close(); } catch { /* preserve the primary inspection error */ }
+      }
+    }
+  },
   openTemporary: async (path) => {
     const handle = await open(path, "wx");
     return {
@@ -893,6 +1168,42 @@ async function observeLockParent(
   return observed;
 }
 
+function samePublishedFile(left: Stats, right: Stats): boolean {
+  return left.isFile()
+    && right.isFile()
+    && sameIdentity(left, right)
+    && left.size === right.size;
+}
+
+async function rollbackLinkedTarget(
+  runtime: SourceLockPublishRuntime,
+  temporary: string,
+  target: string,
+  linkedIdentity: Stats,
+): Promise<boolean> {
+  try {
+    const [temporaryNow, targetNow] = await Promise.all([
+      runtime.lstat(temporary),
+      runtime.lstat(target),
+    ]);
+    if (!samePublishedFile(linkedIdentity, temporaryNow)
+      || !samePublishedFile(linkedIdentity, targetNow)) {
+      return false;
+    }
+    const targetImmediatelyBeforeRemove = await runtime.lstat(target);
+    if (!samePublishedFile(linkedIdentity, targetImmediatelyBeforeRemove)) return false;
+    await runtime.remove(target, { force: false });
+    try {
+      await runtime.lstat(target);
+      return false;
+    } catch (error: unknown) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    }
+  } catch {
+    return false;
+  }
+}
+
 export async function writeSourceLockFile(
   target: string,
   lock: SourceLock,
@@ -906,6 +1217,7 @@ export async function writeSourceLockFile(
   let file: SourceLockTemporaryHandle | undefined;
   let ownsTemporary = false;
   let published = false;
+  let targetLinkAttempted = false;
 
   try {
     file = await runtime.openTemporary(temporary);
@@ -921,8 +1233,46 @@ export async function writeSourceLockFile(
       throw new SourceLockWriteError("LOCK_PARENT_CHANGED", false);
     }
 
+    let temporaryBeforeLink: Stats;
+    try {
+      temporaryBeforeLink = await runtime.lstat(temporary);
+    } catch (error: unknown) {
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", false, { cause: error });
+    }
+    if (!samePublishedFile(temporaryIdentity, temporaryBeforeLink)
+      || temporaryIdentity.size !== Buffer.byteLength(content, "utf8")) {
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", false);
+    }
+
+    targetLinkAttempted = true;
     await runtime.link(temporary, target);
+    targetLinkAttempted = false;
     published = true;
+    let targetAfterLink: Stats | undefined;
+    let targetInspection: Awaited<ReturnType<SourceLockPublishRuntime["inspectFileNoFollow"]>> | undefined;
+    try {
+      targetAfterLink = await runtime.lstat(target);
+      targetInspection = await runtime.inspectFileNoFollow(
+        target,
+        Buffer.byteLength(content, "utf8"),
+      );
+    } catch (error: unknown) {
+      let rolledBack = false;
+      if (targetAfterLink !== undefined) {
+        rolledBack = await rollbackLinkedTarget(runtime, temporary, target, targetAfterLink);
+        if (rolledBack) published = false;
+      }
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", !rolledBack, { cause: error });
+    }
+    if (targetAfterLink === undefined
+      || targetInspection === undefined
+      || !samePublishedFile(temporaryIdentity, targetAfterLink)
+      || !samePublishedFile(targetAfterLink, targetInspection.stat)
+      || targetInspection.content !== content) {
+      const rolledBack = await rollbackLinkedTarget(runtime, temporary, target, targetAfterLink);
+      if (rolledBack) published = false;
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", !rolledBack);
+    }
     let parentAfterLink: Stats;
     try {
       parentAfterLink = await observeLockParent(runtime, parentPath);
@@ -945,7 +1295,13 @@ export async function writeSourceLockFile(
     }
 
     try {
-      await runtime.syncDirectory(parentPath);
+      const directorySync = await runtime.syncDirectory(parentPath);
+      if (directorySync === "unsupported") {
+        warnings.push({
+          code: "DIRECTORY_SYNC_UNSUPPORTED",
+          message: "Source lock was published, but parent-directory sync is not supported on this platform",
+        });
+      }
     } catch {
       warnings.push({
         code: "DIRECTORY_SYNC_FAILED",
@@ -972,7 +1328,7 @@ export async function writeSourceLockFile(
       try { await runtime.remove(temporary, { force: true }); } catch { /* best-effort cleanup */ }
     }
     if (error instanceof SourceLockWriteError) throw error;
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+    if (targetLinkAttempted && (error as NodeJS.ErrnoException).code === "EEXIST") {
       throw new SourceLockWriteError("LOCK_EXISTS", false, { cause: error });
     }
     throw new SourceLockWriteError("LOCK_PUBLISH_FAILED", published, { cause: error });
