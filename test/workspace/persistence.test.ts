@@ -1,4 +1,6 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -27,6 +29,25 @@ async function writeLock(projectRoot: string, contents: string): Promise<string>
 
 function oldDate(): Date {
   return new Date(Date.now() - 60_000);
+}
+
+async function exitedChildPid(): Promise<number> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    if (child.pid === undefined) {
+      throw new Error("Could not determine child PID");
+    }
+    const pid = child.pid;
+    await once(child, "exit");
+    try {
+      process.kill(pid, 0);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+        return pid;
+      }
+    }
+  }
+  throw new Error("Exited child PID was unexpectedly reused");
 }
 
 afterEach(async () => {
@@ -101,17 +122,43 @@ describe("withWorkspaceLock", () => {
     await expect(withWorkspaceLock(root, async () => "reacquired")).resolves.toBe("reacquired");
   });
 
-  test("recovers an old lock held by a dead owner", async () => {
+  test("recovers an old lock held by an exited process", async () => {
     const root = await temporaryProject();
+    const pid = await exitedChildPid();
     const lock = await writeLock(root, JSON.stringify({
       token: randomUUID(),
-      pid: Number.MAX_SAFE_INTEGER + 1,
+      pid,
       createdAt: oldDate().toISOString(),
     }));
     await utimes(lock, oldDate(), oldDate());
 
     await expect(withWorkspaceLock(root, async () => "recovered")).resolves.toBe("recovered");
   });
+
+  test.each([0, -1, Number.MAX_SAFE_INTEGER + 1, 1.5])(
+    "treats old metadata with pid %s as corrupt and recovers it",
+    async (pid) => {
+      const root = await temporaryProject();
+      const lock = await writeLock(root, JSON.stringify({
+        token: randomUUID(),
+        pid,
+        createdAt: oldDate().toISOString(),
+      }));
+      await utimes(lock, oldDate(), oldDate());
+
+      await expect(withWorkspaceLock(root, async () => "recovered")).resolves.toBe("recovered");
+    },
+  );
+
+  test.each([0, -1, Number.MAX_SAFE_INTEGER + 1, 1.5])(
+    "treats fresh metadata with pid %s as corrupt and keeps it locked",
+    async (pid) => {
+      const root = await temporaryProject();
+      await writeLock(root, JSON.stringify({ token: randomUUID(), pid, createdAt: new Date().toISOString() }));
+
+      await expect(withWorkspaceLock(root, async () => undefined)).rejects.toBeInstanceOf(WorkspaceLockedError);
+    },
+  );
 
   test("does not steal an old lock held by the current process", async () => {
     const root = await temporaryProject();
@@ -154,6 +201,23 @@ describe("withWorkspaceLock", () => {
     });
 
     await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toEqual([]);
     await rm(lock, { force: true });
+  });
+
+  test("preserves a non-Error operation value by identity", async () => {
+    const root = await temporaryProject();
+    const sentinel = { reason: "stop" };
+
+    await expect(withWorkspaceLock(root, async () => { throw sentinel; })).rejects.toBe(sentinel);
+  });
+
+  test("leaves no quarantine artifacts after releasing a lock", async () => {
+    const root = await temporaryProject();
+    const lockDirectory = dirname(workspacePaths(root).lock);
+
+    await withWorkspaceLock(root, async () => undefined);
+
+    expect((await readdir(lockDirectory)).filter((entry) => entry.includes("quarantine"))).toEqual([]);
   });
 });

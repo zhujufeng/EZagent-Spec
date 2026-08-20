@@ -1,7 +1,7 @@
-import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
+import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import { WorkspaceLockedError } from "./errors.js";
 import { workspacePaths } from "./layout.js";
@@ -20,7 +20,11 @@ interface FileFingerprint {
   readonly ino: number;
   readonly size: number;
   readonly mtimeMs: number;
-  readonly ctimeMs: number;
+}
+
+interface QuarantineInspection {
+  readonly metadata: LockMetadata | undefined;
+  readonly fingerprint: FileFingerprint;
 }
 
 function parseLockMetadata(contents: string): LockMetadata | undefined {
@@ -29,11 +33,10 @@ function parseLockMetadata(contents: string): LockMetadata | undefined {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return undefined;
     }
-    const value = parsed as Record<string, unknown>;
-    const { token, pid, createdAt } = value;
+    const { token, pid, createdAt } = parsed as Record<string, unknown>;
     if (
       typeof token !== "string" || token.length === 0
-      || typeof pid !== "number"
+      || typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0
       || typeof createdAt !== "string" || Number.isNaN(Date.parse(createdAt))
     ) {
       return undefined;
@@ -50,7 +53,6 @@ function fingerprint(fileStat: Stats): FileFingerprint {
     ino: fileStat.ino,
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,
-    ctimeMs: fileStat.ctimeMs,
   };
 }
 
@@ -58,15 +60,14 @@ function sameFingerprint(left: FileFingerprint, right: FileFingerprint): boolean
   return left.dev === right.dev
     && left.ino === right.ino
     && left.size === right.size
-    && left.mtimeMs === right.mtimeMs
-    && left.ctimeMs === right.ctimeMs;
+    && left.mtimeMs === right.mtimeMs;
+}
+
+function sameFile(left: FileFingerprint, right: FileFingerprint): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
 }
 
 function ownerIsAlive(pid: number): boolean {
-  if (!Number.isSafeInteger(pid) || pid <= 0) {
-    return false;
-  }
-
   try {
     process.kill(pid, 0);
     return true;
@@ -75,25 +76,90 @@ function ownerIsAlive(pid: number): boolean {
   }
 }
 
-async function readMetadata(lock: string): Promise<LockMetadata | undefined> {
+function quarantinePath(lock: string): string {
+  return join(dirname(lock), `.${process.pid}.${randomUUID()}.quarantine`);
+}
+
+async function moveToQuarantine(lock: string): Promise<string | undefined> {
+  const quarantine = quarantinePath(lock);
   try {
-    return parseLockMetadata(await readFile(lock, "utf8"));
-  } catch {
-    return undefined;
+    await rename(lock, quarantine);
+    return quarantine;
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
   }
+}
+
+async function restoreQuarantine(quarantine: string, lock: string): Promise<boolean> {
+  try {
+    await link(quarantine, lock);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
+  await rm(quarantine, { force: true });
+  return true;
+}
+
+async function inspectQuarantine(quarantine: string): Promise<QuarantineInspection | undefined> {
+  try {
+    const [contents, fileStat] = await Promise.all([readFile(quarantine, "utf8"), stat(quarantine)]);
+    return { metadata: parseLockMetadata(contents), fingerprint: fingerprint(fileStat) };
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function discardOrRestore(
+  lock: string,
+  quarantine: string,
+  matches: (inspection: QuarantineInspection) => boolean,
+): Promise<boolean> {
+  const inspection = await inspectQuarantine(quarantine);
+  if (inspection !== undefined && matches(inspection)) {
+    await rm(quarantine, { force: true });
+    return true;
+  }
+  if (await restoreQuarantine(quarantine, lock)) {
+    return false;
+  }
+  throw new WorkspaceLockedError("Workspace is locked and lock cleanup could not be completed");
 }
 
 async function releaseOwnedLock(lock: string, token: string): Promise<void> {
-  const metadata = await readMetadata(lock);
-  if (metadata?.token === token) {
-    await rm(lock, { force: true });
+  const quarantine = await moveToQuarantine(lock);
+  if (quarantine === undefined) {
+    return;
   }
+  await discardOrRestore(lock, quarantine, (inspection) => inspection.metadata?.token === token);
+}
+
+async function removeFailedAcquisition(lock: string, expected: FileFingerprint): Promise<void> {
+  const quarantine = await moveToQuarantine(lock);
+  if (quarantine === undefined) {
+    return;
+  }
+  await discardOrRestore(lock, quarantine, (inspection) => sameFingerprint(inspection.fingerprint, expected));
 }
 
 async function recoverStaleLock(lock: string): Promise<boolean> {
-  let observedStat: Stats;
+  let observed: FileFingerprint;
+  let metadata: LockMetadata | undefined;
   try {
-    observedStat = await stat(lock);
+    const [contents, fileStat] = await Promise.all([readFile(lock, "utf8"), stat(lock)]);
+    observed = fingerprint(fileStat);
+    if (Date.now() - fileStat.mtimeMs < STALE_LOCK_MS) {
+      return false;
+    }
+    metadata = parseLockMetadata(contents);
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return true;
@@ -101,36 +167,18 @@ async function recoverStaleLock(lock: string): Promise<boolean> {
     return false;
   }
 
-  if (Date.now() - observedStat.mtimeMs < STALE_LOCK_MS) {
+  if (metadata !== undefined && ownerIsAlive(metadata.pid)) {
     return false;
   }
 
-  const observedFingerprint = fingerprint(observedStat);
-  const metadata = await readMetadata(lock);
-  if (metadata !== undefined) {
-    if (ownerIsAlive(metadata.pid)) {
-      return false;
-    }
-    const currentMetadata = await readMetadata(lock);
-    if (currentMetadata?.token !== metadata.token) {
-      return false;
-    }
-    await rm(lock, { force: true });
+  const quarantine = await moveToQuarantine(lock);
+  if (quarantine === undefined) {
     return true;
   }
-
-  try {
-    if (!sameFingerprint(observedFingerprint, fingerprint(await stat(lock)))) {
-      return false;
-    }
-    await rm(lock, { force: true });
-    return true;
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return true;
-    }
-    return false;
-  }
+  return discardOrRestore(lock, quarantine, (inspection) => (
+    sameFingerprint(inspection.fingerprint, observed)
+    && (metadata === undefined || inspection.metadata?.token === metadata.token)
+  ));
 }
 
 export async function withWorkspaceLock<T>(projectRoot: string, operation: () => Promise<T>): Promise<T> {
@@ -141,46 +189,66 @@ export async function withWorkspaceLock<T>(projectRoot: string, operation: () =>
     const token = randomUUID();
     const metadata: LockMetadata = { token, pid: process.pid, createdAt: new Date().toISOString() };
     let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let acquired: FileFingerprint | undefined;
 
     try {
       handle = await open(lock, "wx", 0o600);
-    } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw error;
-      }
-      if (await recoverStaleLock(lock)) {
-        continue;
-      }
-      throw new WorkspaceLockedError("Workspace is locked");
-    }
-
-    try {
+      acquired = fingerprint(await handle.stat());
       await handle.writeFile(JSON.stringify(metadata), "utf8");
       await handle.sync();
-    } catch (error: unknown) {
-      try {
-        await handle.close();
-      } catch {
-        // Preserve the write or sync failure while still attempting to close the handle.
-      }
+      await handle.close();
       handle = undefined;
-      await releaseOwnedLock(lock, token);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST" && handle === undefined) {
+        if (await recoverStaleLock(lock)) {
+          continue;
+        }
+        throw new WorkspaceLockedError("Workspace is locked");
+      }
+
+      if (handle !== undefined) {
+        try {
+          await handle.close();
+        } catch {
+          // Preserve the acquisition failure while still attempting handle cleanup.
+        }
+      }
+      if (acquired !== undefined) {
+        try {
+          const failedStat = fingerprint(await stat(lock));
+          if (sameFile(failedStat, acquired)) {
+            await removeFailedAcquisition(lock, failedStat);
+          }
+        } catch {
+          // A failed cleanup must not mask the original acquisition failure.
+        }
+      }
       throw error;
     }
 
+    let operationFailed = false;
+    let operationFailure: unknown;
+    let result: T | undefined;
     try {
-      await handle.close();
+      result = await operation();
     } catch (error: unknown) {
-      handle = undefined;
-      await releaseOwnedLock(lock, token);
-      throw error;
+      operationFailed = true;
+      operationFailure = error;
     }
-    handle = undefined;
+
     try {
-      return await operation();
-    } finally {
       await releaseOwnedLock(lock, token);
+    } catch (releaseFailure: unknown) {
+      if (operationFailed) {
+        throw operationFailure;
+      }
+      throw releaseFailure;
     }
+
+    if (operationFailed) {
+      throw operationFailure;
+    }
+    return result as T;
   }
 
   throw new WorkspaceLockedError("Workspace is locked");

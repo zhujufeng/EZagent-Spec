@@ -6,20 +6,45 @@ export async function atomicWriteText(target: string, content: string): Promise<
   const parent = dirname(target);
   const temporary = join(parent, `.${basename(target)}.${process.pid}.${randomUUID()}.tmp`);
   let file: Awaited<ReturnType<typeof open>> | undefined;
+  let ownsTemporary = false;
+  let failed = false;
+  let failure: unknown;
 
   await mkdir(parent, { recursive: true });
 
   try {
     file = await open(temporary, "wx");
+    ownsTemporary = true;
     await file.writeFile(content, "utf8");
     await file.sync();
     await file.close();
     file = undefined;
     await rename(temporary, target);
-  } finally {
-    if (file !== undefined) {
+  } catch (error: unknown) {
+    failed = true;
+    failure = error;
+  }
+
+  let cleanupFailure: unknown;
+  if (file !== undefined) {
+    try {
       await file.close();
+    } catch (error: unknown) {
+      cleanupFailure = error;
     }
-    await rm(temporary, { force: true });
+  }
+  if (ownsTemporary) {
+    try {
+      await rm(temporary, { force: true });
+    } catch (error: unknown) {
+      cleanupFailure ??= error;
+    }
+  }
+
+  if (failed) {
+    throw failure;
+  }
+  if (cleanupFailure !== undefined) {
+    throw cleanupFailure;
   }
 }
