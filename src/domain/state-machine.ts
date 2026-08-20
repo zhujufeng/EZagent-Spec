@@ -39,7 +39,7 @@ export function transitionWorkItem(
     request.to === "implementing" &&
     current.risk === "high" &&
     current.status !== "verifying" &&
-    !request.highRiskAuthorizationId
+    !request.highRiskAuthorizationId?.trim()
   ) {
     throw new Error("high-risk implementation requires authorization");
   }
