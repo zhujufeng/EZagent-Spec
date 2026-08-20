@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -195,12 +195,21 @@ describe("withWorkspaceLock", () => {
       pid: process.pid,
       createdAt: new Date().toISOString(),
     });
+    let replacementStat!: Awaited<ReturnType<typeof stat>>;
 
     await withWorkspaceLock(root, async () => {
       await writeFile(lock, replacement, "utf8");
+      replacementStat = await stat(lock);
     });
 
     await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
+    const after = await stat(lock);
+    expect(after.size).toBe(replacementStat.size);
+    expect(after.mtimeMs).toBe(replacementStat.mtimeMs);
+    if (replacementStat.ino !== 0 && after.ino !== 0) {
+      expect(after.dev).toBe(replacementStat.dev);
+      expect(after.ino).toBe(replacementStat.ino);
+    }
     expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toEqual([]);
     await rm(lock, { force: true });
   });

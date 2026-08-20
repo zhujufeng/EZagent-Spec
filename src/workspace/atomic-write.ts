@@ -20,6 +20,7 @@ export async function atomicWriteText(target: string, content: string): Promise<
     await file.close();
     file = undefined;
     await rename(temporary, target);
+    ownsTemporary = false;
   } catch (error: unknown) {
     failed = true;
     failure = error;

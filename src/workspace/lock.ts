@@ -1,6 +1,6 @@
-import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import type { Stats } from "node:fs";
+import { constants, type Stats } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { WorkspaceLockedError } from "./errors.js";
@@ -95,7 +95,7 @@ async function moveToQuarantine(lock: string): Promise<string | undefined> {
 
 async function restoreQuarantine(quarantine: string, lock: string): Promise<boolean> {
   try {
-    await link(quarantine, lock);
+    await copyFile(quarantine, lock, constants.COPYFILE_EXCL);
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       return false;
@@ -106,9 +106,9 @@ async function restoreQuarantine(quarantine: string, lock: string): Promise<bool
   return true;
 }
 
-async function inspectQuarantine(quarantine: string): Promise<QuarantineInspection | undefined> {
+async function inspectLock(path: string): Promise<QuarantineInspection | undefined> {
   try {
-    const [contents, fileStat] = await Promise.all([readFile(quarantine, "utf8"), stat(quarantine)]);
+    const [contents, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
     return { metadata: parseLockMetadata(contents), fingerprint: fingerprint(fileStat) };
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -116,6 +116,10 @@ async function inspectQuarantine(quarantine: string): Promise<QuarantineInspecti
     }
     throw error;
   }
+}
+
+async function inspectQuarantine(quarantine: string): Promise<QuarantineInspection | undefined> {
+  return inspectLock(quarantine);
 }
 
 async function discardOrRestore(
@@ -135,11 +139,17 @@ async function discardOrRestore(
 }
 
 async function releaseOwnedLock(lock: string, token: string): Promise<void> {
+  const expected = await inspectLock(lock);
+  if (expected?.metadata?.token !== token) {
+    return;
+  }
   const quarantine = await moveToQuarantine(lock);
   if (quarantine === undefined) {
     return;
   }
-  await discardOrRestore(lock, quarantine, (inspection) => inspection.metadata?.token === token);
+  await discardOrRestore(lock, quarantine, (inspection) => (
+    inspection.metadata?.token === token && sameFingerprint(inspection.fingerprint, expected.fingerprint)
+  ));
 }
 
 async function removeFailedAcquisition(lock: string, expected: FileFingerprint): Promise<void> {
@@ -151,23 +161,32 @@ async function removeFailedAcquisition(lock: string, expected: FileFingerprint):
 }
 
 async function recoverStaleLock(lock: string): Promise<boolean> {
-  let observed: FileFingerprint;
-  let metadata: LockMetadata | undefined;
+  let observed: QuarantineInspection;
   try {
-    const [contents, fileStat] = await Promise.all([readFile(lock, "utf8"), stat(lock)]);
-    observed = fingerprint(fileStat);
-    if (Date.now() - fileStat.mtimeMs < STALE_LOCK_MS) {
-      return false;
-    }
-    metadata = parseLockMetadata(contents);
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    const inspection = await inspectLock(lock);
+    if (inspection === undefined) {
       return true;
     }
+    observed = inspection;
+  } catch {
     return false;
   }
 
-  if (metadata !== undefined && ownerIsAlive(metadata.pid)) {
+  if (Date.now() - observed.fingerprint.mtimeMs < STALE_LOCK_MS) {
+    return false;
+  }
+  if (observed.metadata !== undefined && ownerIsAlive(observed.metadata.pid)) {
+    return false;
+  }
+
+  const current = await inspectLock(lock);
+  if (current === undefined) {
+    return true;
+  }
+  if (
+    !sameFingerprint(current.fingerprint, observed.fingerprint)
+    || (observed.metadata !== undefined && current.metadata?.token !== observed.metadata.token)
+  ) {
     return false;
   }
 
@@ -176,8 +195,8 @@ async function recoverStaleLock(lock: string): Promise<boolean> {
     return true;
   }
   return discardOrRestore(lock, quarantine, (inspection) => (
-    sameFingerprint(inspection.fingerprint, observed)
-    && (metadata === undefined || inspection.metadata?.token === metadata.token)
+    sameFingerprint(inspection.fingerprint, observed.fingerprint)
+    && (observed.metadata === undefined || inspection.metadata?.token === observed.metadata.token)
   ));
 }
 
