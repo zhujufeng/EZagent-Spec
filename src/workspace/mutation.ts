@@ -8,6 +8,7 @@ import {
   type AuditEvent,
   type AuditMetadata,
 } from "../audit/events.js";
+import { isWellFormedUnicode } from "../text/unicode.js";
 import {
   ensureWorkspaceDirectoryChains,
   nodeWorkspaceDirectoryRuntime,
@@ -16,10 +17,7 @@ import {
 import { WorkspaceCorruptError } from "./errors.js";
 import { parseWorkspaceState, type WorkspaceState } from "./schema.js";
 
-const ARTIFACT_ROOTS = new Set([
-  "requirements", "specs", "tasks", "knowledge", "experts", "quality", "backups",
-]);
-const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu;
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9]|lpt[1-9])(?:\..*)?$/iu;
 const SHA256 = /^[0-9a-f]{64}$/u;
 const PENDING_KEYS = [
   "schemaVersion", "token", "createdAt", "fromRevision", "toRevision", "stateHash", "eventHash", "writes",
@@ -80,21 +78,6 @@ function portableCollisionKey(relativePath: string): string {
   return relativePath.normalize("NFKC").toUpperCase().normalize("NFKC");
 }
 
-function isWellFormedUnicode(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      if (index + 1 >= value.length) return false;
-      const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) return false;
-      index += 1;
-      continue;
-    }
-    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) return false;
-  }
-  return true;
-}
-
 function assertCanonicalTimestamp(value: unknown, label: string): asserts value is string {
   if (
     typeof value !== "string"
@@ -126,25 +109,39 @@ export function validateArtifactRelativePath(value: unknown): string {
     throw new TypeError(`workspace write escapes .ezagent or is not portable: ${String(value)}`);
   }
   const components = value.split("/");
-  if (components.length < 2 || !ARTIFACT_ROOTS.has(components[0]!)) {
+  const root = components[0];
+  const allowedPrefix = components.length >= 2 && (
+    root === "requirements"
+    || root === "specs"
+    || root === "tasks"
+    || root === "experts"
+    || (root === "knowledge" && components.length >= 3
+      && (components[1] === "decisions" || components[1] === "patterns"))
+    || (root === "quality" && components.length >= 3 && components[1] === "runs")
+  );
+  if (!allowedPrefix) {
     throw new TypeError(`workspace write is outside allowed artifact roots: ${value}`);
   }
-  for (const component of components) {
+  const actualComponents: string[] = [];
+  for (const rawComponent of components) {
+    const component = rawComponent.normalize("NFC");
+    const portableComponent = rawComponent.normalize("NFKC");
     if (
       component.length === 0
       || component.length > 255
       || Buffer.byteLength(component, "utf8") > 255
       || component === "."
       || component === ".."
-      || component.endsWith(".")
-      || component.endsWith(" ")
-      || /[<>:"|?*\u0000-\u001f\u007f]/u.test(component)
-      || WINDOWS_DEVICE_NAME.test(component)
+      || portableComponent.endsWith(".")
+      || portableComponent.endsWith(" ")
+      || /[<>:"/\\|?*\u0000-\u001f\u007f]/u.test(portableComponent)
+      || WINDOWS_DEVICE_NAME.test(portableComponent)
     ) {
       throw new TypeError(`workspace write path is unsafe or not portable: ${value}`);
     }
+    actualComponents.push(component);
   }
-  return value.normalize("NFC");
+  return actualComponents.join("/");
 }
 
 function normalizeWrites(writes: readonly WorkspaceMutationWrite[]): readonly WorkspaceMutationWrite[] {
@@ -193,7 +190,11 @@ export function normalizeWorkspaceMutation(
 }
 
 export function hashText(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex");
+  return hashBytes(Buffer.from(value, "utf8"));
+}
+
+export function hashBytes(value: Uint8Array): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 export function targetPath(workspaceRoot: string, relativePath: string): string {
@@ -317,8 +318,8 @@ export async function artifactHashesMatch(workspaceRoot: string, marker: Pending
   await validateExistingArtifactBoundaries(workspaceRoot, marker.writes);
   for (const write of marker.writes) {
     try {
-      const contents = await readFile(targetPath(workspaceRoot, write.relativePath), "utf8");
-      if (hashText(contents) !== write.contentHash) return false;
+      const contents = await readFile(targetPath(workspaceRoot, write.relativePath));
+      if (hashBytes(contents) !== write.contentHash) return false;
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw new WorkspaceCorruptError(`workspace artifact is unreadable: ${write.relativePath}`, { cause: error });

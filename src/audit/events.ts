@@ -2,6 +2,7 @@ import { constants, type Stats } from "node:fs";
 import { lstat, open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { isWellFormedUnicode } from "../text/unicode.js";
 import { WorkspaceCorruptError } from "../workspace/errors.js";
 import { parseWorkspaceState, type WorkspaceState } from "../workspace/schema.js";
 
@@ -12,6 +13,7 @@ const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 256;
 const MAX_METADATA_ARRAY_LENGTH = 32;
 const MAX_METADATA_ARRAY_ITEM_LENGTH = 160;
+const MAX_AUDIT_BYTES = 16 * 1024 * 1024;
 const DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
 export type AuditMetadataValue = string | number | boolean | null | readonly string[];
@@ -29,6 +31,7 @@ export interface AuditFileHandle {
   readonly writeFile: (contents: string, encoding: "utf8") => Promise<void>;
   readonly sync: () => Promise<void>;
   readonly close: () => Promise<void>;
+  readonly stat: () => Promise<Stats>;
 }
 
 export interface AuditFileRuntime {
@@ -96,15 +99,14 @@ function parseMetadata(value: unknown): AuditMetadata {
       continue;
     }
     if (Array.isArray(item)) {
-      const entriesAreBoundedStrings = Array.from(
-        { length: item.length },
-        (_, index) => item[index],
-      ).every((entry) => typeof entry === "string" && entry.length <= MAX_METADATA_ARRAY_ITEM_LENGTH);
-      if (
-        item.length > MAX_METADATA_ARRAY_LENGTH
-        || !entriesAreBoundedStrings
-      ) {
-        throw new TypeError(`audit metadata string array is invalid: ${key}`);
+      if (item.length > MAX_METADATA_ARRAY_LENGTH) {
+        throw new TypeError(`audit metadata string array must have at most ${MAX_METADATA_ARRAY_LENGTH} items: ${key}`);
+      }
+      for (let index = 0; index < item.length; index += 1) {
+        const entry = item[index];
+        if (!Object.hasOwn(item, index) || typeof entry !== "string" || entry.length > MAX_METADATA_ARRAY_ITEM_LENGTH) {
+          throw new TypeError(`audit metadata string array is invalid: ${key}`);
+        }
       }
       parsed[key] = [...item] as string[];
       continue;
@@ -137,9 +139,10 @@ export function parseAuditEvent(value: unknown): AuditEvent {
     typeof value.type !== "string"
     || value.type.length === 0
     || value.type.length > MAX_EVENT_TYPE_LENGTH
-    || value.type !== value.type.trim()
+    || !isWellFormedUnicode(value.type)
+    || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(value.type)
   ) {
-    throw new TypeError(`audit event type must be 1-${MAX_EVENT_TYPE_LENGTH} non-whitespace characters`);
+    throw new TypeError(`audit event type must be a lowercase hyphenated slug up to ${MAX_EVENT_TYPE_LENGTH} characters`);
   }
   const state = parseWorkspaceState(value.state);
   if (state.revision !== value.sequence) {
@@ -168,8 +171,7 @@ async function observe(runtime: AuditFileRuntime, path: string): Promise<Stats |
 async function assertAuditBoundary(
   runtime: AuditFileRuntime,
   path: string,
-  allowMissingFile: boolean,
-): Promise<void> {
+): Promise<Stats> {
   const parent = dirname(path);
   const parentStat = await observe(runtime, parent);
   if (parentStat === undefined || !parentStat.isDirectory()) {
@@ -179,7 +181,6 @@ async function assertAuditBoundary(
   }
   const fileStat = await observe(runtime, path);
   if (fileStat === undefined) {
-    if (allowMissingFile) return;
     throw new WorkspaceCorruptError(`workspace audit is unreadable or corrupt: ${path}`, {
       cause: Object.assign(new Error("audit file is missing"), { code: "ENOENT" }),
     });
@@ -189,6 +190,36 @@ async function assertAuditBoundary(
       cause: new Error("expected regular audit file"),
     });
   }
+  if (
+    fileStat.nlink !== 1
+    || !Number.isSafeInteger(fileStat.dev) || fileStat.dev <= 0
+    || !Number.isSafeInteger(fileStat.ino) || fileStat.ino <= 0
+  ) {
+    throw new WorkspaceCorruptError(`workspace audit requires unique stable file identity: ${path}`, {
+      cause: new Error("audit must have nlink=1 and stable dev/ino identity"),
+    });
+  }
+  if (!Number.isSafeInteger(fileStat.size) || fileStat.size < 0 || fileStat.size > MAX_AUDIT_BYTES) {
+    throw new WorkspaceCorruptError(`workspace audit exceeds size limit: ${path}`, {
+      cause: new Error(`audit size limit is ${MAX_AUDIT_BYTES} bytes`),
+    });
+  }
+  return fileStat;
+}
+
+function sameAuditIdentity(left: Stats, right: Stats): boolean {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.nlink === 1
+    && right.nlink === 1
+    && left.size === right.size
+    && left.mtimeMs === right.mtimeMs;
+}
+
+function auditIdentityError(path: string): WorkspaceCorruptError {
+  return new WorkspaceCorruptError(`workspace audit identity changed while open: ${path}`, {
+    cause: new Error("audit pre-open and opened handle identity differ"),
+  });
 }
 
 function corruptAudit(path: string, line: number, cause: unknown): WorkspaceCorruptError {
@@ -198,16 +229,27 @@ function corruptAudit(path: string, line: number, cause: unknown): WorkspaceCorr
 export function createAuditStore(runtime: AuditFileRuntime) {
   async function append(path: string, rawEvent: AuditEvent): Promise<void> {
     const validated = parseAuditEvent(rawEvent);
-    await assertAuditBoundary(runtime, path, true);
     const line = `${JSON.stringify(validated)}\n`;
+    const lineBytes = Buffer.byteLength(line, "utf8");
+    const before = await assertAuditBoundary(runtime, path);
+    if (before.size + lineBytes > MAX_AUDIT_BYTES) {
+      throw new WorkspaceCorruptError(`workspace audit append exceeds size limit: ${path}`, {
+        cause: new Error(`audit size limit is ${MAX_AUDIT_BYTES} bytes`),
+      });
+    }
     let handle: AuditFileHandle | undefined;
     let failure: unknown;
     try {
       handle = await runtime.open(
         path,
-        constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+        // O_NOFOLLOW is defense-in-depth where supported; lstat/open-handle identity is the portable invariant.
+        constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW,
         0o600,
       );
+      const opened = await handle.stat();
+      if (!opened.isFile() || !sameAuditIdentity(before, opened)) {
+        throw auditIdentityError(path);
+      }
       await handle.writeFile(line, "utf8");
       await handle.sync();
     } catch (error: unknown) {
@@ -227,12 +269,20 @@ export function createAuditStore(runtime: AuditFileRuntime) {
   }
 
   async function read(path: string): Promise<AuditEvent[]> {
-    await assertAuditBoundary(runtime, path, false);
+    const before = await assertAuditBoundary(runtime, path);
     let bytes: Buffer;
     try {
       bytes = await runtime.readFile(path);
     } catch (error: unknown) {
       throw new WorkspaceCorruptError(`workspace audit is unreadable or corrupt: ${path}`, { cause: error });
+    }
+    const after = await assertAuditBoundary(runtime, path);
+    if (
+      !sameAuditIdentity(before, after)
+      || bytes.byteLength !== after.size
+      || bytes.byteLength > MAX_AUDIT_BYTES
+    ) {
+      throw auditIdentityError(path);
     }
     let text: string;
     try {

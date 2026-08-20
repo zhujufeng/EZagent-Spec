@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, readFile, rm } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
@@ -31,12 +31,15 @@ import {
   ensureArtifactBoundaries,
   hashText,
   normalizeWorkspaceMutation,
-  parsePendingMutation,
   targetPath,
   validateExistingArtifactBoundaries,
   type PendingMutation,
   type WorkspaceMutationWrite,
 } from "./mutation.js";
+import {
+  nodePendingMarkerStore,
+  type PendingMarkerObservation,
+} from "./pending-marker.js";
 import { workspaceInitializeRetryRuntime } from "./retry-runtime.js";
 import {
   parseProjectConfig,
@@ -246,16 +249,6 @@ async function readProjectionState(path: string): Promise<WorkspaceState> {
   }
 }
 
-async function readPendingMutation(path: string): Promise<PendingMutation | undefined> {
-  const pendingFile = await readWorkspaceText(path, "pending mutation");
-  if (!pendingFile.exists) return undefined;
-  try {
-    return parsePendingMutation(JSON.parse(pendingFile.contents) as unknown);
-  } catch (error: unknown) {
-    throw new WorkspaceCorruptError(`pending mutation is unreadable or corrupt: ${path}`, { cause: error });
-  }
-}
-
 function stateMatchesAudit(state: WorkspaceState, events: readonly AuditEvent[]): boolean {
   const projected = recoverState(events);
   return isDeepStrictEqual(state, projected);
@@ -275,20 +268,6 @@ async function pendingMutationIsCommitted(
     && hashText(JSON.stringify(finalEvent)) === marker.eventHash
     && isDeepStrictEqual(finalEvent.state, state)
     && await artifactHashesMatch(paths.root, marker);
-}
-
-async function removeOwnedPendingMutation(path: string, token: string): Promise<void> {
-  const current = await readPendingMutation(path);
-  if (current === undefined || current.token !== token) {
-    throw new WorkspaceCorruptError(`pending mutation ownership was lost: ${path}`, {
-      cause: new Error(`expected pending mutation token ${token}`),
-    });
-  }
-  try {
-    await rm(path);
-  } catch (error: unknown) {
-    throw new WorkspaceCorruptError(`pending mutation could not be removed: ${path}`, { cause: error });
-  }
 }
 
 function invalidPendingMutation(paths: Readonly<WorkspacePaths>, cause?: unknown): WorkspaceCorruptError {
@@ -416,19 +395,26 @@ export class WorkspaceRepository {
       await assertRequiredWorkspaceDirectories(paths);
       await assertProjectionFileBoundaries(paths);
 
-      const current = await readProjectionState(paths.state);
       const events = await readAuditEvents(paths.audit);
-      const pending = await readPendingMutation(paths.pendingMutation);
+      const current = recoverState(events);
+      let storedState: WorkspaceState | undefined;
+      try {
+        storedState = await readProjectionState(paths.state);
+      } catch {
+        storedState = undefined;
+      }
+      const pendingObservation = await nodePendingMarkerStore.readPendingMarker(paths.pendingMutation);
+      const pending = pendingObservation?.marker;
       if (pending !== undefined) {
         if (!await pendingMutationIsCommitted(paths, pending, current, events)) {
           throw invalidPendingMutation(paths);
         }
-        await removeOwnedPendingMutation(paths.pendingMutation, pending.token);
-      }
-      if (!stateMatchesAudit(current, events)) {
-        throw new WorkspaceCorruptError("workspace state and audit projections differ", {
-          cause: new Error(`state revision ${current.revision}; audit revision ${events.at(-1)?.sequence ?? 0}`),
-        });
+        if (storedState === undefined || !isDeepStrictEqual(storedState, current)) {
+          await atomicWriteText(paths.state, `${JSON.stringify(current, null, 2)}\n`);
+        }
+        await nodePendingMarkerStore.removePendingMarker(paths.pendingMutation, pendingObservation!);
+      } else if (storedState === undefined || !isDeepStrictEqual(storedState, current)) {
+        await atomicWriteText(paths.state, `${JSON.stringify(current, null, 2)}\n`);
       }
       if (current.safeMode) {
         throw new WorkspaceCorruptError("workspace is in safe mode; mutation is disabled");
@@ -460,6 +446,10 @@ export class WorkspaceRepository {
         mutation.writes,
       );
       await atomicWriteText(paths.pendingMutation, `${JSON.stringify(marker, null, 2)}\n`);
+      const markerObservation = await nodePendingMarkerStore.readPendingMarker(paths.pendingMutation);
+      if (markerObservation === undefined || markerObservation.marker.token !== marker.token) {
+        throw invalidPendingMutation(paths, new Error("published pending marker could not be observed"));
+      }
 
       // The marker precedes every artifact side effect. Audit is durable before state publication.
       await ensureArtifactBoundaries(paths.root, mutation.writes);
@@ -468,7 +458,7 @@ export class WorkspaceRepository {
       }
       await appendAuditEvent(paths.audit, auditEvent);
       await atomicWriteText(paths.state, `${JSON.stringify(mutation.next, null, 2)}\n`);
-      await removeOwnedPendingMutation(paths.pendingMutation, marker.token);
+      await nodePendingMarkerStore.removePendingMarker(paths.pendingMutation, markerObservation);
     });
   }
 
@@ -502,18 +492,20 @@ export class WorkspaceRepository {
       projectedState = undefined;
     }
 
-    let pending: PendingMutation | undefined;
+    let pendingObservation: PendingMarkerObservation | undefined;
     try {
-      pending = await readPendingMutation(paths.pendingMutation);
+      pendingObservation = await nodePendingMarkerStore.readPendingMarker(paths.pendingMutation);
     } catch {
       return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
     }
+    const pending = pendingObservation?.marker;
     if (pending !== undefined) {
-      if (projectedState === undefined) {
+      const recovered = recoverState(events);
+      if (!await pendingMutationIsCommitted(paths, pending, recovered, events)) {
         return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
       }
-      if (!await pendingMutationIsCommitted(paths, pending, projectedState, events)) {
-        return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+      if (projectedState === undefined || !isDeepStrictEqual(projectedState, recovered)) {
+        return { project, state: recovered, recovered: true };
       }
     }
 
