@@ -3,8 +3,8 @@
  * using status C + F and excluding the locale-specific status T mappings.
  * Source: https://www.unicode.org/Public/17.0.0/ucd/CaseFolding.txt
  * Source SHA-256: ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183
- * Copyright © 1991-2025 Unicode, Inc. Use is governed by the Unicode Terms of Use:
- * https://www.unicode.org/terms_of_use.html
+ * Copyright © 1991-2025 Unicode, Inc.
+ * License notice: licenses/UNICODE-LICENSE.txt
  */
 
 const DEFAULT_CASE_FOLD_DATA = `

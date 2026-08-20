@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, expectTypeOf, test } from "vitest";
 
 import {
+  ExpertValidationError,
   expertSchema,
   parseExpert,
   type Expert,
@@ -60,7 +61,7 @@ describe("normalized expert schema", () => {
     expect(() => expertSchema.parse(invalid)).toThrow(/expert\.extra/i);
   });
 
-  test("rejects a dynamic-length array Proxy without invoking its traps", () => {
+  test("rejects an array Proxy without invoking any trap", () => {
     let lengthReads = 0;
     let elementReads = 0;
     let descriptorReads = 0;
@@ -69,7 +70,7 @@ describe("normalized expert schema", () => {
       get(target, property, receiver) {
         if (property === "length") {
           lengthReads += 1;
-          return lengthReads === 1 ? 1 : 1_000_000;
+          return 1;
         }
         elementReads += 1;
         return Reflect.get(target, property, receiver);
@@ -86,13 +87,78 @@ describe("normalized expert schema", () => {
     const input = clone(translated);
     input.capabilities = dynamic;
 
+    expect(() => expertSchema.parse(input)).toThrow(ExpertValidationError);
     expect(() => expertSchema.parse(input)).toThrow(/Proxy/i);
     expect({ lengthReads, elementReads, descriptorReads, ownKeyReads }).toEqual({
-      lengthReads: 1,
+      lengthReads: 0,
       elementReads: 0,
       descriptorReads: 0,
       ownKeyReads: 0,
     });
+  });
+
+  test("rejects a Proxy whose traps throw without executing a trap", () => {
+    let trapCalls = 0;
+    const throwing = new Proxy(["frontend-architecture"], {
+      get() {
+        trapCalls += 1;
+        throw new Error("Proxy getter must not run");
+      },
+      getOwnPropertyDescriptor() {
+        trapCalls += 1;
+        throw new Error("Proxy descriptor must not run");
+      },
+      getPrototypeOf() {
+        trapCalls += 1;
+        throw new Error("Proxy prototype trap must not run");
+      },
+      ownKeys() {
+        trapCalls += 1;
+        throw new Error("Proxy ownKeys must not run");
+      },
+    });
+    const input = clone(translated);
+    input.capabilities = throwing;
+
+    expect(() => expertSchema.parse(input)).toThrow(ExpertValidationError);
+    expect(() => expertSchema.parse(input)).toThrow(/capabilities.*Proxy/i);
+    expect(trapCalls).toBe(0);
+  });
+
+  test("rejects a top-level object Proxy before object inspection", () => {
+    let trapCalls = 0;
+    const input = new Proxy(clone(translated), {
+      get() {
+        trapCalls += 1;
+        throw new Error("top-level Proxy getter must not run");
+      },
+      getOwnPropertyDescriptor() {
+        trapCalls += 1;
+        throw new Error("top-level Proxy descriptor must not run");
+      },
+      getPrototypeOf() {
+        trapCalls += 1;
+        throw new Error("top-level Proxy prototype trap must not run");
+      },
+      ownKeys() {
+        trapCalls += 1;
+        throw new Error("top-level Proxy ownKeys must not run");
+      },
+    });
+
+    expect(() => parseExpert(input)).toThrow(ExpertValidationError);
+    expect(() => parseExpert(input)).toThrow(/expert.*Proxy/i);
+    expect(trapCalls).toBe(0);
+  });
+
+  test("rejects revoked Proxies with a stable validation error", () => {
+    const revocable = Proxy.revocable(["frontend-architecture"], {});
+    revocable.revoke();
+    const input = clone(translated);
+    input.capabilities = revocable.proxy;
+
+    expect(() => expertSchema.parse(input)).toThrow(ExpertValidationError);
+    expect(() => expertSchema.parse(input)).toThrow(/capabilities.*Proxy/i);
   });
 
   test("rejects a stateful object getter without invoking it", () => {
@@ -333,6 +399,8 @@ describe("normalized expert schema", () => {
     "https://github.com/jnMetaCode/%6fgency-agents-zh",
     "https://github.com/jnMetaCode%2Fagency-agents-zh",
     "https://github.com/jnMetaCode/%2e%2e/agency-agents-zh",
+    "https://github.com:443/jnMetaCode/agency-agents-zh",
+    "https://github.com:8443/jnMetaCode/agency-agents-zh",
   ])("rejects non-canonical repository URL %s", (repository) => {
     const input = clone(translated);
     input.source.repository = repository;
@@ -414,12 +482,14 @@ describe("normalized expert schema", () => {
   });
 
   test("fails on an oversized list before traversing its elements or descriptors", () => {
+    let lengthReads = 0;
     let elementReads = 0;
     let ownKeyReads = 0;
     let descriptorReads = 0;
     const huge = new Proxy(new Array<string>(1_000_000), {
       get(target, property, receiver) {
-        if (property !== "length") elementReads += 1;
+        if (property === "length") lengthReads += 1;
+        else elementReads += 1;
         return Reflect.get(target, property, receiver);
       },
       ownKeys() {
@@ -434,7 +504,9 @@ describe("normalized expert schema", () => {
     const input = clone(translated);
     input.capabilities = huge;
 
-    expect(() => parseExpert(input)).toThrow(/capabilities.*128/i);
+    expect(() => parseExpert(input)).toThrow(ExpertValidationError);
+    expect(() => parseExpert(input)).toThrow(/capabilities.*Proxy/i);
+    expect(lengthReads).toBe(0);
     expect(elementReads).toBe(0);
     expect(ownKeyReads).toBe(0);
     expect(descriptorReads).toBe(0);

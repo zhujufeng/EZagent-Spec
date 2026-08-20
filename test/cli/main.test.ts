@@ -131,6 +131,7 @@ describe.sequential("ezagent CLI", () => {
     expect(paths).toContain("dist/src/workspace/repository.js");
     expect(paths).toContain("dist/src/domain/state-machine.js");
     expect(paths).toContain("README.md");
+    expect(paths).toContain("licenses/UNICODE-LICENSE.txt");
     expect(paths.some((path) => /^(?:src|test|docs|dist\/test)\//u.test(path))).toBe(false);
     expect(paths.some((path) => path.endsWith(".map") || path.endsWith(".d.ts"))).toBe(false);
     expect((await readdir(PROJECT_ROOT)).sort()).toEqual(before);

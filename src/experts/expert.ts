@@ -156,16 +156,11 @@ function snapshotBoundedStringArray(
   maximumItems: number,
   maximumItemLength: number,
 ): unknown {
-  if (!Array.isArray(value)) {
-    if (nodeTypes.isProxy(value)) {
-      fail(`${path} cannot be a Proxy`);
-    }
-    return value;
-  }
-
   if (nodeTypes.isProxy(value)) {
-    const length = validateArrayLength(value.length, path, maximumItems);
-    fail(`${path} cannot snapshot a Proxy array of length ${length}`);
+    fail(`${path} cannot be a Proxy`);
+  }
+  if (!Array.isArray(value)) {
+    return value;
   }
 
   const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
@@ -306,6 +301,7 @@ function isCanonicalHttpsRepository(value: string): boolean {
       url.search !== "" ||
       url.hash !== "" ||
       url.hostname.endsWith(".") ||
+      (url.hostname === "github.com" && url.port !== "") ||
       url.pathname === "/" ||
       url.pathname.endsWith("/") ||
       url.pathname.includes("//")
@@ -353,7 +349,13 @@ function asciiLowercase(value: string): string {
 
 function repositoryIdentity(repository: string): string {
   const url = new URL(repository);
-  if (url.hostname === "github.com") {
+  if (
+    url.protocol === "https:" &&
+    url.hostname === "github.com" &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === ""
+  ) {
     const components = url.pathname.slice(1).split("/");
     if (components.length === 2) {
       const owner = asciiLowercase(components[0]!);
@@ -479,7 +481,16 @@ function formatIssue(issue: z.core.$ZodIssue): string {
 }
 
 function parseStrictExpert(value: unknown): Expert {
-  const snapshot = snapshotExpertInput(value);
+  let snapshot: unknown;
+  try {
+    snapshot = snapshotExpertInput(value);
+  } catch (error) {
+    if (error instanceof ExpertValidationError) throw error;
+    if (error instanceof TypeError || error instanceof RangeError) {
+      fail("input could not be inspected safely", error);
+    }
+    throw error;
+  }
   const result = normalizedExpertSchema.safeParse(snapshot);
   if (!result.success) {
     fail(formatIssue(result.error.issues[0]!), result.error);

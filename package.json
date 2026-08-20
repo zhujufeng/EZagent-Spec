@@ -6,7 +6,8 @@
   "files": [
     "dist/src/**/*.js",
     "README.md",
-    "LICENSE*"
+    "LICENSE*",
+    "licenses/**"
   ],
   "bin": {
     "ezagent": "./dist/src/cli/main.js"
@@ -24,6 +25,7 @@
     "test:experts": "vitest run test/experts",
     "test:codex": "vitest run test/codex",
     "test:workflow": "vitest run test/workflow test/e2e",
+    "generate:unicode-case-fold": "node --import tsx scripts/generate-unicode-case-fold.ts",
     "verify": "npm run check && npm run test && npm run build"
   },
   "dependencies": {
