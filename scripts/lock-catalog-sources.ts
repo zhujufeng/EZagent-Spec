@@ -11,6 +11,12 @@ function safeErrorCode(error: unknown): string {
   return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/u.test(code) ? code : "SOURCE_LOCK_FAILED";
 }
 
+export function publicationStateAdvice(error: unknown): string | undefined {
+  return (error as { readonly publicationState?: unknown }).publicationState === "unknown"
+    ? "publication state unknown; inspect catalog/sources.lock.json and do not rerun or overwrite blindly\n"
+    : undefined;
+}
+
 export async function main(): Promise<number> {
   process.stdout.write(
     "release-only: keep catalog/sources.yaml and vendor-sources checkouts unchanged until verification finishes; network is disabled\n",
@@ -30,6 +36,8 @@ export async function main(): Promise<number> {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "unknown local source-lock failure";
     process.stderr.write(`catalog source lock failed [${safeErrorCode(error)}]: ${message}\n`);
+    const advice = publicationStateAdvice(error);
+    if (advice !== undefined) process.stderr.write(advice);
     return 1;
   }
 }

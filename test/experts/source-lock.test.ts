@@ -694,7 +694,7 @@ describe("source lock file", () => {
     expect(serialized.endsWith("\n\n")).toBe(false);
   });
 
-  it("atomically creates once, refuses no-clobber races, and leaves no staging file", async () => {
+  it("atomically creates once, refuses no-clobber races, and conservatively retains staging names", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
     const results = await Promise.allSettled([
@@ -704,8 +704,17 @@ describe("source lock file", () => {
 
     expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
     expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect(results.find(({ status }) => status === "fulfilled")).toMatchObject({
+      value: {
+        published: true,
+        warnings: [{ code: "TEMPORARY_RETAINED" }],
+      },
+    });
+    expect(results.find(({ status }) => status === "rejected")).toMatchObject({
+      reason: { code: "LOCK_EXISTS", publicationState: "not-published" },
+    });
     expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
-    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toHaveLength(2);
   });
 
   it("syncs the parent directory after publication through the runtime seam", async () => {
@@ -718,7 +727,10 @@ describe("source lock file", () => {
 
     const result = await writeSourceLockFile(join(root, "sources.lock.json"), lock, runtime);
 
-    expect(result).toEqual({ published: true, warnings: [] });
+    expect(result).toEqual({
+      published: true,
+      warnings: [{ code: "TEMPORARY_RETAINED", message: expect.stringContaining("retained") }],
+    });
     expect(syncDirectory).toHaveBeenCalledExactlyOnceWith(root);
   });
 
@@ -736,7 +748,7 @@ describe("source lock file", () => {
       warnings: [{
         code: "DIRECTORY_SYNC_UNSUPPORTED",
         message: expect.stringContaining("not supported"),
-      }],
+      }, { code: "TEMPORARY_RETAINED", message: expect.stringContaining("retained") }],
     });
   });
 
@@ -757,28 +769,27 @@ describe("source lock file", () => {
       warnings: [{
         code: "DIRECTORY_SYNC_FAILED",
         message: expect.stringContaining("durability could not be confirmed"),
-      }],
+      }, { code: "TEMPORARY_RETAINED", message: expect.stringContaining("retained") }],
     });
     expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
   });
 
-  it("reports temporary cleanup failure as a published warning instead of a false failure", async () => {
+  it("never path-unlinks a retained staging name after successful publication", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
+    const remove = vi.fn(nodeSourceLockPublishRuntime.remove);
     const runtime: SourceLockPublishRuntime = {
       ...nodeSourceLockPublishRuntime,
-      remove: async (path, options) => {
-        if (path.includes(".ezagent-source-lock.")) throw new Error("simulated cleanup failure");
-        await nodeSourceLockPublishRuntime.remove(path, options);
-      },
+      remove,
     };
 
     const result = await writeSourceLockFile(target, lock, runtime);
 
     expect(result).toEqual({
       published: true,
-      warnings: [{ code: "TEMP_CLEANUP_FAILED", message: expect.stringContaining("published") }],
+      warnings: [{ code: "TEMPORARY_RETAINED", message: expect.stringContaining("retained") }],
     });
+    expect(remove).not.toHaveBeenCalled();
     expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
   });
 
@@ -796,9 +807,9 @@ describe("source lock file", () => {
     };
 
     await expect(writeSourceLockFile(target, lock, runtime))
-      .rejects.toMatchObject({ code: "LOCK_PARENT_CHANGED", published: false });
+      .rejects.toMatchObject({ code: "LOCK_PARENT_CHANGED", publicationState: "not-published" });
     await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toHaveLength(1);
   });
 
   it("does not misreport a published lock as unpublished when the final parent observation fails", async () => {
@@ -818,13 +829,37 @@ describe("source lock file", () => {
 
     await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
       code: "LOCK_PARENT_CHANGED",
-      published: true,
+      publicationState: "unknown",
       cause: observationFailure,
+      message: expect.stringContaining("do not rerun or overwrite blindly"),
     });
     expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
   });
 
-  it("rejects and rolls back a staging-file ABA replacement before publication", async () => {
+  it("preserves the target and marks state unknown when the parent changes after link", async () => {
+    const root = await temporaryRoot();
+    const other = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const remove = vi.fn(nodeSourceLockPublishRuntime.remove);
+    let parentObservations = 0;
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      remove,
+      lstat: async (path) => {
+        if (path === root && ++parentObservations === 3) return lstat(other);
+        return nodeSourceLockPublishRuntime.lstat(path);
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
+      code: "LOCK_PARENT_CHANGED",
+      publicationState: "unknown",
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
+  });
+
+  it("marks a post-link staging-file ABA replacement unknown without deleting its target", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
     const attack = "{\"schemaVersion\":1,\"sources\":[]}\n";
@@ -839,10 +874,9 @@ describe("source lock file", () => {
 
     await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
       code: "LOCK_STAGING_CHANGED",
-      published: false,
+      publicationState: "unknown",
     });
-    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+    expect(await readFile(target, "utf8")).toBe(attack);
   });
 
   it("verifies published bytes when staging content changes through the same inode", async () => {
@@ -859,12 +893,38 @@ describe("source lock file", () => {
 
     await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
       code: "LOCK_STAGING_CHANGED",
-      published: false,
+      publicationState: "unknown",
     });
-    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(target, "utf8")).toBe(attack);
   });
 
-  it("cleans staging and leaves no target when link publication fails", async () => {
+  it("preserves a competing publication B after link-time target verification becomes stale", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const original = join(root, "publication-a.backup");
+    const competing = "competing publication B\n";
+    const remove = vi.fn(nodeSourceLockPublishRuntime.remove);
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      remove,
+      inspectFileNoFollow: async (path, maxBytes) => {
+        const inspection = await nodeSourceLockPublishRuntime.inspectFileNoFollow(path, maxBytes);
+        await rename(target, original);
+        await writeFile(target, competing, "utf8");
+        return { ...inspection, content: "stale publication A" };
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
+      code: "LOCK_STAGING_CHANGED",
+      publicationState: "unknown",
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(await readFile(target, "utf8")).toBe(competing);
+    expect(await readFile(original, "utf8")).toBe(serializeSourceLock(lock));
+  });
+
+  it("retains staging but leaves no target when link publication fails", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
     const failure = Object.assign(new Error("simulated link failure"), { code: "EIO" });
@@ -874,9 +934,13 @@ describe("source lock file", () => {
     };
 
     await expect(writeSourceLockFile(target, lock, runtime))
-      .rejects.toMatchObject({ code: "LOCK_PUBLISH_FAILED", published: false, cause: failure });
+      .rejects.toMatchObject({
+        code: "LOCK_PUBLISH_FAILED",
+        publicationState: "not-published",
+        cause: failure,
+      });
     await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toHaveLength(1);
   });
 
   it("does not follow or replace an existing symbolic-link target", async (context) => {
@@ -976,10 +1040,15 @@ describe("lockCatalogSources", () => {
 
     await lockCatalogSources(root, { publishRuntime, onPublishWarning });
 
-    expect(onPublishWarning).toHaveBeenCalledExactlyOnceWith({
+    expect(onPublishWarning).toHaveBeenCalledWith({
       code: "DIRECTORY_SYNC_UNSUPPORTED",
       message: expect.stringContaining("not supported"),
     });
+    expect(onPublishWarning).toHaveBeenCalledWith({
+      code: "TEMPORARY_RETAINED",
+      message: expect.stringContaining("retained"),
+    });
+    expect(onPublishWarning).toHaveBeenCalledTimes(2);
   });
 
   it("detects sources YAML replacement during its no-follow stable read", async () => {
@@ -1033,6 +1102,8 @@ describe("lock-catalog-sources script module", () => {
     try {
       const imported = await import(moduleUrl.href);
       expect(imported.main).toBeTypeOf("function");
+      expect(imported.publicationStateAdvice({ publicationState: "unknown" }))
+        .toContain("inspect catalog/sources.lock.json");
       expect(stdout).not.toHaveBeenCalled();
       expect(stderr).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(73);

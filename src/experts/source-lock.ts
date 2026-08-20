@@ -107,7 +107,7 @@ export interface SourceLockPublishRuntime {
 }
 
 export type SourceLockPublishWarningCode =
-  | "TEMP_CLEANUP_FAILED"
+  | "TEMPORARY_RETAINED"
   | "DIRECTORY_SYNC_FAILED"
   | "DIRECTORY_SYNC_UNSUPPORTED";
 
@@ -208,11 +208,15 @@ export class SourceLockWriteError extends Error {
       | "LOCK_STAGING_CHANGED"
       | "LOCK_EXISTS"
       | "LOCK_PUBLISH_FAILED",
-    readonly published: boolean,
-    options?: ErrorOptions,
+    readonly publicationState: "not-published" | "published" | "unknown",
+    options?: ErrorOptions & { readonly temporaryState?: "none" | "retained" },
   ) {
-    super(sourceLockWriteErrorMessage(code, published), options);
+    const temporaryState = options?.temporaryState ?? "none";
+    super(sourceLockWriteErrorMessage(code, publicationState, temporaryState), options);
+    this.temporaryState = temporaryState;
   }
+
+  readonly temporaryState: "none" | "retained";
 }
 
 function configFail(message: string): never {
@@ -1075,21 +1079,38 @@ function sourceLockWriteErrorMessage(
     | "LOCK_STAGING_CHANGED"
     | "LOCK_EXISTS"
     | "LOCK_PUBLISH_FAILED",
-  published: boolean,
+  publicationState: "not-published" | "published" | "unknown",
+  temporaryState: "none" | "retained",
 ): string {
+  let message: string;
   switch (code) {
-    case "LOCK_PARENT_INVALID": return "Source lock parent directory must be a stable real directory";
-    case "LOCK_PARENT_CHANGED": return published
-      ? "Source lock parent changed after publication; inspect the published target before retrying"
-      : "Source lock parent changed before publication; keep catalog static and retry";
-    case "LOCK_STAGING_CHANGED": return published
-      ? "Source lock staging changed and the published target could not be safely rolled back; inspect it before retrying"
-      : "Source lock staging changed before publication and was rejected";
-    case "LOCK_EXISTS": return "Source lock already exists; remove it explicitly after review to relock";
-    case "LOCK_PUBLISH_FAILED": return published
-      ? "Source lock was published but post-publication verification failed"
-      : "Source lock could not be published atomically";
+    case "LOCK_PARENT_INVALID":
+      message = "Source lock parent directory must be a stable real directory";
+      break;
+    case "LOCK_PARENT_CHANGED":
+      message = publicationState === "unknown"
+        ? "Source lock parent changed after link-time publication"
+        : "Source lock parent changed before publication; keep catalog static and retry";
+      break;
+    case "LOCK_STAGING_CHANGED":
+      message = publicationState === "unknown"
+        ? "Source lock staging or target changed after link-time publication"
+        : "Source lock staging changed before publication and was rejected";
+      break;
+    case "LOCK_EXISTS":
+      message = "Source lock already exists; remove it explicitly after review to relock";
+      break;
+    case "LOCK_PUBLISH_FAILED":
+      message = "Source lock could not be published atomically";
+      break;
   }
+  if (publicationState === "unknown") {
+    message += "; publication state unknown; inspect lock path and do not rerun or overwrite blindly";
+  }
+  if (temporaryState === "retained") {
+    message += "; a staging name was conservatively retained and requires manual inspection";
+  }
+  return message;
 }
 
 const UNSUPPORTED_DIRECTORY_SYNC_CODES = new Set(["EINVAL", "ENOTSUP", "ENOSYS"]);
@@ -1160,10 +1181,10 @@ async function observeLockParent(
   try {
     observed = await runtime.lstat(parentPath);
   } catch (error: unknown) {
-    throw new SourceLockWriteError("LOCK_PARENT_INVALID", false, { cause: error });
+    throw new SourceLockWriteError("LOCK_PARENT_INVALID", "not-published", { cause: error });
   }
   if (observed.isSymbolicLink() || !observed.isDirectory()) {
-    throw new SourceLockWriteError("LOCK_PARENT_INVALID", false);
+    throw new SourceLockWriteError("LOCK_PARENT_INVALID", "not-published");
   }
   return observed;
 }
@@ -1173,35 +1194,6 @@ function samePublishedFile(left: Stats, right: Stats): boolean {
     && right.isFile()
     && sameIdentity(left, right)
     && left.size === right.size;
-}
-
-async function rollbackLinkedTarget(
-  runtime: SourceLockPublishRuntime,
-  temporary: string,
-  target: string,
-  linkedIdentity: Stats,
-): Promise<boolean> {
-  try {
-    const [temporaryNow, targetNow] = await Promise.all([
-      runtime.lstat(temporary),
-      runtime.lstat(target),
-    ]);
-    if (!samePublishedFile(linkedIdentity, temporaryNow)
-      || !samePublishedFile(linkedIdentity, targetNow)) {
-      return false;
-    }
-    const targetImmediatelyBeforeRemove = await runtime.lstat(target);
-    if (!samePublishedFile(linkedIdentity, targetImmediatelyBeforeRemove)) return false;
-    await runtime.remove(target, { force: false });
-    try {
-      await runtime.lstat(target);
-      return false;
-    } catch (error: unknown) {
-      return (error as NodeJS.ErrnoException).code === "ENOENT";
-    }
-  } catch {
-    return false;
-  }
 }
 
 export async function writeSourceLockFile(
@@ -1215,13 +1207,13 @@ export async function writeSourceLockFile(
   const temporary = join(parentPath, `.ezagent-source-lock.${process.pid}.${randomUUID()}.tmp`);
   const warnings: SourceLockPublishWarning[] = [];
   let file: SourceLockTemporaryHandle | undefined;
-  let ownsTemporary = false;
-  let published = false;
+  let temporaryCreated = false;
+  let linkSucceeded = false;
   let targetLinkAttempted = false;
 
   try {
     file = await runtime.openTemporary(temporary);
-    ownsTemporary = true;
+    temporaryCreated = true;
     await file.writeText(content);
     await file.sync();
     const temporaryIdentity = await file.stat();
@@ -1230,24 +1222,24 @@ export async function writeSourceLockFile(
 
     const parentBeforeLink = await observeLockParent(runtime, parentPath);
     if (!sameIdentity(parentBefore, parentBeforeLink)) {
-      throw new SourceLockWriteError("LOCK_PARENT_CHANGED", false);
+      throw new SourceLockWriteError("LOCK_PARENT_CHANGED", "not-published");
     }
 
     let temporaryBeforeLink: Stats;
     try {
       temporaryBeforeLink = await runtime.lstat(temporary);
     } catch (error: unknown) {
-      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", false, { cause: error });
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "not-published", { cause: error });
     }
     if (!samePublishedFile(temporaryIdentity, temporaryBeforeLink)
       || temporaryIdentity.size !== Buffer.byteLength(content, "utf8")) {
-      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", false);
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "not-published");
     }
 
     targetLinkAttempted = true;
     await runtime.link(temporary, target);
     targetLinkAttempted = false;
-    published = true;
+    linkSucceeded = true;
     let targetAfterLink: Stats | undefined;
     let targetInspection: Awaited<ReturnType<SourceLockPublishRuntime["inspectFileNoFollow"]>> | undefined;
     try {
@@ -1257,41 +1249,25 @@ export async function writeSourceLockFile(
         Buffer.byteLength(content, "utf8"),
       );
     } catch (error: unknown) {
-      let rolledBack = false;
-      if (targetAfterLink !== undefined) {
-        rolledBack = await rollbackLinkedTarget(runtime, temporary, target, targetAfterLink);
-        if (rolledBack) published = false;
-      }
-      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", !rolledBack, { cause: error });
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "unknown", { cause: error });
     }
     if (targetAfterLink === undefined
       || targetInspection === undefined
       || !samePublishedFile(temporaryIdentity, targetAfterLink)
       || !samePublishedFile(targetAfterLink, targetInspection.stat)
       || targetInspection.content !== content) {
-      const rolledBack = await rollbackLinkedTarget(runtime, temporary, target, targetAfterLink);
-      if (rolledBack) published = false;
-      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", !rolledBack);
+      throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "unknown");
     }
     let parentAfterLink: Stats;
     try {
       parentAfterLink = await observeLockParent(runtime, parentPath);
     } catch (error: unknown) {
-      throw new SourceLockWriteError("LOCK_PARENT_CHANGED", true, {
+      throw new SourceLockWriteError("LOCK_PARENT_CHANGED", "unknown", {
         cause: error instanceof SourceLockWriteError ? error.cause : error,
       });
     }
     if (!sameIdentity(parentBefore, parentAfterLink)) {
-      let rolledBack = false;
-      try {
-        const publishedIdentity = await runtime.lstat(target);
-        if (sameIdentity(temporaryIdentity, publishedIdentity)) {
-          await runtime.remove(target, { force: false });
-          published = false;
-          rolledBack = true;
-        }
-      } catch { /* the error below records whether publication may remain */ }
-      throw new SourceLockWriteError("LOCK_PARENT_CHANGED", !rolledBack);
+      throw new SourceLockWriteError("LOCK_PARENT_CHANGED", "unknown");
     }
 
     try {
@@ -1309,29 +1285,34 @@ export async function writeSourceLockFile(
       });
     }
 
-    try {
-      await runtime.remove(temporary, { force: true });
-      ownsTemporary = false;
-    } catch {
-      warnings.push({
-        code: "TEMP_CLEANUP_FAILED",
-        message: "Source lock was published, but its temporary hard-link name could not be cleaned up",
-      });
-    }
+    warnings.push({
+      code: "TEMPORARY_RETAINED",
+      message: "Source lock was published; its staging hard-link name was conservatively retained for manual inspection",
+    });
 
     return Object.freeze({ published: true, warnings: Object.freeze(warnings) });
   } catch (error: unknown) {
     if (file !== undefined) {
       try { await file.close(); } catch { /* best-effort cleanup */ }
     }
-    if (ownsTemporary && !published) {
-      try { await runtime.remove(temporary, { force: true }); } catch { /* best-effort cleanup */ }
+    const temporaryState = temporaryCreated ? "retained" : "none";
+    if (error instanceof SourceLockWriteError) {
+      throw new SourceLockWriteError(error.code, error.publicationState, {
+        cause: error.cause,
+        temporaryState,
+      });
     }
-    if (error instanceof SourceLockWriteError) throw error;
     if (targetLinkAttempted && (error as NodeJS.ErrnoException).code === "EEXIST") {
-      throw new SourceLockWriteError("LOCK_EXISTS", false, { cause: error });
+      throw new SourceLockWriteError("LOCK_EXISTS", "not-published", {
+        cause: error,
+        temporaryState,
+      });
     }
-    throw new SourceLockWriteError("LOCK_PUBLISH_FAILED", published, { cause: error });
+    throw new SourceLockWriteError(
+      "LOCK_PUBLISH_FAILED",
+      linkSucceeded ? "unknown" : "not-published",
+      { cause: error, temporaryState },
+    );
   }
 }
 
