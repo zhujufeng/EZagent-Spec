@@ -11,6 +11,7 @@ export interface WorkspacePaths {
   readonly state: string;
   readonly lock: string;
   readonly audit: string;
+  readonly pendingMutation: string;
 }
 
 export function workspacePaths(projectRoot: string): Readonly<WorkspacePaths> {
@@ -21,5 +22,6 @@ export function workspacePaths(projectRoot: string): Readonly<WorkspacePaths> {
     state: join(root, "state", "workspace.json"),
     lock: join(root, "state", "write.lock"),
     audit: join(root, "audit", "events.jsonl"),
+    pendingMutation: join(root, "state", "pending-mutation.json"),
   };
 }

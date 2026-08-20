@@ -152,6 +152,7 @@ describe("workspace layout", () => {
       state: join("project", ".ezagent", "state", "workspace.json"),
       lock: join("project", ".ezagent", "state", "write.lock"),
       audit: join("project", ".ezagent", "audit", "events.jsonl"),
+      pendingMutation: join("project", ".ezagent", "state", "pending-mutation.json"),
     });
   });
 });

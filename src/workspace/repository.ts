@@ -1,4 +1,16 @@
-import { lstat, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+
+import {
+  appendAuditEvent,
+  parseAuditEvent,
+  readAuditEvents,
+  type AuditEvent,
+  type AuditMetadata,
+} from "../audit/events.js";
+import { CANONICAL_INITIAL_STATE, recoverState } from "../audit/recovery.js";
 
 import { atomicWriteText } from "./atomic-write.js";
 import {
@@ -13,6 +25,18 @@ import {
 } from "./errors.js";
 import { WORKSPACE_DIRECTORIES, workspacePaths, type WorkspacePaths } from "./layout.js";
 import { withWorkspaceLock } from "./lock.js";
+import {
+  artifactHashesMatch,
+  createPendingMutation,
+  ensureArtifactBoundaries,
+  hashText,
+  normalizeWorkspaceMutation,
+  parsePendingMutation,
+  targetPath,
+  validateExistingArtifactBoundaries,
+  type PendingMutation,
+  type WorkspaceMutationWrite,
+} from "./mutation.js";
 import { workspaceInitializeRetryRuntime } from "./retry-runtime.js";
 import {
   parseProjectConfig,
@@ -22,12 +46,8 @@ import {
   type WorkspaceState,
 } from "./schema.js";
 
-const INITIAL_STATE: WorkspaceState = {
-  schemaVersion: 1,
-  revision: 0,
-  activeWorkItem: null,
-  safeMode: false,
-};
+const INITIAL_STATE: WorkspaceState = CANONICAL_INITIAL_STATE;
+const SAFE_INITIAL_STATE: WorkspaceState = { ...CANONICAL_INITIAL_STATE, safeMode: true };
 const INITIALIZE_LOCK_RETRY_INITIAL_MS = 10;
 const INITIALIZE_LOCK_RETRY_MAX_MS = 250;
 const DEFAULT_INITIALIZE_TIMEOUT_MS = 60_000;
@@ -172,6 +192,113 @@ async function inspectEmptyAudit(path: string): Promise<boolean> {
   return true;
 }
 
+async function assertProjectionFileBoundary(path: string, label: string): Promise<void> {
+  let observed: Awaited<ReturnType<typeof lstat>>;
+  try {
+    observed = await lstat(path);
+  } catch (error: unknown) {
+    if (isMissing(error)) return;
+    throw new WorkspaceCorruptError(`${label} boundary is unreadable: ${path}`, { cause: error });
+  }
+  if (!observed.isFile()) {
+    throw new WorkspaceCorruptError(`${label} must be a regular file: ${path}`, {
+      cause: new Error(`expected regular ${label} file or missing projection`),
+    });
+  }
+}
+
+async function assertProjectionFileBoundaries(paths: Readonly<WorkspacePaths>): Promise<void> {
+  await Promise.all([
+    assertProjectionFileBoundary(paths.state, "workspace state"),
+    assertProjectionFileBoundary(paths.audit, "workspace audit"),
+    assertProjectionFileBoundary(paths.pendingMutation, "pending mutation"),
+  ]);
+}
+
+async function assertRequiredWorkspaceDirectories(paths: Readonly<WorkspacePaths>): Promise<void> {
+  for (const relativeDirectory of WORKSPACE_DIRECTORIES) {
+    const path = join(paths.root, ...relativeDirectory.split("/"));
+    let observed: Awaited<ReturnType<typeof lstat>>;
+    try {
+      observed = await lstat(path);
+    } catch (error: unknown) {
+      throw new WorkspaceCorruptError(`required workspace directory is missing or unreadable: ${path}`, {
+        cause: error,
+      });
+    }
+    if (!observed.isDirectory()) {
+      throw new WorkspaceCorruptError(`required workspace directory must be real: ${path}`, {
+        cause: new Error("expected required real workspace directory"),
+      });
+    }
+  }
+}
+
+async function readProjectionState(path: string): Promise<WorkspaceState> {
+  const stateFile = await readWorkspaceText(path, "workspace state");
+  if (!stateFile.exists) {
+    throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${path}`, { cause: stateFile.cause });
+  }
+  try {
+    return parseWorkspaceState(JSON.parse(stateFile.contents) as unknown);
+  } catch (error: unknown) {
+    throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${path}`, { cause: error });
+  }
+}
+
+async function readPendingMutation(path: string): Promise<PendingMutation | undefined> {
+  const pendingFile = await readWorkspaceText(path, "pending mutation");
+  if (!pendingFile.exists) return undefined;
+  try {
+    return parsePendingMutation(JSON.parse(pendingFile.contents) as unknown);
+  } catch (error: unknown) {
+    throw new WorkspaceCorruptError(`pending mutation is unreadable or corrupt: ${path}`, { cause: error });
+  }
+}
+
+function stateMatchesAudit(state: WorkspaceState, events: readonly AuditEvent[]): boolean {
+  const projected = recoverState(events);
+  return isDeepStrictEqual(state, projected);
+}
+
+async function pendingMutationIsCommitted(
+  paths: Readonly<WorkspacePaths>,
+  marker: PendingMutation,
+  state: WorkspaceState,
+  events: readonly AuditEvent[],
+): Promise<boolean> {
+  const finalEvent = events.at(-1);
+  return state.revision === marker.toRevision
+    && hashText(JSON.stringify(state)) === marker.stateHash
+    && finalEvent !== undefined
+    && finalEvent.sequence === marker.toRevision
+    && hashText(JSON.stringify(finalEvent)) === marker.eventHash
+    && isDeepStrictEqual(finalEvent.state, state)
+    && await artifactHashesMatch(paths.root, marker);
+}
+
+async function removeOwnedPendingMutation(path: string, token: string): Promise<void> {
+  const current = await readPendingMutation(path);
+  if (current === undefined || current.token !== token) {
+    throw new WorkspaceCorruptError(`pending mutation ownership was lost: ${path}`, {
+      cause: new Error(`expected pending mutation token ${token}`),
+    });
+  }
+  try {
+    await rm(path);
+  } catch (error: unknown) {
+    throw new WorkspaceCorruptError(`pending mutation could not be removed: ${path}`, { cause: error });
+  }
+}
+
+function invalidPendingMutation(paths: Readonly<WorkspacePaths>, cause?: unknown): WorkspaceCorruptError {
+  return new WorkspaceCorruptError(`workspace has an unresolved pending mutation: ${paths.pendingMutation}`, {
+    cause: cause ?? new Error("pending mutation cannot be proven fully committed"),
+  });
+}
+
+export type { WorkspaceMutationWrite } from "./mutation.js";
+
 export class WorkspaceRepository {
   constructor(readonly projectRoot: string) {}
 
@@ -266,18 +393,133 @@ export class WorkspaceRepository {
     await this.readProject();
     const paths = workspacePaths(this.projectRoot);
     await validateExistingWorkspaceDirectoryChains(nodeWorkspaceDirectoryRuntime, paths.root, ["state"]);
-    const stateFile = await readWorkspaceText(paths.state, "workspace state");
-    if (!stateFile.exists) {
-      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${paths.state}`, {
-        cause: stateFile.cause,
+    return readProjectionState(paths.state);
+  }
+
+  async commitMutation(
+    next: WorkspaceState,
+    expectedRevision: number,
+    eventType: string,
+    writes: readonly WorkspaceMutationWrite[] = [],
+    metadata: AuditMetadata = {},
+  ): Promise<void> {
+    // Normalize the complete request before lock acquisition or any filesystem side effect.
+    const mutation = normalizeWorkspaceMutation(next, expectedRevision, eventType, writes, metadata);
+    await withWorkspaceLock(this.projectRoot, async () => {
+      await this.readProject();
+      const paths = workspacePaths(this.projectRoot);
+      await validateExistingWorkspaceDirectoryChains(
+        nodeWorkspaceDirectoryRuntime,
+        paths.root,
+        WORKSPACE_DIRECTORIES,
+      );
+      await assertRequiredWorkspaceDirectories(paths);
+      await assertProjectionFileBoundaries(paths);
+
+      const current = await readProjectionState(paths.state);
+      const events = await readAuditEvents(paths.audit);
+      const pending = await readPendingMutation(paths.pendingMutation);
+      if (pending !== undefined) {
+        if (!await pendingMutationIsCommitted(paths, pending, current, events)) {
+          throw invalidPendingMutation(paths);
+        }
+        await removeOwnedPendingMutation(paths.pendingMutation, pending.token);
+      }
+      if (!stateMatchesAudit(current, events)) {
+        throw new WorkspaceCorruptError("workspace state and audit projections differ", {
+          cause: new Error(`state revision ${current.revision}; audit revision ${events.at(-1)?.sequence ?? 0}`),
+        });
+      }
+      if (current.safeMode) {
+        throw new WorkspaceCorruptError("workspace is in safe mode; mutation is disabled");
+      }
+      if (current.revision !== mutation.expectedRevision) {
+        throw new Error(
+          `revision conflict: expected ${mutation.expectedRevision}, actual ${current.revision}`,
+        );
+      }
+      if (mutation.next.revision !== current.revision + 1) {
+        throw new Error("next workspace revision must increment by exactly one");
+      }
+
+      // All existing paths are checked before publishing the transaction marker.
+      await validateExistingArtifactBoundaries(paths.root, mutation.writes);
+      const at = new Date().toISOString();
+      const auditEvent = parseAuditEvent({
+        sequence: mutation.next.revision,
+        at,
+        type: mutation.eventType,
+        state: mutation.next,
+        metadata: mutation.metadata,
       });
+      const marker = createPendingMutation(
+        randomUUID(),
+        at,
+        current.revision,
+        auditEvent,
+        mutation.writes,
+      );
+      await atomicWriteText(paths.pendingMutation, `${JSON.stringify(marker, null, 2)}\n`);
+
+      // The marker precedes every artifact side effect. Audit is durable before state publication.
+      await ensureArtifactBoundaries(paths.root, mutation.writes);
+      for (const write of mutation.writes) {
+        await atomicWriteText(targetPath(paths.root, write.relativePath), write.content);
+      }
+      await appendAuditEvent(paths.audit, auditEvent);
+      await atomicWriteText(paths.state, `${JSON.stringify(mutation.next, null, 2)}\n`);
+      await removeOwnedPendingMutation(paths.pendingMutation, marker.token);
+    });
+  }
+
+  async recordState(next: WorkspaceState, expectedRevision: number, eventType: string): Promise<void> {
+    await this.commitMutation(next, expectedRevision, eventType);
+  }
+
+  async readContext(): Promise<{ project: ProjectConfig; state: WorkspaceState; recovered: boolean }> {
+    const project = await this.readProject();
+    const paths = workspacePaths(this.projectRoot);
+    await validateExistingWorkspaceDirectoryChains(
+      nodeWorkspaceDirectoryRuntime,
+      paths.root,
+      WORKSPACE_DIRECTORIES,
+    );
+    await assertRequiredWorkspaceDirectories(paths);
+    // Directory/symlink boundary errors are not recovery projection failures and must surface.
+    await assertProjectionFileBoundaries(paths);
+
+    let events: AuditEvent[];
+    try {
+      events = await readAuditEvents(paths.audit);
+    } catch {
+      return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
     }
 
+    let projectedState: WorkspaceState | undefined;
     try {
-      const value: unknown = JSON.parse(stateFile.contents);
-      return parseWorkspaceState(value);
-    } catch (error: unknown) {
-      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${paths.state}`, { cause: error });
+      projectedState = await readProjectionState(paths.state);
+    } catch {
+      projectedState = undefined;
     }
+
+    let pending: PendingMutation | undefined;
+    try {
+      pending = await readPendingMutation(paths.pendingMutation);
+    } catch {
+      return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+    }
+    if (pending !== undefined) {
+      if (projectedState === undefined) {
+        return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+      }
+      if (!await pendingMutationIsCommitted(paths, pending, projectedState, events)) {
+        return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+      }
+    }
+
+    if (projectedState !== undefined && stateMatchesAudit(projectedState, events)) {
+      return { project, state: projectedState, recovered: false };
+    }
+    return { project, state: recoverState(events), recovered: true };
   }
 }
