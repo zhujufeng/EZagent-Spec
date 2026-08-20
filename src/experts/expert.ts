@@ -1,5 +1,8 @@
+import { types as nodeTypes } from "node:util";
+
 import { z } from "zod";
 
+import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 
 const BASE_EXPERT_KEYS = [
@@ -89,13 +92,19 @@ function fail(message: string, cause?: unknown): never {
   throw new ExpertValidationError(`Invalid expert: ${message}`, cause === undefined ? undefined : { cause });
 }
 
-function assertExactPlainObject(
+function snapshotDataObject(
   value: unknown,
   path: string,
   allowedKeys: readonly string[],
-): void {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return;
+): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object") {
+    return undefined;
+  }
+  if (nodeTypes.isProxy(value)) {
+    fail(`${path} cannot be a Proxy`);
+  }
+  if (Array.isArray(value)) {
+    return undefined;
   }
 
   const prototype = Object.getPrototypeOf(value);
@@ -104,14 +113,25 @@ function assertExactPlainObject(
   }
 
   const allowed = new Set(allowedKeys);
-  for (const key of Reflect.ownKeys(value)) {
+  const keys = Reflect.ownKeys(value);
+  const snapshot: Record<string, unknown> = {};
+  for (const key of keys) {
     if (typeof key !== "string") {
       fail(`${path} contains an unsupported symbol key`);
     }
     if (!allowed.has(key)) {
       fail(`${path}.${key} is unsupported`);
     }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !descriptor.enumerable) {
+      fail(`${path}.${key} must be an enumerable own data property`);
+    }
+    if (!("value" in descriptor)) {
+      fail(`${path}.${key} cannot be an accessor property`);
+    }
+    snapshot[key] = descriptor.value;
   }
+  return snapshot;
 }
 
 function assertRawStringLength(value: unknown, path: string, normalizedLimit: number): void {
@@ -120,26 +140,39 @@ function assertRawStringLength(value: unknown, path: string, normalizedLimit: nu
   }
 }
 
-function assertBoundedDenseStringArray(
+function validateArrayLength(value: unknown, path: string, maximumItems: number): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    fail(`${path}.length must be a non-negative safe integer`);
+  }
+  if (value > maximumItems) {
+    fail(`${path} cannot contain more than ${maximumItems} items`);
+  }
+  return value;
+}
+
+function snapshotBoundedStringArray(
   value: unknown,
   path: string,
   maximumItems: number,
   maximumItemLength: number,
-): void {
+): unknown {
   if (!Array.isArray(value)) {
-    return;
-  }
-
-  const length = value.length;
-  if (length > maximumItems) {
-    fail(`${path} cannot contain more than ${maximumItems} items`);
-  }
-
-  for (let index = 0; index < length; index += 1) {
-    if (!Object.prototype.hasOwnProperty.call(value, index)) {
-      fail(`${path} must be dense; index ${index} is missing`);
+    if (nodeTypes.isProxy(value)) {
+      fail(`${path} cannot be a Proxy`);
     }
+    return value;
   }
+
+  if (nodeTypes.isProxy(value)) {
+    const length = validateArrayLength(value.length, path, maximumItems);
+    fail(`${path} cannot snapshot a Proxy array of length ${length}`);
+  }
+
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (lengthDescriptor === undefined || !("value" in lengthDescriptor)) {
+    fail(`${path}.length must be an own data property`);
+  }
+  const length = validateArrayLength(lengthDescriptor.value, path, maximumItems);
 
   for (const key of Reflect.ownKeys(value)) {
     if (key === "length") continue;
@@ -148,48 +181,69 @@ function assertBoundedDenseStringArray(
     }
   }
 
+  const snapshot: unknown[] = [];
   for (let index = 0; index < length; index += 1) {
-    assertRawStringLength(value[index], `${path}.${index}`, maximumItemLength);
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (descriptor === undefined) {
+      fail(`${path} must be dense; index ${index} is missing`);
+    }
+    if (!descriptor.enumerable || !("value" in descriptor)) {
+      fail(`${path}.${index} cannot be a non-enumerable or accessor property`);
+    }
+    assertRawStringLength(descriptor.value, `${path}.${index}`, maximumItemLength);
+    snapshot.push(descriptor.value);
   }
+  return snapshot;
 }
 
-function assertRawSourceStrings(value: unknown, path: string): void {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return;
+function snapshotSource(value: unknown, path: string): unknown {
+  const snapshot = snapshotDataObject(value, path, SOURCE_REF_KEYS);
+  if (snapshot === undefined) {
+    return value;
   }
-  const source = value as Record<string, unknown>;
   for (const [key, maximumLength] of SOURCE_STRING_LIMITS) {
-    assertRawStringLength(source[key], `${path}.${key}`, maximumLength);
+    assertRawStringLength(snapshot[key], `${path}.${key}`, maximumLength);
   }
+  return snapshot;
 }
 
-function assertInputShape(value: unknown): void {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    assertExactPlainObject(value, "expert", TRANSLATED_EXPERT_KEYS);
-    return;
+function snapshotExpertInput(value: unknown): unknown {
+  if (nodeTypes.isProxy(value)) {
+    fail("expert cannot be a Proxy");
   }
-
-  const record = value as Record<string, unknown>;
-  assertExactPlainObject(value, "expert", TRANSLATED_EXPERT_KEYS);
-  assertExactPlainObject(record.source, "expert.source", SOURCE_REF_KEYS);
-  assertExactPlainObject(record.upstreamSource, "expert.upstreamSource", SOURCE_REF_KEYS);
+  const snapshot = snapshotDataObject(value, "expert", TRANSLATED_EXPERT_KEYS);
+  if (snapshot === undefined) {
+    return value;
+  }
   for (const [key, maximumLength] of TOP_LEVEL_STRING_LIMITS) {
-    assertRawStringLength(record[key], `expert.${key}`, maximumLength);
+    assertRawStringLength(snapshot[key], `expert.${key}`, maximumLength);
   }
-  assertRawSourceStrings(record.source, "expert.source");
-  assertRawSourceStrings(record.upstreamSource, "expert.upstreamSource");
+  if (Object.prototype.hasOwnProperty.call(snapshot, "source")) {
+    snapshot.source = snapshotSource(snapshot.source, "expert.source");
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "upstreamSource")) {
+    snapshot.upstreamSource = snapshotSource(snapshot.upstreamSource, "expert.upstreamSource");
+  }
   for (const [key, maximumItems, maximumItemLength] of LIST_LIMITS) {
-    assertBoundedDenseStringArray(
-      record[key],
-      `expert.${key}`,
-      maximumItems,
-      maximumItemLength,
-    );
+    if (Object.prototype.hasOwnProperty.call(snapshot, key)) {
+      snapshot[key] = snapshotBoundedStringArray(
+        snapshot[key],
+        `expert.${key}`,
+        maximumItems,
+        maximumItemLength,
+      );
+    }
   }
-  const origin = typeof record.origin === "string" ? record.origin.trim() : undefined;
+  const origin = typeof snapshot.origin === "string" ? snapshot.origin.trim() : undefined;
   if (origin === "china_original") {
-    assertExactPlainObject(value, "expert", BASE_EXPERT_KEYS);
+    if (Object.prototype.hasOwnProperty.call(snapshot, "upstreamSource")) {
+      fail("expert.upstreamSource is unsupported for china_original");
+    }
   }
+  if (origin !== undefined) {
+    snapshot.origin = origin;
+  }
+  return snapshot;
 }
 
 function boundedText(label: string, maxLength: number) {
@@ -209,7 +263,7 @@ function hanBearingText(label: string, maxLength: number) {
 }
 
 function collisionKey(value: string): string {
-  return value.normalize("NFKC").toUpperCase().normalize("NFKC");
+  return unicodeDefaultCaseFold(value);
 }
 
 function uniqueStringArray<T extends z.ZodType<string>>(
@@ -268,6 +322,7 @@ function isSafeMarkdownPath(value: string): boolean {
   if (
     value.length === 0 ||
     Buffer.byteLength(value, "utf8") > LENGTH_LIMITS.path ||
+    value.normalize("NFC") !== value ||
     value.startsWith("/") ||
     value.includes("%") ||
     NON_PORTABLE_PATH_CHARACTER.test(value) ||
@@ -290,6 +345,23 @@ function isSafeMarkdownPath(value: string): boolean {
       Buffer.byteLength(component, "utf8") <= 255
     );
   });
+}
+
+function asciiLowercase(value: string): string {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+function repositoryIdentity(repository: string): string {
+  const url = new URL(repository);
+  if (url.hostname === "github.com") {
+    const components = url.pathname.slice(1).split("/");
+    if (components.length === 2) {
+      const owner = asciiLowercase(components[0]!);
+      const repositoryName = asciiLowercase(components[1]!).replace(/\.git$/i, "");
+      return `github:${owner}/${repositoryName}`;
+    }
+  }
+  return repository;
 }
 
 const expertIdSchema = boundedText("expert.id", LENGTH_LIMITS.id)
@@ -368,8 +440,8 @@ const translatedExpertSchema = z.object({
   upstreamSource: sourceRefSchema,
 }).strict().superRefine((expert, context) => {
   if (
-    expert.source.repository === expert.upstreamSource.repository &&
-    expert.source.path === expert.upstreamSource.path &&
+    repositoryIdentity(expert.source.repository) === repositoryIdentity(expert.upstreamSource.repository) &&
+    expert.source.path.normalize("NFC") === expert.upstreamSource.path.normalize("NFC") &&
     expert.source.commit === expert.upstreamSource.commit
   ) {
     context.addIssue({
@@ -406,22 +478,23 @@ function formatIssue(issue: z.core.$ZodIssue): string {
   return `${path}: ${issue.message}`;
 }
 
-export function parseExpert(value: unknown): Expert {
-  assertInputShape(value);
-  let schemaInput = value;
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value)
-  ) {
-    const record = value as Record<string, unknown>;
-    if (typeof record.origin === "string") {
-      schemaInput = { ...record, origin: record.origin.trim() };
-    }
-  }
-  const result = normalizedExpertSchema.safeParse(schemaInput);
+function parseStrictExpert(value: unknown): Expert {
+  const snapshot = snapshotExpertInput(value);
+  const result = normalizedExpertSchema.safeParse(snapshot);
   if (!result.success) {
     fail(formatIssue(result.error.issues[0]!), result.error);
   }
   return result.data;
+}
+
+export interface ExpertSchema {
+  parse(value: unknown): Expert;
+}
+
+export const expertSchema: Readonly<ExpertSchema> = Object.freeze({
+  parse: parseStrictExpert,
+});
+
+export function parseExpert(value: unknown): Expert {
+  return expertSchema.parse(value);
 }

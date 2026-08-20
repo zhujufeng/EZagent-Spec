@@ -2,7 +2,12 @@ import { readFile } from "node:fs/promises";
 
 import { beforeAll, describe, expect, expectTypeOf, test } from "vitest";
 
-import { parseExpert, type Expert, type SourceRef } from "../../src/experts/expert.js";
+import {
+  expertSchema,
+  parseExpert,
+  type Expert,
+  type SourceRef,
+} from "../../src/experts/expert.js";
 
 type MutableExpert = Record<string, unknown> & {
   id: string;
@@ -45,6 +50,106 @@ describe("normalized expert schema", () => {
     expect(parseExpert(fixture).id).toMatch(/^ezagent\./);
   });
 
+  test("exposes the same strict parsing boundary through expertSchema", () => {
+    const input = clone(translated);
+    input.nameZh = `  ${input.nameZh}  `;
+
+    expect(expertSchema.parse(input).nameZh).toBe(translated.nameZh);
+    const invalid = clone(translated);
+    invalid.extra = true;
+    expect(() => expertSchema.parse(invalid)).toThrow(/expert\.extra/i);
+  });
+
+  test("rejects a dynamic-length array Proxy without invoking its traps", () => {
+    let lengthReads = 0;
+    let elementReads = 0;
+    let descriptorReads = 0;
+    let ownKeyReads = 0;
+    const dynamic = new Proxy(["frontend-architecture"], {
+      get(target, property, receiver) {
+        if (property === "length") {
+          lengthReads += 1;
+          return lengthReads === 1 ? 1 : 1_000_000;
+        }
+        elementReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+      getOwnPropertyDescriptor(target, property) {
+        descriptorReads += 1;
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+      ownKeys(target) {
+        ownKeyReads += 1;
+        return Reflect.ownKeys(target);
+      },
+    });
+    const input = clone(translated);
+    input.capabilities = dynamic;
+
+    expect(() => expertSchema.parse(input)).toThrow(/Proxy/i);
+    expect({ lengthReads, elementReads, descriptorReads, ownKeyReads }).toEqual({
+      lengthReads: 1,
+      elementReads: 0,
+      descriptorReads: 0,
+      ownKeyReads: 0,
+    });
+  });
+
+  test("rejects a stateful object getter without invoking it", () => {
+    let getterCalls = 0;
+    const input = clone(translated);
+    Object.defineProperty(input, "nameZh", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        getterCalls += 1;
+        return getterCalls === 1 ? "前端架构师" : "English only";
+      },
+    });
+
+    expect(() => expertSchema.parse(input)).toThrow(/nameZh.*accessor/i);
+    expect(getterCalls).toBe(0);
+  });
+
+  test("rejects an array element getter without invoking it", () => {
+    let getterCalls = 0;
+    const input = clone(translated);
+    Object.defineProperty(input.capabilities, 0, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        getterCalls += 1;
+        return "frontend-architecture";
+      },
+    });
+
+    expect(() => expertSchema.parse(input)).toThrow(/capabilities\.0.*accessor/i);
+    expect(getterCalls).toBe(0);
+  });
+
+  test("rejects a nested source Proxy before invoking any trap", () => {
+    let trapCalls = 0;
+    const sourceProxy = new Proxy([], {
+      get() {
+        trapCalls += 1;
+        throw new Error("source Proxy getter must not run");
+      },
+      getOwnPropertyDescriptor() {
+        trapCalls += 1;
+        throw new Error("source Proxy descriptor must not run");
+      },
+      ownKeys() {
+        trapCalls += 1;
+        throw new Error("source Proxy ownKeys must not run");
+      },
+    });
+    const input = clone(translated);
+    input.source = sourceProxy as unknown as Record<string, unknown>;
+
+    expect(() => expertSchema.parse(input)).toThrow(/source.*Proxy/i);
+    expect(trapCalls).toBe(0);
+  });
+
   test("accepts intentionally empty optional signal lists", () => {
     const input = clone(translated);
     input.projectSignals = [];
@@ -82,6 +187,13 @@ describe("normalized expert schema", () => {
     input.source.repository = "https://github.com/jnMetaCode/agency-agents-zh.git";
 
     expect(parseExpert(input).source.repository).toBe(input.source.repository);
+  });
+
+  test("accepts an NFC-normalized Unicode source path", () => {
+    const input = clone(translated);
+    input.source.path = "docs/café.md";
+
+    expect(parseExpert(input).source.path).toBe(input.source.path);
   });
 
   test("returns normalized strings without mutating the input", () => {
@@ -158,6 +270,15 @@ describe("normalized expert schema", () => {
       expect(parsed.upstreamSource).toEqual(input.upstreamSource);
       expect(parsed.upstreamSource![differingField]).not.toBe(parsed.source[differingField]);
     }
+  });
+
+  test("rejects canonically identical GitHub provenance", () => {
+    const input = clone(translated);
+    input.source.repository = "https://github.com/ExampleOrg/ExampleRepo.git";
+    input.upstreamSource = structuredClone(input.source);
+    input.upstreamSource.repository = "https://github.com/exampleorg/examplerepo";
+
+    expect(() => parseExpert(input)).toThrow(/same source file revision/i);
   });
 
   test("models provenance as a TypeScript discriminated union", () => {
@@ -251,6 +372,7 @@ describe("normalized expert schema", () => {
     "windows/ＣＯＮ.md",
     "windows/com1.source.md",
     "windows/LPT9.md",
+    "docs/cafe\u0301.md",
     `engineering/bad\ud800.md`,
   ])("rejects unsafe source path %s", (path) => {
     const input = clone(translated);
@@ -279,12 +401,16 @@ describe("normalized expert schema", () => {
 
   test("rejects Unicode case-fold collisions conservatively", () => {
     const sharpS = clone(translated);
-    sharpS.qualityGates = ["Straße", "STRASSE"];
+    sharpS.qualityGates = ["Straße", "STRAẞE"];
     expect(() => parseExpert(sharpS)).toThrow(/qualityGates/i);
 
     const sigma = clone(translated);
     sigma.exclusionConditions = ["σ", "ς"];
     expect(() => parseExpert(sigma)).toThrow(/exclusionConditions/i);
+
+    const dotlessI = clone(translated);
+    dotlessI.qualityGates = ["I", "ı"];
+    expect(parseExpert(dotlessI).qualityGates).toEqual(["I", "ı"]);
   });
 
   test("fails on an oversized list before traversing its elements or descriptors", () => {
