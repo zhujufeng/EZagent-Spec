@@ -1,5 +1,5 @@
 import { constants, type Stats } from "node:fs";
-import { lstat, open, readFile } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { isWellFormedUnicode } from "../text/unicode.js";
@@ -28,6 +28,7 @@ export interface AuditEvent {
 }
 
 export interface AuditFileHandle {
+  readonly readFile: () => Promise<Buffer>;
   readonly writeFile: (contents: string, encoding: "utf8") => Promise<void>;
   readonly sync: () => Promise<void>;
   readonly close: () => Promise<void>;
@@ -36,7 +37,6 @@ export interface AuditFileHandle {
 
 export interface AuditFileRuntime {
   readonly lstat: (path: string) => Promise<Stats>;
-  readonly readFile: (path: string) => Promise<Buffer>;
   readonly open: (path: string, flags: number, mode: number) => Promise<AuditFileHandle>;
 }
 
@@ -226,16 +226,31 @@ function corruptAudit(path: string, line: number, cause: unknown): WorkspaceCorr
   return new WorkspaceCorruptError(`workspace audit is corrupt: ${path}; line ${line}`, { cause });
 }
 
+function auditCapacityError(path: string): WorkspaceCorruptError {
+  return new WorkspaceCorruptError(`workspace audit append exceeds size limit: ${path}`, {
+    cause: new Error(`audit size limit is ${MAX_AUDIT_BYTES} bytes; archive or compact the audit before retrying`),
+  });
+}
+
+function auditLine(rawEvent: AuditEvent): string {
+  return `${JSON.stringify(parseAuditEvent(rawEvent))}\n`;
+}
+
 export function createAuditStore(runtime: AuditFileRuntime) {
+  async function preflight(path: string, rawEvent: AuditEvent): Promise<void> {
+    const lineBytes = Buffer.byteLength(auditLine(rawEvent), "utf8");
+    const before = await assertAuditBoundary(runtime, path);
+    if (before.size + lineBytes > MAX_AUDIT_BYTES) {
+      throw auditCapacityError(path);
+    }
+  }
+
   async function append(path: string, rawEvent: AuditEvent): Promise<void> {
-    const validated = parseAuditEvent(rawEvent);
-    const line = `${JSON.stringify(validated)}\n`;
+    const line = auditLine(rawEvent);
     const lineBytes = Buffer.byteLength(line, "utf8");
     const before = await assertAuditBoundary(runtime, path);
     if (before.size + lineBytes > MAX_AUDIT_BYTES) {
-      throw new WorkspaceCorruptError(`workspace audit append exceeds size limit: ${path}`, {
-        cause: new Error(`audit size limit is ${MAX_AUDIT_BYTES} bytes`),
-      });
+      throw auditCapacityError(path);
     }
     let handle: AuditFileHandle | undefined;
     let failure: unknown;
@@ -270,15 +285,47 @@ export function createAuditStore(runtime: AuditFileRuntime) {
 
   async function read(path: string): Promise<AuditEvent[]> {
     const before = await assertAuditBoundary(runtime, path);
-    let bytes: Buffer;
+    let handle: AuditFileHandle | undefined;
+    let bytes: Buffer | undefined;
+    let failure: unknown;
     try {
-      bytes = await runtime.readFile(path);
+      handle = await runtime.open(
+        path,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+        0o600,
+      );
+      const opened = await handle.stat();
+      if (!opened.isFile() || !sameAuditIdentity(before, opened)) {
+        throw auditIdentityError(path);
+      }
+      bytes = await handle.readFile();
+      const afterRead = await handle.stat();
+      if (
+        !afterRead.isFile()
+        || !sameAuditIdentity(opened, afterRead)
+        || bytes.byteLength !== afterRead.size
+        || bytes.byteLength > MAX_AUDIT_BYTES
+      ) {
+        throw auditIdentityError(path);
+      }
     } catch (error: unknown) {
-      throw new WorkspaceCorruptError(`workspace audit is unreadable or corrupt: ${path}`, { cause: error });
+      failure = error;
+    }
+    if (handle !== undefined) {
+      try {
+        await handle.close();
+      } catch (error: unknown) {
+        failure ??= error;
+      }
+    }
+    if (failure !== undefined) {
+      if (failure instanceof WorkspaceCorruptError) throw failure;
+      throw new WorkspaceCorruptError(`workspace audit is unreadable or corrupt: ${path}`, { cause: failure });
     }
     const after = await assertAuditBoundary(runtime, path);
     if (
       !sameAuditIdentity(before, after)
+      || bytes === undefined
       || bytes.byteLength !== after.size
       || bytes.byteLength > MAX_AUDIT_BYTES
     ) {
@@ -319,14 +366,14 @@ export function createAuditStore(runtime: AuditFileRuntime) {
     return events;
   }
 
-  return { appendAuditEvent: append, readAuditEvents: read };
+  return { appendAuditEvent: append, preflightAuditAppend: preflight, readAuditEvents: read };
 }
 
 const nodeAuditStore = createAuditStore({
   lstat,
-  readFile,
   open,
 });
 
 export const appendAuditEvent = nodeAuditStore.appendAuditEvent;
+export const preflightAuditAppend = nodeAuditStore.preflightAuditAppend;
 export const readAuditEvents = nodeAuditStore.readAuditEvents;

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import {
-  appendAuditEvent,
   parseAuditEvent,
   readAuditEvents,
   type AuditEvent,
@@ -13,6 +12,7 @@ import {
 import { CANONICAL_INITIAL_STATE, recoverState } from "../audit/recovery.js";
 
 import { atomicWriteText } from "./atomic-write.js";
+import { workspaceCommitRuntime } from "./commit-runtime.js";
 import {
   ensureWorkspaceDirectoryChains,
   nodeWorkspaceDirectoryRuntime,
@@ -410,11 +410,11 @@ export class WorkspaceRepository {
           throw invalidPendingMutation(paths);
         }
         if (storedState === undefined || !isDeepStrictEqual(storedState, current)) {
-          await atomicWriteText(paths.state, `${JSON.stringify(current, null, 2)}\n`);
+          await workspaceCommitRuntime.atomicWriteText(paths.state, `${JSON.stringify(current, null, 2)}\n`);
         }
-        await nodePendingMarkerStore.removePendingMarker(paths.pendingMutation, pendingObservation!);
+        await workspaceCommitRuntime.removePendingMarker(paths.pendingMutation, pendingObservation!);
       } else if (storedState === undefined || !isDeepStrictEqual(storedState, current)) {
-        await atomicWriteText(paths.state, `${JSON.stringify(current, null, 2)}\n`);
+        await workspaceCommitRuntime.atomicWriteText(paths.state, `${JSON.stringify(current, null, 2)}\n`);
       }
       if (current.safeMode) {
         throw new WorkspaceCorruptError("workspace is in safe mode; mutation is disabled");
@@ -445,20 +445,18 @@ export class WorkspaceRepository {
         auditEvent,
         mutation.writes,
       );
-      await atomicWriteText(paths.pendingMutation, `${JSON.stringify(marker, null, 2)}\n`);
-      const markerObservation = await nodePendingMarkerStore.readPendingMarker(paths.pendingMutation);
-      if (markerObservation === undefined || markerObservation.marker.token !== marker.token) {
-        throw invalidPendingMutation(paths, new Error("published pending marker could not be observed"));
-      }
+      // Capacity is known before transaction evidence or artifact side effects.
+      await workspaceCommitRuntime.preflightAuditAppend(paths.audit, auditEvent);
+      const markerObservation = await workspaceCommitRuntime.publishPendingMarker(paths.pendingMutation, marker);
 
       // The marker precedes every artifact side effect. Audit is durable before state publication.
       await ensureArtifactBoundaries(paths.root, mutation.writes);
       for (const write of mutation.writes) {
-        await atomicWriteText(targetPath(paths.root, write.relativePath), write.content);
+        await workspaceCommitRuntime.atomicWriteText(targetPath(paths.root, write.relativePath), write.content);
       }
-      await appendAuditEvent(paths.audit, auditEvent);
-      await atomicWriteText(paths.state, `${JSON.stringify(mutation.next, null, 2)}\n`);
-      await nodePendingMarkerStore.removePendingMarker(paths.pendingMutation, markerObservation);
+      await workspaceCommitRuntime.appendAuditEvent(paths.audit, auditEvent);
+      await workspaceCommitRuntime.atomicWriteText(paths.state, `${JSON.stringify(mutation.next, null, 2)}\n`);
+      await workspaceCommitRuntime.removePendingMarker(paths.pendingMutation, markerObservation);
     });
   }
 

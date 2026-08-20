@@ -26,10 +26,12 @@ import {
   type AuditFileRuntime,
 } from "../../src/audit/events.js";
 import { recoverState } from "../../src/audit/recovery.js";
+import { workspaceCommitRuntime } from "../../src/workspace/commit-runtime.js";
 import { WorkspaceCorruptError } from "../../src/workspace/errors.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
 import {
   createPendingMarkerStore,
+  nodePendingMarkerStore,
   type PendingMarkerRuntime,
 } from "../../src/workspace/pending-marker.js";
 import { WorkspaceRepository } from "../../src/workspace/repository.js";
@@ -241,6 +243,36 @@ describe("audit events", () => {
     expect(writeFile).not.toHaveBeenCalled();
   });
 
+  test("rejects a path ABA that restores the canonical audit after a handle-bound read", async () => {
+    const evil = Buffer.from(`${JSON.stringify(event(1, { type: "evil" }))}\n`, "utf8");
+    const canonicalStats = fakeStats({ dev: 1, ino: 11, size: evil.byteLength, mtimeMs: 10 });
+    let handleStats = 0;
+    const close = vi.fn(async () => undefined);
+    const runtime = {
+      lstat: vi.fn(async (path: string) => path === "/audit"
+        ? fakeStats({ directory: true, dev: 1, ino: 10 })
+        : canonicalStats),
+      // The old path-based read sees B while both path observations report A.
+      readFile: vi.fn(async () => evil),
+      open: vi.fn(async () => ({
+        stat: async () => {
+          handleStats += 1;
+          return handleStats === 1
+            ? canonicalStats
+            : fakeStats({ dev: 1, ino: 99, size: evil.byteLength, mtimeMs: 99 });
+        },
+        readFile: async () => evil,
+        writeFile: async () => undefined,
+        sync: async () => undefined,
+        close,
+      })),
+    } as unknown as AuditFileRuntime;
+
+    await expect(createAuditStore(runtime).readAuditEvents("/audit/events.jsonl"))
+      .rejects.toBeInstanceOf(WorkspaceCorruptError);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   test("rejects symlinked audit files without modifying their targets", async ({ skip }) => {
     const { root, paths } = await temporaryWorkspace();
     const external = join(root, "external-audit.jsonl");
@@ -288,6 +320,37 @@ describe("audit events", () => {
       expect(close).toHaveBeenCalledOnce();
     },
   );
+
+  test.each(["read", "close"] as const)(
+    "closes the read handle and preserves the primary %s failure",
+    async (failurePoint) => {
+      const readError = new Error("read failed");
+      const closeError = new Error("read close failed");
+      const close = vi.fn(async () => { throw closeError; });
+      const runtime = {
+        lstat: vi.fn(async (path: string) => path === "/audit"
+          ? fakeStats({ directory: true, dev: 1, ino: 10 })
+          : fakeStats({ dev: 1, ino: 11, size: 0, mtimeMs: 10 })),
+        open: vi.fn(async () => ({
+          stat: async () => fakeStats({ dev: 1, ino: 11, size: 0, mtimeMs: 10 }),
+          readFile: async () => {
+            if (failurePoint === "read") throw readError;
+            return Buffer.alloc(0);
+          },
+          writeFile: async () => undefined,
+          sync: async () => undefined,
+          close,
+        })),
+      } as unknown as AuditFileRuntime;
+
+      const error = await createAuditStore(runtime).readAuditEvents("/audit/events.jsonl")
+        .catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(WorkspaceCorruptError);
+      expect((error as Error & { cause: unknown }).cause).toBe(failurePoint === "read" ? readError : closeError);
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe("recoverState", () => {
@@ -305,6 +368,64 @@ describe("recoverState", () => {
 });
 
 describe("pending marker ownership cleanup", () => {
+  test.each(["write", "sync", "close"] as const)(
+    "closes and cleans an unpublished stage while preserving the primary %s failure",
+    async (failurePoint) => {
+      const canonical = "/workspace/.ezagent/state/pending-mutation.json";
+      const marker = {
+        schemaVersion: 1 as const,
+        token: "failure-token",
+        createdAt: "2026-08-20T08:00:00.000Z",
+        fromRevision: 0,
+        toRevision: 1,
+        stateHash: "0".repeat(64),
+        eventHash: "1".repeat(64),
+        writes: [],
+      };
+      const contents = `${JSON.stringify(marker, null, 2)}\n`;
+      const writeError = new Error("stage write failed");
+      const syncError = new Error("stage sync failed");
+      const closeError = new Error("stage close failed");
+      const close = vi.fn(async () => {
+        if (failurePoint === "close") throw closeError;
+      });
+      const removeStage = vi.fn(async () => undefined);
+      const initial = fakeStats({ dev: 1, ino: 10, size: 0, mtimeMs: 10 });
+      const completed = fakeStats({ dev: 1, ino: 10, size: Buffer.byteLength(contents), mtimeMs: 20 });
+      let statCalls = 0;
+      const runtime = {
+        lstat: vi.fn(async () => initial),
+        readFile: vi.fn(),
+        rename: vi.fn(async () => undefined),
+        link: vi.fn(),
+        rm: removeStage,
+        open: vi.fn(async () => ({
+          stat: async () => {
+            statCalls += 1;
+            return statCalls === 1 ? initial : completed;
+          },
+          writeFile: async () => {
+            if (failurePoint === "write") throw writeError;
+          },
+          sync: async () => {
+            if (failurePoint === "sync") throw syncError;
+          },
+          close,
+        })),
+        randomUUID: vi.fn()
+          .mockReturnValueOnce("stage-id")
+          .mockReturnValueOnce("cleanup-id"),
+        pid: 123,
+      } as unknown as PendingMarkerRuntime;
+      const store = createPendingMarkerStore(runtime);
+      const expected = failurePoint === "write" ? writeError : failurePoint === "sync" ? syncError : closeError;
+
+      await expect(store.publishPendingMarker(canonical, marker)).rejects.toBe(expected);
+      expect(close).toHaveBeenCalledOnce();
+      expect(removeStage).toHaveBeenCalledOnce();
+    },
+  );
+
   test("retains replacement evidence when the canonical marker changes during quarantine", async () => {
     const canonical = "/workspace/.ezagent/state/pending-mutation.json";
     const original = `${JSON.stringify({
@@ -415,6 +536,86 @@ describe("pending marker ownership cleanup", () => {
     expect(linkEvidence).toHaveBeenCalledOnce();
     expect(canonicalEvidence).toBeDefined();
     expect(quarantineEvidence).toBeDefined();
+  });
+
+  test("retains A in quarantine when canonical B appears after A is renamed", async () => {
+    const canonical = "/workspace/.ezagent/state/pending-mutation.json";
+    const marker = (token: string, stateByte: string) => `${JSON.stringify({
+      schemaVersion: 1,
+      token,
+      createdAt: "2026-08-20T08:00:00.000Z",
+      fromRevision: 0,
+      toRevision: 1,
+      stateHash: stateByte.repeat(64),
+      eventHash: "1".repeat(64),
+      writes: [],
+    })}\n`;
+    type Evidence = { contents: string; stats: Awaited<ReturnType<typeof lstat>> };
+    const aContents = marker("A-token", "a");
+    const bContents = marker("B-token", "b");
+    let canonicalEvidence: Evidence | undefined = {
+      contents: aContents,
+      stats: fakeStats({ dev: 1, ino: 10, size: Buffer.byteLength(aContents), mtimeMs: 10 }),
+    };
+    let quarantineEvidence: Evidence | undefined;
+    const removeEvidence = vi.fn(async () => { quarantineEvidence = undefined; });
+    const runtime = {
+      lstat: vi.fn(async (path: string) => {
+        const found = path === canonical ? canonicalEvidence : quarantineEvidence;
+        if (found === undefined) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        return found.stats;
+      }),
+      readFile: vi.fn(async (path: string) => {
+        const found = path === canonical ? canonicalEvidence : quarantineEvidence;
+        if (found === undefined) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        return Buffer.from(found.contents, "utf8");
+      }),
+      rename: vi.fn(async () => {
+        quarantineEvidence = canonicalEvidence;
+        canonicalEvidence = {
+          contents: bContents,
+          stats: fakeStats({ dev: 1, ino: 20, size: Buffer.byteLength(bContents), mtimeMs: 20 }),
+        };
+      }),
+      link: vi.fn(async () => { throw Object.assign(new Error("exists"), { code: "EEXIST" }); }),
+      rm: removeEvidence,
+      randomUUID: () => "canonical-replacement",
+      pid: 123,
+    } as unknown as PendingMarkerRuntime;
+    const store = createPendingMarkerStore(runtime);
+    const observed = (await store.readPendingMarker(canonical))!;
+
+    const error = await store.removePendingMarker(canonical, observed).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(WorkspaceCorruptError);
+    expect((error as Error).message).toContain(canonical);
+    expect((error as Error).message).toContain("canonical-replacement");
+    expect(removeEvidence).not.toHaveBeenCalled();
+    expect(canonicalEvidence?.contents).toBe(bContents);
+    expect(quarantineEvidence?.contents).toBe(aContents);
+  });
+
+  test("publishes a marker without overwriting an existing canonical marker", async () => {
+    const { paths } = await temporaryWorkspace();
+    const existing = {
+      schemaVersion: 1 as const,
+      token: "existing-token",
+      createdAt: "2026-08-20T08:00:00.000Z",
+      fromRevision: 0,
+      toRevision: 1,
+      stateHash: "0".repeat(64),
+      eventHash: "1".repeat(64),
+      writes: [],
+    };
+    await writeFile(paths.pendingMutation, `${JSON.stringify(existing)}\n`, "utf8");
+
+    await expect(nodePendingMarkerStore.publishPendingMarker(paths.pendingMutation, {
+      ...existing,
+      token: "new-token",
+    })).rejects.toThrow("conflict");
+
+    await expect(readFile(paths.pendingMutation, "utf8")).resolves.toBe(`${JSON.stringify(existing)}\n`);
+    expect((await readdir(dirname(paths.pendingMutation))).filter((name) => name.includes("pending-stage"))).toEqual([]);
   });
 });
 
@@ -657,6 +858,38 @@ describe("WorkspaceRepository recovery and mutations", () => {
     expect(await readdir(root)).toEqual([]);
   });
 
+  test("commits an exact dated quality authorization artifact", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const relativePath = "quality/authorizations/AUTH-20260820-001.json";
+
+    await repository.commitMutation(
+      state(1),
+      0,
+      "authorization-recorded",
+      [{ relativePath, content: "{\"approved\":true}\n" }],
+    );
+
+    await expect(readFile(join(paths.root, relativePath), "utf8")).resolves.toBe("{\"approved\":true}\n");
+    await expect(lstat(paths.pendingMutation)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test.each([
+    "quality/authorizations/AUTH-20260230-001.json",
+    "quality/authorizations/auth-20260820-001.json",
+    "quality/authorizations/AUTH-20260820-01.json",
+    "quality/authorizations/AUTH-20260820-001.txt",
+    "quality/authorizations/archive/AUTH-20260820-001.json",
+  ])("rejects invalid quality authorization path %j before filesystem side effects", async (relativePath) => {
+    const root = await mkdtemp(join(tmpdir(), "ezagent-authorization-"));
+    roots.push(root);
+    const repository = new WorkspaceRepository(root);
+
+    await expect(repository.commitMutation(
+      state(1), 0, "authorization", [{ relativePath, content: "blocked" }],
+    )).rejects.toBeInstanceOf(TypeError);
+    expect(await readdir(root)).toEqual([]);
+  });
+
   test.each([
     ["isolated high surrogates", "specs/\uD800.md", "specs/\uD801.md"],
     ["isolated low surrogates", "specs/\uDC00.md", "specs/\uDC01.md"],
@@ -721,6 +954,133 @@ describe("WorkspaceRepository recovery and mutations", () => {
     await expect(readFile(paths.state, "utf8")).resolves.toBe(`${JSON.stringify(state(1), null, 2)}\n`);
     await expect(lstat(join(paths.root, "state/pending-mutation.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  test("retains transaction evidence when the second artifact write fails", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const originalWrite = workspaceCommitRuntime.atomicWriteText;
+    vi.spyOn(workspaceCommitRuntime, "atomicWriteText").mockImplementation(async (path, contents) => {
+      if (path.endsWith("second.md")) throw new Error("injected second artifact failure");
+      await originalWrite(path, contents);
+    });
+
+    await expect(repository.commitMutation(state(1), 0, "partial-artifacts", [
+      { relativePath: "specs/first.md", content: "first" },
+      { relativePath: "specs/second.md", content: "second" },
+    ])).rejects.toThrow("injected second artifact failure");
+
+    await expect(readFile(join(paths.root, "specs/first.md"), "utf8")).resolves.toBe("first");
+    await expect(readFile(join(paths.root, "specs/second.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(paths.pendingMutation)).resolves.toMatchObject({ size: expect.any(Number) });
+    await expect(readAuditEvents(paths.audit)).resolves.toEqual([]);
+    await expect(repository.readState()).resolves.toEqual(initialState);
+    await expect(repository.readContext()).resolves.toEqual({
+      project: config,
+      state: { ...initialState, safeMode: true },
+      recovered: false,
+    });
+  });
+
+  test("recovers from audit when state publication fails after durable append", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const originalWrite = workspaceCommitRuntime.atomicWriteText;
+    vi.spyOn(workspaceCommitRuntime, "atomicWriteText").mockImplementation(async (path, contents) => {
+      if (path === paths.state) throw new Error("injected state publication failure");
+      await originalWrite(path, contents);
+    });
+
+    await expect(repository.recordState(state(1), 0, "audit-before-state"))
+      .rejects.toThrow("injected state publication failure");
+
+    await expect(readAuditEvents(paths.audit)).resolves.toMatchObject([
+      { sequence: 1, type: "audit-before-state", state: state(1) },
+    ]);
+    await expect(repository.readState()).resolves.toEqual(initialState);
+    await expect(lstat(paths.pendingMutation)).resolves.toMatchObject({ size: expect.any(Number) });
+    await expect(repository.readContext()).resolves.toEqual({ project: config, state: state(1), recovered: true });
+  });
+
+  test("does not overwrite a marker that races exclusive publication", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const originalPublish = workspaceCommitRuntime.publishPendingMarker;
+    let competingContents = "";
+    vi.spyOn(workspaceCommitRuntime, "publishPendingMarker").mockImplementation(async (path, marker) => {
+      const competing = { ...marker, token: "competing-token" };
+      competingContents = `${JSON.stringify(competing, null, 2)}\n`;
+      await writeFile(path, competingContents, "utf8");
+      return originalPublish(path, marker);
+    });
+
+    await expect(repository.commitMutation(
+      state(1), 0, "marker-race", [{ relativePath: "specs/race.md", content: "blocked" }],
+    )).rejects.toThrow("conflict");
+
+    await expect(readFile(paths.pendingMutation, "utf8")).resolves.toBe(competingContents);
+    await expect(readFile(join(paths.root, "specs/race.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readAuditEvents(paths.audit)).resolves.toEqual([]);
+    await expect(repository.readState()).resolves.toEqual(initialState);
+    expect((await readdir(dirname(paths.pendingMutation))).filter((name) => name.includes("pending-stage"))).toEqual([]);
+
+    vi.restoreAllMocks();
+    await expect(repository.recordState(state(1), 0, "cannot-overwrite-race"))
+      .rejects.toThrow("pending mutation");
+    await expect(readFile(paths.pendingMutation, "utf8")).resolves.toBe(competingContents);
+  });
+
+  test("rejects an audit-capacity mutation before marker or artifact side effects", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const chunks: string[] = [];
+    let sequence = 0;
+    let totalBytes = 0;
+    const bulkMetadata = Object.fromEntries(
+      Array.from({ length: 32 }, (_, index) => [`key${index}`, "x".repeat(256)]),
+    );
+    const lineFor = (nextSequence: number, metadata: AuditEvent["metadata"]): string => `${JSON.stringify(event(
+      nextSequence,
+      { type: "capacity", metadata },
+    ))}\n`;
+    for (;;) {
+      const line = lineFor(sequence + 1, bulkMetadata);
+      const size = Buffer.byteLength(line, "utf8");
+      if (totalBytes + size > MAX_AUDIT_BYTES) break;
+      chunks.push(line);
+      totalBytes += size;
+      sequence += 1;
+    }
+    for (;;) {
+      const candidates = [
+        ...Array.from({ length: 257 }, (_, offset) => ({ padding: "x".repeat(256 - offset) })),
+        {},
+      ];
+      const fitting = candidates
+        .map((metadata) => lineFor(sequence + 1, metadata))
+        .find((line) => totalBytes + Buffer.byteLength(line, "utf8") <= MAX_AUDIT_BYTES);
+      if (fitting === undefined) break;
+      chunks.push(fitting);
+      totalBytes += Buffer.byteLength(fitting, "utf8");
+      sequence += 1;
+    }
+    await writeFile(paths.audit, chunks.join(""), "utf8");
+    await writeFile(paths.state, `${JSON.stringify(state(sequence), null, 2)}\n`, "utf8");
+    const beforeAudit = await stat(paths.audit);
+    const beforeState = await readFile(paths.state, "utf8");
+
+    await expect(repository.commitMutation(
+      state(sequence + 1),
+      sequence,
+      "capacity",
+      [{ relativePath: "specs/must-not-exist.md", content: "blocked" }],
+    )).rejects.toMatchObject({
+      name: "WorkspaceCorruptError",
+      message: expect.stringContaining(paths.audit),
+      cause: expect.objectContaining({ message: expect.stringMatching(/archive|compact/u) }),
+    });
+
+    expect((await stat(paths.audit)).size).toBe(beforeAudit.size);
+    await expect(readFile(paths.state, "utf8")).resolves.toBe(beforeState);
+    await expect(lstat(paths.pendingMutation)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(paths.root, "specs/must-not-exist.md"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  }, 30_000);
 
   test("rejects a symlinked artifact parent without modifying the external directory", async ({ skip }) => {
     const { repository, root, paths } = await temporaryWorkspace();

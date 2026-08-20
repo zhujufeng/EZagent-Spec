@@ -24,6 +24,7 @@ const PENDING_KEYS = [
 ] as const;
 const PENDING_WRITE_KEYS = ["relativePath", "contentHash"] as const;
 const MAX_MUTATION_WRITES = 256;
+const AUTHORIZATION_FILENAME = /^AUTH-(\d{4})(\d{2})(\d{2})-(\d{3})\.json$/u;
 
 export interface WorkspaceMutationWrite {
   readonly relativePath: string;
@@ -89,6 +90,31 @@ function assertCanonicalTimestamp(value: unknown, label: string): asserts value 
   }
 }
 
+function isRealAuthorizationFilename(value: string): boolean {
+  const match = AUTHORIZATION_FILENAME.exec(value);
+  if (match === null) return false;
+  const date = `${match[1]!}-${match[2]!}-${match[3]!}`;
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+}
+
+function isAllowedArtifactPath(components: readonly string[]): boolean {
+  const root = components[0];
+  return components.length >= 2 && (
+    root === "requirements"
+    || root === "specs"
+    || root === "tasks"
+    || root === "experts"
+    || (root === "knowledge" && components.length >= 3
+      && (components[1] === "decisions" || components[1] === "patterns"))
+    || (root === "quality" && components.length >= 3 && components[1] === "runs")
+    || (root === "quality"
+      && components.length === 3
+      && components[1] === "authorizations"
+      && isRealAuthorizationFilename(components[2]!))
+  );
+}
+
 export function validateArtifactRelativePath(value: unknown): string {
   if (typeof value !== "string") {
     throw new TypeError(`workspace write path must be text: ${String(value)}`);
@@ -109,19 +135,6 @@ export function validateArtifactRelativePath(value: unknown): string {
     throw new TypeError(`workspace write escapes .ezagent or is not portable: ${String(value)}`);
   }
   const components = value.split("/");
-  const root = components[0];
-  const allowedPrefix = components.length >= 2 && (
-    root === "requirements"
-    || root === "specs"
-    || root === "tasks"
-    || root === "experts"
-    || (root === "knowledge" && components.length >= 3
-      && (components[1] === "decisions" || components[1] === "patterns"))
-    || (root === "quality" && components.length >= 3 && components[1] === "runs")
-  );
-  if (!allowedPrefix) {
-    throw new TypeError(`workspace write is outside allowed artifact roots: ${value}`);
-  }
   const actualComponents: string[] = [];
   for (const rawComponent of components) {
     const component = rawComponent.normalize("NFC");
@@ -140,6 +153,9 @@ export function validateArtifactRelativePath(value: unknown): string {
       throw new TypeError(`workspace write path is unsafe or not portable: ${value}`);
     }
     actualComponents.push(component);
+  }
+  if (!isAllowedArtifactPath(actualComponents)) {
+    throw new TypeError(`workspace write is outside allowed artifact roots: ${value}`);
   }
   return actualComponents.join("/");
 }
