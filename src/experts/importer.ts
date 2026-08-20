@@ -970,8 +970,9 @@ export function serializeNormalizedCatalog(expertsInput: readonly Expert[]): str
  *
  * Threat model: cross-platform Node does not expose openat/renameat-style directory
  * handles, so the invoking user must not concurrently replace catalog/normalized or
- * its ancestors. Under that static-parent model, every ancestor is checked before and
- * after, existing-file reads are handle-bound, and publication uses a hard-link create.
+ * its ancestors. Under that static-ancestor model, an existing identical target is
+ * accepted after ancestor validation and a handle-bound read. A new hard-link
+ * publication additionally rechecks every ancestor immediately before and after link.
  */
 export async function writeNormalizedCatalog(
   target: string,

@@ -1041,8 +1041,10 @@ async function verifyCheckoutSnapshot(
   const finalHead = await resolveVerifiedHead(runner, checkoutPath, candidate);
   if (head !== finalHead) throw new LocalCheckoutError("CHECKOUT_CHANGED", id);
 
-  // This is intentionally the final Git semantic check. The future importer must
-  // repeat provenance verification immediately before it reads source content.
+  // This is intentionally the final Git semantic check. The importer does not run Git:
+  // it validates the lock-bound normalized bytes and exact Markdown path inventory.
+  // Keep the release checkout static during import; rerun catalog:lock whenever Git
+  // commit, tree, configuration, or worktree state must be proven again.
   await assertCleanWorktree(runner, checkoutPath, id);
   return Object.freeze({
     commit: finalHead,
