@@ -80,6 +80,21 @@ function portableCollisionKey(relativePath: string): string {
   return relativePath.normalize("NFKC").toUpperCase().normalize("NFKC");
 }
 
+function isWellFormedUnicode(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      if (index + 1 >= value.length) return false;
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return false;
+      index += 1;
+      continue;
+    }
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) return false;
+  }
+  return true;
+}
+
 function assertCanonicalTimestamp(value: unknown, label: string): asserts value is string {
   if (
     typeof value !== "string"
@@ -92,9 +107,14 @@ function assertCanonicalTimestamp(value: unknown, label: string): asserts value 
 }
 
 export function validateArtifactRelativePath(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`workspace write path must be text: ${String(value)}`);
+  }
+  if (!isWellFormedUnicode(value)) {
+    throw new TypeError("workspace write path must be well-formed Unicode");
+  }
   if (
-    typeof value !== "string"
-    || value.length === 0
+    value.length === 0
     || value.length > 1_024
     || value === "."
     || value.includes("\0")

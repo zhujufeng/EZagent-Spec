@@ -388,6 +388,49 @@ describe("WorkspaceRepository recovery and mutations", () => {
     expect(await readdir(root)).toEqual([]);
   });
 
+  test.each([
+    ["isolated high surrogates", "specs/\uD800.md", "specs/\uD801.md"],
+    ["isolated low surrogates", "specs/\uDC00.md", "specs/\uDC01.md"],
+  ])("rejects double writes with %s before any filesystem side effect", async (_label, first, second) => {
+    const root = await mkdtemp(join(tmpdir(), "ezagent-surrogate-"));
+    roots.push(root);
+    const repository = new WorkspaceRepository(root);
+
+    await expect(repository.commitMutation(state(1), 0, "malformed-unicode", [
+      { relativePath: first, content: "one" },
+      { relativePath: second, content: "two" },
+    ])).rejects.toBeInstanceOf(TypeError);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  test.each(["specs/\uD800.md", "specs/\uDC00.md", "specs/end\uD800"])(
+    "rejects malformed Unicode in pending marker path %j",
+    (relativePath) => {
+      expect(() => parsePendingMutation({
+        schemaVersion: 1,
+        token: "token",
+        createdAt: "2026-08-20T08:00:00.000Z",
+        fromRevision: 0,
+        toRevision: 1,
+        stateHash: "0".repeat(64),
+        eventHash: "1".repeat(64),
+        writes: [{ relativePath, contentHash: "2".repeat(64) }],
+      })).toThrow(TypeError);
+    },
+  );
+
+  test("commits a well-formed non-BMP artifact path", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const relativePath = "specs/😀.md";
+
+    await repository.commitMutation(
+      state(1), 0, "emoji-path", [{ relativePath, content: "valid pair" }],
+    );
+
+    await expect(readFile(join(paths.root, relativePath), "utf8")).resolves.toBe("valid pair");
+    await expect(lstat(paths.pendingMutation)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   test("commits artifact writes, audit and state and leaves no transaction marker", async () => {
     const { repository, paths } = await temporaryWorkspace();
     await repository.commitMutation(
