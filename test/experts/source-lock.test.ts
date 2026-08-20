@@ -23,17 +23,21 @@ import {
   lockCatalogSources,
   parseSourceCandidatesConfig,
   parseSourceCandidatesYaml,
+  resolveLocalCheckoutAttestation,
   resolveLocalCheckoutCommit,
   serializeSourceLock,
   nodeSourceConfigReadRuntime,
   nodeSourceLockPublishRuntime,
   writeSourceLockFile,
+  type GitBinaryRunner,
   type GitRunner,
   type SourceConfigReadRuntime,
   type SourceLockPublishRuntime,
   type SourceCandidate,
   type SourceLock,
 } from "../../src/experts/source-lock.js";
+import { parseSourceLockJson } from "../../src/experts/importer.js";
+import { createAttestedMarkdownEntry } from "../../src/experts/attested-source-contract.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryRoots: string[] = [];
@@ -60,8 +64,14 @@ async function runGit(repository: string, args: readonly string[]): Promise<stri
   return stdout;
 }
 
-async function createLocalSource(root: string): Promise<{ checkout: string; head: string }> {
-  const checkout = join(root, "vendor-sources", "agency-agents");
+async function createLocalSource(
+  root: string,
+  id: "agency-agents" | "agency-agents-zh" = "agency-agents",
+): Promise<{ checkout: string; head: string }> {
+  const repository = id === "agency-agents"
+    ? "https://github.com/msitarzewski/agency-agents"
+    : "https://github.com/jnMetaCode/agency-agents-zh";
+  const checkout = join(root, "vendor-sources", id);
   await mkdir(checkout, { recursive: true });
   await execFileAsync("git", ["init", "-b", "main", checkout]);
   await runGit(checkout, ["config", "user.name", "EZagent Test"]);
@@ -73,9 +83,27 @@ async function createLocalSource(root: string): Promise<{ checkout: string; head
     "remote",
     "add",
     "origin",
-    "https://github.com/msitarzewski/agency-agents",
+    repository,
   ]);
   return { checkout, head: (await runGit(checkout, ["rev-parse", "HEAD"])).trim() };
+}
+
+function reviewedSourcesYaml(): string {
+  return [
+    "schemaVersion: 1",
+    "sources:",
+    "  - id: agency-agents",
+    "    repository: https://github.com/msitarzewski/agency-agents",
+    "    ref: refs/heads/main",
+    "    checkout: vendor-sources/agency-agents",
+    "    license: MIT",
+    "  - id: agency-agents-zh",
+    "    repository: https://github.com/jnMetaCode/agency-agents-zh",
+    "    ref: refs/heads/main",
+    "    checkout: vendor-sources/agency-agents-zh",
+    "    license: MIT",
+    "",
+  ].join("\n");
 }
 
 async function symlinkOrSkip(
@@ -694,6 +722,109 @@ describe("source lock file", () => {
     expect(serialized.endsWith("\n\n")).toBe(false);
   });
 
+  it("uses one portable manifest contract for producer and consumer path validation", () => {
+    const bytes = Buffer.from("reviewed\n");
+    const entry = {
+      path: "README.md",
+      oid: createHash("sha1").update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest("hex"),
+      size: bytes.length,
+      sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+      normalizedSize: bytes.length,
+      normalizedSha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    };
+    const reviewed: SourceLock = {
+      schemaVersion: 2,
+      sources: [
+        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", markdown: [entry] },
+        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", markdown: [entry] },
+      ],
+    };
+    const serialized = serializeSourceLock(reviewed);
+    expect(parseSourceLockJson(serialized).sourcesById["agency-agents"].markdown[0]).toEqual(entry);
+
+    for (const invalidPath of ["bad:name.md", "bad\u0001name.md", "folder/CON.md", "folder/file.MD", "folder/cafe\u0301.md"]) {
+      const invalid = structuredClone(reviewed) as SourceLock;
+      (invalid.sources[0]!.markdown![0] as { path: string }).path = invalidPath;
+      expect(() => serializeSourceLock(invalid)).toThrow(/path|manifest/iu);
+    }
+    const collision = structuredClone(reviewed) as SourceLock;
+    (collision.sources[0] as { markdown: unknown }).markdown = [
+      { ...entry, path: "folder/Straße.md" },
+      { ...entry, path: "folder/STRAẞE.md" },
+    ];
+    expect(() => serializeSourceLock(collision)).toThrow(/duplicate|collision/iu);
+  });
+
+  it("keeps raw Git identity while attesting single-BOM CRLF canonical Markdown separately", () => {
+    const raw = Buffer.from("\uFEFF第一行\r\n第二行\r\n", "utf8");
+    const oid = createHash("sha1").update(Buffer.from(`blob ${raw.length}\0`)).update(raw).digest("hex");
+    const entry = createAttestedMarkdownEntry("design/researcher.md", oid, raw);
+    const normalized = Buffer.from("第一行\n第二行\n", "utf8");
+    expect(entry).toEqual({
+      path: "design/researcher.md",
+      oid,
+      size: raw.length,
+      sha256: `sha256:${createHash("sha256").update(raw).digest("hex")}`,
+      normalizedSize: normalized.length,
+      normalizedSha256: `sha256:${createHash("sha256").update(normalized).digest("hex")}`,
+    });
+  });
+
+  it.each([
+    Buffer.from("\uFEFF\uFEFF重复 BOM\n", "utf8"),
+    Buffer.from("裸回车\r不允许\n", "utf8"),
+    Buffer.from([0xff, 0xfe]),
+  ])("rejects a non-canonical reviewed Markdown blob %#", (raw) => {
+    const oid = createHash("sha1").update(Buffer.from(`blob ${raw.length}\0`)).update(raw).digest("hex");
+    expect(() => createAttestedMarkdownEntry("design/researcher.md", oid, raw)).toThrow();
+  });
+
+  it("rejects an over-budget v2 lock identically before producer serialization or consumer parsing", () => {
+    const bytes = Buffer.from("x\n");
+    const base = {
+      oid: createHash("sha1").update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest("hex"),
+      size: bytes.length,
+      sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+      normalizedSize: bytes.length,
+      normalizedSha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    };
+    const markdown = Array.from({ length: 3_000 }, (_, index) => ({
+      ...base,
+      path: `engineering/${"a".repeat(200)}/${"b".repeat(200)}/${"c".repeat(200)}/${String(index).padStart(4, "0")}.md`,
+    }));
+    const oversized: SourceLock = {
+      schemaVersion: 2,
+      sources: [
+        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", markdown },
+        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", markdown: [] },
+      ],
+    };
+    const raw = `${JSON.stringify(oversized)}\n`;
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(2 * 1_048_576);
+    expect(() => serializeSourceLock(oversized)).toThrow(/large|budget/iu);
+    expect(() => parseSourceLockJson(raw)).toThrow(/large|budget/iu);
+  });
+
+  it("rejects a v2 manifest above the shared entry-count budget", () => {
+    const bytes = Buffer.from("x\n");
+    const base = {
+      oid: createHash("sha1").update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest("hex"),
+      size: bytes.length,
+      sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+      normalizedSize: bytes.length,
+      normalizedSha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    };
+    const markdown = Array.from({ length: 4_097 }, (_, index) => ({ ...base, path: `x/${index}.md` }));
+    const lock = {
+      schemaVersion: 2,
+      sources: [
+        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", markdown },
+        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", markdown: [] },
+      ],
+    } as SourceLock;
+    expect(() => serializeSourceLock(lock)).toThrow(/entry|manifest|budget/iu);
+  });
+
   it("atomically creates once, refuses no-clobber races, and conservatively retains staging names", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
@@ -995,40 +1126,33 @@ describe("source lock file", () => {
 });
 
 describe("lockCatalogSources", () => {
-  it("uses only local release inputs and refuses to overwrite an existing lock", async () => {
+  it("rejects non-UTF-8 path bytes from the NUL-delimited Git tree before publication", async () => {
     const root = await temporaryRoot();
-    const source = await createLocalSource(root);
-    await mkdir(join(root, "catalog"));
-    await writeFile(join(root, "catalog", "sources.yaml"), [
-      "schemaVersion: 1",
-      "sources:",
-      "  - id: agency-agents",
-      "    repository: https://github.com/msitarzewski/agency-agents",
-      "    ref: refs/heads/main",
-      "    checkout: vendor-sources/agency-agents",
-      "    license: MIT",
-      "",
-    ].join("\n"), "utf8");
-
-    const result = await lockCatalogSources(root);
-    expect(result.schemaVersion).toBe(2);
-    expect(result.sources[0]?.commit).toBe(source.head);
-    expect(result.sources[0]).toMatchObject({
-      objectFormat: "sha1",
-      tree: await runGit(source.checkout, ["rev-parse", `${source.head}^{tree}`]).then((value) => value.trim()),
-      markdown: [{
-        path: "README.md",
-        oid: await runGit(source.checkout, ["rev-parse", `${source.head}:README.md`]).then((value) => value.trim()),
-        size: Buffer.byteLength("offline fixture\n"),
-        sha256: `sha256:${createHash("sha256").update("offline fixture\n").digest("hex")}`,
-      }],
+    await createLocalSource(root);
+    const runner: GitRunner = async (args) => {
+      const { stdout } = await execFileAsync("git", [...args], { encoding: "utf8" });
+      return stdout;
+    };
+    const binaryRunner: GitBinaryRunner = async (args) => new Promise<Buffer>((resolvePromise, rejectPromise) => {
+      execFile("git", [...args], { encoding: "buffer" }, (error, stdout) => {
+        if (error !== null) {
+          rejectPromise(error);
+          return;
+        }
+        const bytes = Buffer.isBuffer(stdout) ? Buffer.from(stdout) : Buffer.from(stdout);
+        if (args.includes("ls-tree")) {
+          const tab = bytes.indexOf(0x09);
+          if (tab >= 0 && tab + 1 < bytes.length) bytes[tab + 1] = 0xff;
+        }
+        resolvePromise(bytes);
+      });
     });
-    const target = join(root, "catalog", "sources.lock.json");
-    expect(JSON.parse(await readFile(target, "utf8"))).toEqual(result);
-    await expect(lockCatalogSources(root)).rejects.toThrow("already exists");
+
+    await expect(resolveLocalCheckoutAttestation(root, validCandidate(), runner, binaryRunner))
+      .rejects.toMatchObject({ code: "GIT_OUTPUT_INVALID", sourceId: "agency-agents" });
   });
 
-  it("labels the executable command as a local, release-only, no-network operation", async () => {
+  it("refuses to publish a production lock unless both exact reviewed source roles are configured", async () => {
     const root = await temporaryRoot();
     await createLocalSource(root);
     await mkdir(join(root, "catalog"));
@@ -1042,6 +1166,45 @@ describe("lockCatalogSources", () => {
       "    license: MIT",
       "",
     ].join("\n"), "utf8");
+
+    await expect(lockCatalogSources(root)).rejects.toThrow(/exactly|reviewed/iu);
+    await expect(readFile(join(root, "catalog", "sources.lock.json"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("uses only local release inputs and refuses to overwrite an existing lock", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await createLocalSource(root, "agency-agents-zh");
+    await mkdir(join(root, "catalog"));
+    await writeFile(join(root, "catalog", "sources.yaml"), reviewedSourcesYaml(), "utf8");
+
+    const result = await lockCatalogSources(root);
+    expect(result.schemaVersion).toBe(2);
+    expect(result.sources[0]?.commit).toBe(source.head);
+    expect(result.sources[0]).toMatchObject({
+      objectFormat: "sha1",
+      tree: await runGit(source.checkout, ["rev-parse", `${source.head}^{tree}`]).then((value) => value.trim()),
+      markdown: [{
+        path: "README.md",
+        oid: await runGit(source.checkout, ["rev-parse", `${source.head}:README.md`]).then((value) => value.trim()),
+        size: Buffer.byteLength("offline fixture\n"),
+        sha256: `sha256:${createHash("sha256").update("offline fixture\n").digest("hex")}`,
+        normalizedSize: Buffer.byteLength("offline fixture\n"),
+        normalizedSha256: `sha256:${createHash("sha256").update("offline fixture\n").digest("hex")}`,
+      }],
+    });
+    const target = join(root, "catalog", "sources.lock.json");
+    expect(JSON.parse(await readFile(target, "utf8"))).toEqual(result);
+    await expect(lockCatalogSources(root)).rejects.toThrow("already exists");
+  });
+
+  it("labels the executable command as a local, release-only, no-network operation", async () => {
+    const root = await temporaryRoot();
+    await createLocalSource(root);
+    await createLocalSource(root, "agency-agents-zh");
+    await mkdir(join(root, "catalog"));
+    await writeFile(join(root, "catalog", "sources.yaml"), reviewedSourcesYaml(), "utf8");
     const script = fileURLToPath(new URL("../../scripts/lock-catalog-sources.ts", import.meta.url));
     const tsxLoader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
 
@@ -1058,17 +1221,9 @@ describe("lockCatalogSources", () => {
   it("propagates unsupported directory-sync warnings to the CLI notification seam", async () => {
     const root = await temporaryRoot();
     await createLocalSource(root);
+    await createLocalSource(root, "agency-agents-zh");
     await mkdir(join(root, "catalog"));
-    await writeFile(join(root, "catalog", "sources.yaml"), [
-      "schemaVersion: 1",
-      "sources:",
-      "  - id: agency-agents",
-      "    repository: https://github.com/msitarzewski/agency-agents",
-      "    ref: refs/heads/main",
-      "    checkout: vendor-sources/agency-agents",
-      "    license: MIT",
-      "",
-    ].join("\n"), "utf8");
+    await writeFile(join(root, "catalog", "sources.yaml"), reviewedSourcesYaml(), "utf8");
     const onPublishWarning = vi.fn();
     const publishRuntime: SourceLockPublishRuntime = {
       ...nodeSourceLockPublishRuntime,

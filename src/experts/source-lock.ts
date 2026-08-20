@@ -15,17 +15,29 @@ import { types as nodeTypes } from "node:util";
 
 import { parseDocument } from "yaml";
 
+import {
+  assertAttestedSourceLockTextBudget,
+  attestedPathCollisionKey,
+  createAttestedMarkdownEntry,
+  MAX_ATTESTED_MARKDOWN_BYTES,
+  MAX_ATTESTED_MARKDOWN_FILES,
+  MAX_ATTESTED_SOURCE_LOCK_BYTES,
+  MAX_ATTESTED_TOTAL_BYTES,
+  REVIEWED_CATALOG_SOURCES,
+  snapshotReviewedSourceLockV2,
+  validateAttestedMarkdownPath,
+  type AttestedMarkdownEntry,
+} from "./attested-source-contract.js";
+
 const CONFIG_KEYS = ["schemaVersion", "sources"] as const;
 const CANDIDATE_KEYS = ["id", "repository", "ref", "checkout", "license"] as const;
 const LOCK_KEYS = ["schemaVersion", "sources"] as const;
-const LOCKED_SOURCE_KEYS = ["id", "repository", "license", "commit", "tree", "objectFormat", "markdown"] as const;
-const MARKDOWN_ATTESTATION_KEYS = ["path", "oid", "size", "sha256"] as const;
 const MAX_SOURCES = 64;
 const MAX_CONFIG_BYTES = 1_048_576;
 const MAX_GIT_OUTPUT = 1_048_576;
-const MAX_MARKDOWN_FILES = 4_096;
-const MAX_MARKDOWN_BYTES = 1_048_576;
-const MAX_TOTAL_MARKDOWN_BYTES = 64 * 1_048_576;
+const MAX_MARKDOWN_FILES = MAX_ATTESTED_MARKDOWN_FILES;
+const MAX_MARKDOWN_BYTES = MAX_ATTESTED_MARKDOWN_BYTES;
+const MAX_TOTAL_MARKDOWN_BYTES = MAX_ATTESTED_TOTAL_BYTES;
 const MAX_LENGTHS = {
   id: 64,
   repository: 256,
@@ -71,12 +83,7 @@ export interface LockedSource {
   readonly markdown?: readonly MarkdownAttestation[];
 }
 
-export interface MarkdownAttestation {
-  readonly path: string;
-  readonly oid: string;
-  readonly size: number;
-  readonly sha256: string;
-}
+export type MarkdownAttestation = AttestedMarkdownEntry;
 
 export interface SourceLock {
   readonly schemaVersion: 1 | 2;
@@ -502,7 +509,7 @@ const nodeGitBinaryRunner: GitBinaryRunner = async (args) => new Promise<Buffer>
   execFile("git", [...args], {
     encoding: "buffer",
     env: isolatedGitEnvironment(),
-    maxBuffer: MAX_MARKDOWN_BYTES + 1,
+    maxBuffer: MAX_ATTESTED_SOURCE_LOCK_BYTES + 1,
     windowsHide: true,
   }, (error, stdout) => {
     if (error !== null) {
@@ -1077,27 +1084,11 @@ export async function resolveLocalCheckoutCommit(
 }
 
 function safeManifestPath(value: string, sourceId: string): string {
-  if (value.length === 0
-    || value.length > 1_024
-    || value.normalize("NFC") !== value
-    || value.startsWith("/")
-    || value.includes("\\")
-    || value.includes("\0")
-    || value.includes("%")
-    || !value.endsWith(".md")) {
+  try {
+    return validateAttestedMarkdownPath(value, `source ${sourceId} manifest path`);
+  } catch (error: unknown) {
     throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
   }
-  for (const component of value.split("/")) {
-    const compatibility = component.normalize("NFKC");
-    const basename = compatibility.split(".", 1)[0]!.toUpperCase();
-    if (component === "" || component === "." || component === ".."
-      || compatibility.endsWith(".") || compatibility.endsWith(" ")
-      || WINDOWS_RESERVED_BASENAME.test(basename)
-      || Buffer.byteLength(component, "utf8") > 255) {
-      throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
-    }
-  }
-  return value;
 }
 
 async function runCheckoutGitBytes(
@@ -1105,6 +1096,7 @@ async function runCheckoutGitBytes(
   checkoutPath: string,
   args: readonly string[],
   sourceId: string,
+  maximumBytes = MAX_MARKDOWN_BYTES,
 ): Promise<Buffer> {
   try {
     const bytes = await runner([
@@ -1122,7 +1114,7 @@ async function runCheckoutGitBytes(
       "maintenance.auto=false",
       ...args,
     ]);
-    if (!Buffer.isBuffer(bytes) || bytes.length > MAX_MARKDOWN_BYTES) {
+    if (!Buffer.isBuffer(bytes) || bytes.length > maximumBytes) {
       throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
     }
     return bytes;
@@ -1158,27 +1150,35 @@ async function attestCommittedMarkdown(
     "GIT_OUTPUT_INVALID",
   ), candidate.id, "commit tree");
   if (!FULL_COMMIT_SHA.test(tree)) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
-  const listing = await runCheckoutGit(
-    runner,
+  const listing = await runCheckoutGitBytes(
+    binaryRunner,
     checkoutPath,
     ["ls-tree", "-r", "-z", "--full-tree", commit],
     candidate.id,
-    "GIT_OUTPUT_INVALID",
+    MAX_ATTESTED_SOURCE_LOCK_BYTES,
   );
   const manifest: MarkdownAttestation[] = [];
   let totalBytes = 0;
   const seen = new Set<string>();
-  const records = listing.split("\0");
-  if (records.at(-1) !== "") throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
-  records.pop();
-  for (const record of records) {
+  if (listing.length > 0 && listing.at(-1) !== 0) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+  let start = 0;
+  while (start < listing.length) {
+    const end = listing.indexOf(0, start);
+    if (end < 0 || end === start) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+    let record: string;
+    try {
+      record = new TextDecoder("utf-8", { fatal: true }).decode(listing.subarray(start, end));
+    } catch (error: unknown) {
+      throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id, { cause: error });
+    }
+    start = end + 1;
     const match = /^(100644|100755) blob ([0-9a-f]{40})\t([^\r\n\0]+)$/u.exec(record);
     if (match === null) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
     const path = match[3]!;
     if (/\.md$/iu.test(path) && !path.endsWith(".md")) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
     if (!path.endsWith(".md")) continue;
     safeManifestPath(path, candidate.id);
-    const collision = path.normalize("NFKC").toUpperCase().normalize("NFKC");
+    const collision = attestedPathCollisionKey(path);
     if (seen.has(collision)) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
     seen.add(collision);
     if (manifest.length >= MAX_MARKDOWN_FILES) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
@@ -1191,12 +1191,11 @@ async function attestCommittedMarkdown(
       .update(bytes)
       .digest("hex");
     if (calculatedOid !== oid) throw new LocalCheckoutError("OBJECTS_INCOMPLETE", candidate.id);
-    manifest.push(Object.freeze({
-      path,
-      oid,
-      size: bytes.length,
-      sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
-    }));
+    try {
+      manifest.push(createAttestedMarkdownEntry(path, oid, bytes));
+    } catch (error: unknown) {
+      throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id, { cause: error });
+    }
   }
   manifest.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   return Object.freeze({ tree, objectFormat: "sha1", markdown: Object.freeze(manifest) });
@@ -1227,7 +1226,7 @@ export async function resolveLocalCheckoutAttestation(
 }
 
 function snapshotLockedSource(value: unknown, path: string): LockedSource {
-  const object = ownDataObject(value, path, LOCKED_SOURCE_KEYS);
+  const object = ownDataObject(value, path, ["id", "repository", "license", "commit"]);
   const id = requiredString(object, "id", path);
   const repository = requiredString(object, "repository", path);
   const license = requiredString(object, "license", path);
@@ -1236,79 +1235,34 @@ function snapshotLockedSource(value: unknown, path: string): LockedSource {
   validateRepository(repository, path);
   if (license !== "MIT") configFail(`${path}.license must be MIT`);
   if (!FULL_COMMIT_SHA.test(commit)) configFail(`${path}.commit must be a full lowercase commit SHA`);
-  const attestationKeys = ["tree", "objectFormat", "markdown"] as const;
-  const attestationCount = attestationKeys.filter((key) => Object.hasOwn(object, key)).length;
-  if (attestationCount === 0) return Object.freeze({ id, repository, license: "MIT", commit });
-  if (attestationCount !== attestationKeys.length) configFail(`${path} attestation must include tree, objectFormat, and markdown together`);
-  if (typeof object.tree !== "string" || !FULL_COMMIT_SHA.test(object.tree)) configFail(`${path}.tree is invalid`);
-  if (object.objectFormat !== "sha1") configFail(`${path}.objectFormat must be sha1`);
-  if (nodeTypes.isProxy(object.markdown) || !Array.isArray(object.markdown)) configFail(`${path}.markdown must be an array`);
-  if (object.markdown.length > MAX_MARKDOWN_FILES) configFail(`${path}.markdown contains too many entries`);
-  for (const key of Reflect.ownKeys(object.markdown)) {
-    if (key === "length") continue;
-    if (typeof key !== "string" || !/^(?:0|[1-9]\d*)$/u.test(key) || Number(key) >= object.markdown.length) {
-      configFail(`${path}.markdown contains an unsupported array key`);
-    }
-  }
-  const markdown: MarkdownAttestation[] = [];
-  const seen = new Set<string>();
-  let totalBytes = 0;
-  for (let index = 0; index < object.markdown.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(object.markdown, String(index));
-    if (!descriptor?.enumerable || !("value" in descriptor)) configFail(`${path}.markdown must be dense data`);
-    const entry = ownDataObject(descriptor.value, `${path}.markdown.${index}`, MARKDOWN_ATTESTATION_KEYS);
-    if (typeof entry.path !== "string") configFail(`${path}.markdown.${index}.path must be a string`);
-    try {
-      safeManifestPath(entry.path, id);
-    } catch (error: unknown) {
-      configFail(`${path}.markdown.${index}.path is invalid`);
-    }
-    if (typeof entry.oid !== "string" || !FULL_COMMIT_SHA.test(entry.oid)) configFail(`${path}.markdown.${index}.oid is invalid`);
-    if (!Number.isSafeInteger(entry.size) || (entry.size as number) < 0 || (entry.size as number) > MAX_MARKDOWN_BYTES) {
-      configFail(`${path}.markdown.${index}.size is invalid`);
-    }
-    if (typeof entry.sha256 !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(entry.sha256)) {
-      configFail(`${path}.markdown.${index}.sha256 is invalid`);
-    }
-    const collision = entry.path.normalize("NFKC").toUpperCase().normalize("NFKC");
-    if (seen.has(collision)) configFail(`${path}.markdown contains duplicate paths`);
-    seen.add(collision);
-    totalBytes += entry.size as number;
-    if (totalBytes > MAX_TOTAL_MARKDOWN_BYTES) configFail(`${path}.markdown total bytes are too large`);
-    markdown.push(Object.freeze({
-      path: entry.path,
-      oid: entry.oid,
-      size: entry.size as number,
-      sha256: entry.sha256,
-    }));
-  }
-  markdown.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-  return Object.freeze({
-    id,
-    repository,
-    license: "MIT",
-    commit,
-    tree: object.tree,
-    objectFormat: "sha1",
-    markdown: Object.freeze(markdown),
-  });
+  return Object.freeze({ id, repository, license: "MIT", commit });
 }
 
 function snapshotSourceLock(lock: SourceLock): SourceLock {
   const object = ownDataObject(lock, "lock", LOCK_KEYS);
   if (object.schemaVersion !== 1 && object.schemaVersion !== 2) configFail("lock.schemaVersion must be 1 or 2");
+  if (object.schemaVersion === 2) {
+    try {
+      return snapshotReviewedSourceLockV2(lock) as SourceLock;
+    } catch (error: unknown) {
+      configFail(`lock does not match the shared reviewed v2 contract: ${(error as Error).message}`);
+    }
+  }
   const sources = snapshotDenseArray(object.sources, "lock.sources")
     .map((source, index) => snapshotLockedSource(source, `lock.sources.${index}`))
     .sort(compareAsciiIds);
   assertUnique(sources.map((source) => ({ ...source, ref: "main", checkout: `vendor-sources/${source.id}` })));
-  const attestedCount = sources.filter((source) => source.markdown !== undefined).length;
-  if (object.schemaVersion === 1 && attestedCount !== 0) configFail("lock schemaVersion 1 cannot contain attestations");
-  if (object.schemaVersion === 2 && attestedCount !== sources.length) configFail("lock schemaVersion 2 requires every source attestation");
-  return Object.freeze({ schemaVersion: object.schemaVersion, sources: Object.freeze(sources) });
+  return Object.freeze({ schemaVersion: 1, sources: Object.freeze(sources) });
 }
 
 export function serializeSourceLock(lock: SourceLock): string {
-  return `${JSON.stringify(snapshotSourceLock(lock), null, 2)}\n`;
+  const serialized = `${JSON.stringify(snapshotSourceLock(lock), null, 2)}\n`;
+  try {
+    assertAttestedSourceLockTextBudget(serialized);
+  } catch (error: unknown) {
+    configFail(`lock exceeds the shared serialized byte budget: ${(error as Error).message}`);
+  }
+  return serialized;
 }
 
 function sourceLockWriteErrorMessage(
@@ -1368,7 +1322,10 @@ export const nodeSourceLockPublishRuntime: SourceLockPublishRuntime = {
   inspectFileNoFollow: async (path, maxBytes) => {
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
+        ? 0
+        : fsConstants.O_NOFOLLOW;
+      handle = await open(path, fsConstants.O_RDONLY | noFollow);
       const stat = await handle.stat();
       if (!stat.isFile() || stat.size < 0 || stat.size > maxBytes) {
         throw new Error("Published source lock is not a bounded regular file");
@@ -1558,7 +1515,12 @@ export async function writeSourceLockFile(
 export const nodeSourceConfigReadRuntime: SourceConfigReadRuntime = {
   lstat,
   openNoFollow: async (path) => {
-    const handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    // Windows may not expose O_NOFOLLOW; readStableSourceConfig binds the fallback
+    // handle to pre/post lstat identity under the same static release-input model.
+    const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
+      ? 0
+      : fsConstants.O_NOFOLLOW;
+    const handle = await open(path, fsConstants.O_RDONLY | noFollow);
     return {
       stat: async () => handle.stat(),
       readText: async () => handle.readFile({ encoding: "utf8" }),
@@ -1661,6 +1623,14 @@ export async function lockCatalogSources(
     options.configReadRuntime ?? nodeSourceConfigReadRuntime,
   );
   const config = parseSourceCandidatesYaml(configText);
+  if (config.sources.length !== 2) configFail("catalog lock requires exactly the two reviewed source roles");
+  const reviewed = new Map(config.sources.map((candidate) => [candidate.id, candidate]));
+  for (const [id, repository] of Object.entries(REVIEWED_CATALOG_SOURCES)) {
+    const candidate = reviewed.get(id);
+    if (!candidate || candidate.repository !== repository || candidate.checkout !== `vendor-sources/${id}`) {
+      configFail("catalog lock requires exactly the two reviewed source ids, repositories, and checkouts");
+    }
+  }
   const lockedSources: LockedSource[] = [];
   for (const candidate of [...config.sources].sort(compareAsciiIds)) {
     lockedSources.push(await resolveLocalCheckoutAttestation(

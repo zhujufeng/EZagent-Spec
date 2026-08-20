@@ -9,7 +9,6 @@ import {
   type ImportExpertCatalogOptions,
 } from "../src/experts/importer.js";
 import { type Expert } from "../src/experts/expert.js";
-import { atomicWriteText } from "../src/workspace/atomic-write.js";
 
 export interface ImportExpertsCommandOptions {
   readonly projectRoot?: string;
@@ -19,7 +18,6 @@ export interface ImportExpertsCommandRuntime {
   readonly readText: (path: string) => Promise<string>;
   readonly importCatalog: (options: ImportExpertCatalogOptions) => Promise<readonly Expert[]>;
   readonly writeCatalog: (
-    path: string,
     experts: readonly Expert[],
     projectRoot: string,
   ) => Promise<void>;
@@ -30,10 +28,11 @@ export interface ImportExpertsCommandRuntime {
 const nodeRuntime: ImportExpertsCommandRuntime = Object.freeze<ImportExpertsCommandRuntime>({
   readText: readBoundedTextFile,
   importCatalog: importExpertCatalog,
-  writeCatalog: async (target, experts, projectRoot) => writeNormalizedCatalog(target, experts, {
-    atomicWriteText,
-    projectRoot,
-  }),
+  writeCatalog: async (experts, projectRoot) => writeNormalizedCatalog(
+    join(projectRoot, "catalog", "normalized", "experts.json"),
+    experts,
+    { projectRoot },
+  ),
   writeStdout: (message) => { process.stdout.write(message); },
   writeStderr: (message) => { process.stderr.write(message); },
 });
@@ -45,6 +44,9 @@ export async function main(
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const outputPath = join(projectRoot, "catalog", "normalized", "experts.json");
   try {
+    runtime.writeStderr(
+      "catalog:import safety: do not concurrently replace catalog/normalized or its ancestors while this local release command runs\n",
+    );
     const experts = await runtime.importCatalog({
       projectRoot,
       englishRoot: join(projectRoot, "vendor-sources", "agency-agents"),
@@ -52,7 +54,7 @@ export async function main(
       sourceLockText: await runtime.readText(join(projectRoot, "catalog", "sources.lock.json")),
       taxonomyText: await runtime.readText(join(projectRoot, "catalog", "taxonomy.yaml")),
     });
-    await runtime.writeCatalog(outputPath, experts, projectRoot);
+    await runtime.writeCatalog(experts, projectRoot);
     runtime.writeStdout(`Imported ${experts.length} Chinese experts into ${outputPath}\n`);
     return 0;
   } catch (error: unknown) {

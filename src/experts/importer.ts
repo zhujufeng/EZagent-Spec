@@ -1,11 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants, type Stats } from "node:fs";
 import {
   lstat,
+  link,
   mkdir,
   open,
   opendir,
   realpath,
+  rm,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { types as nodeTypes } from "node:util";
@@ -23,6 +25,20 @@ import {
 import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 import { parseExpert, type Expert, type SourceRef } from "./expert.js";
+import {
+  assertAttestedSourceLockTextBudget,
+  canonicalizeAttestedMarkdownBytes,
+  MAX_ATTESTED_CHECKOUT_MARKDOWN_BYTES,
+  MAX_ATTESTED_MARKDOWN_BYTES,
+  MAX_ATTESTED_MARKDOWN_FILES,
+  MAX_ATTESTED_SOURCE_LOCK_BYTES,
+  MAX_ATTESTED_TOTAL_BYTES,
+  REVIEWED_CATALOG_SOURCES,
+  snapshotAttestedSourceBase,
+  snapshotReviewedSourceLockV2,
+  type AttestedMarkdownEntry,
+  type AttestedSourceBase,
+} from "./attested-source-contract.js";
 
 const NORMALIZE_KEYS = [
   "division",
@@ -45,17 +61,13 @@ const META_KEYS = [
   "origin",
   "upstreamPath",
 ] as const;
-const SOURCE_BASE_KEYS = ["repository", "commit", "license", "tree", "objectFormat", "markdown"] as const;
-const LOCK_KEYS = ["schemaVersion", "sources"] as const;
-const LOCKED_SOURCE_KEYS = ["id", "repository", "license", "commit", "tree", "objectFormat", "markdown"] as const;
-const MANIFEST_KEYS = ["path", "oid", "size", "sha256"] as const;
 const FRONTMATTER_KEYS = ["name", "description", "emoji", "color"] as const;
-const MAX_MARKDOWN_BYTES = 1_048_576;
-const MAX_CONFIG_BYTES = 1_048_576;
-const MAX_FILES = 4_096;
+const MAX_MARKDOWN_BYTES = MAX_ATTESTED_MARKDOWN_BYTES;
+const MAX_CONFIG_BYTES = MAX_ATTESTED_SOURCE_LOCK_BYTES;
+const MAX_FILES = MAX_ATTESTED_MARKDOWN_FILES;
 const MAX_DIRECTORIES = 4_096;
 const MAX_DEPTH = 12;
-const MAX_TOTAL_BYTES = 64 * 1_048_576;
+const MAX_TOTAL_BYTES = MAX_ATTESTED_TOTAL_BYTES;
 const MAX_ENTRIES = 16_384;
 const MAX_TAXONOMY_EXPERTS = 4_096;
 const MAX_DIVISIONS = 128;
@@ -76,10 +88,7 @@ const PORTABLE_PATH_COMPONENT = /^[\p{L}\p{N}._-]+$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const HAN = /\p{Script=Han}/u;
 const WINDOWS_RESERVED = /^(?:CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[1-9]|LPT[1-9])$/u;
-const EXPECTED_SOURCES = Object.freeze({
-  "agency-agents": "https://github.com/msitarzewski/agency-agents",
-  "agency-agents-zh": "https://github.com/jnMetaCode/agency-agents-zh",
-} as const);
+const EXPECTED_SOURCES = REVIEWED_CATALOG_SOURCES;
 
 export type PreferredTask = "clarify" | "design" | "implement" | "verify" | "review";
 
@@ -102,21 +111,8 @@ export interface Taxonomy {
   readonly ignoredMarkdown: Readonly<Record<keyof typeof EXPECTED_SOURCES, readonly string[]>>;
 }
 
-export interface SourceBase {
-  readonly repository: string;
-  readonly commit: string;
-  readonly license: "MIT";
-  readonly tree: string;
-  readonly objectFormat: "sha1";
-  readonly markdown: readonly MarkdownManifestEntry[];
-}
-
-export interface MarkdownManifestEntry {
-  readonly path: string;
-  readonly oid: string;
-  readonly size: number;
-  readonly sha256: string;
-}
+export type SourceBase = AttestedSourceBase;
+export type MarkdownManifestEntry = AttestedMarkdownEntry;
 
 export interface IndexedMarkdownFile {
   readonly division: string;
@@ -166,9 +162,7 @@ export interface ImportExpertCatalogOptions {
 }
 
 export interface NormalizedCatalogWriteRuntime {
-  readonly atomicWriteText: (target: string, content: string) => Promise<void>;
   readonly projectRoot: string;
-  readonly beforePublish?: () => Promise<void>;
 }
 
 export class CatalogImportError extends Error {
@@ -467,41 +461,11 @@ function sourceReferenceBase(value: unknown, path: string): Omit<SourceRef, "pat
 }
 
 function lockedSourceBase(value: unknown, path: string): SourceBase {
-  const object = snapshotObject(value, path, SOURCE_BASE_KEYS);
-  const repository = requiredString(object, "repository", path, 256);
-  const commit = requiredString(object, "commit", path, 40);
-  const license = requiredString(object, "license", path, 3);
-  const tree = requiredString(object, "tree", path, 40);
-  const objectFormat = requiredString(object, "objectFormat", path, 8);
-  if (!FULL_SHA.test(commit)) fail(`${path}.commit must be a full lowercase SHA`);
-  if (license !== "MIT") fail(`${path}.license must be MIT`);
-  if (!FULL_SHA.test(tree)) fail(`${path}.tree must be a full lowercase SHA`);
-  if (objectFormat !== "sha1") fail(`${path}.objectFormat must be sha1`);
-  if (!Object.values(EXPECTED_SOURCES).includes(repository as never)) fail(`${path}.repository is not reviewed`);
-  const entries = snapshotArray(object.markdown, `${path}.markdown`, MAX_FILES);
-  const markdown: MarkdownManifestEntry[] = [];
-  const seen = new Set<string>();
-  let total = 0;
-  for (const [index, rawEntry] of entries.entries()) {
-    const entry = snapshotObject(rawEntry, `${path}.markdown.${index}`, MANIFEST_KEYS);
-    const manifestPath = requiredString(entry, "path", `${path}.markdown.${index}`, 1_024);
-    validatePath(manifestPath, `${path}.markdown.${index}.path`, true);
-    const oid = requiredString(entry, "oid", `${path}.markdown.${index}`, 40);
-    const sha256 = requiredString(entry, "sha256", `${path}.markdown.${index}`, 71);
-    if (!FULL_SHA.test(oid)) fail(`${path}.markdown.${index}.oid is invalid`);
-    if (!/^sha256:[0-9a-f]{64}$/u.test(sha256)) fail(`${path}.markdown.${index}.sha256 is invalid`);
-    if (!Number.isSafeInteger(entry.size) || (entry.size as number) < 0 || (entry.size as number) > MAX_MARKDOWN_BYTES) {
-      fail(`${path}.markdown.${index}.size is invalid`);
-    }
-    const key = collisionKey(manifestPath);
-    if (seen.has(key)) fail(`${path}.markdown contains duplicate paths`);
-    seen.add(key);
-    total += entry.size as number;
-    if (total > MAX_TOTAL_BYTES) fail(`${path}.markdown total bytes are too large`);
-    markdown.push(Object.freeze({ path: manifestPath, oid, size: entry.size as number, sha256 }));
+  try {
+    return snapshotAttestedSourceBase(value, path);
+  } catch (error: unknown) {
+    fail(`${path} does not match the shared attested-source contract`, error);
   }
-  markdown.sort((left, right) => comparePortable(left.path, right.path));
-  return Object.freeze({ repository, commit, license: "MIT", tree, objectFormat: "sha1", markdown: Object.freeze(markdown) });
 }
 
 function canonicalizeMarkdown(markdown: unknown): string {
@@ -529,22 +493,13 @@ function splitFrontmatter(markdown: string): { readonly metadata: Readonly<Recor
   for (const key of ["name", "description"] as const) if (!Object.hasOwn(metadata, key)) fail(`frontmatter.${key} is required`);
   for (const key of ["emoji", "color"] as const) {
     if (!Object.hasOwn(metadata, key)) continue;
-    if (typeof metadata[key] !== "string" || metadata[key].length === 0 || metadata[key].length > 32
+    if (typeof metadata[key] !== "string" || metadata[key].length === 0 || metadata[key].length > 256
       || metadata[key].trim() !== metadata[key] || metadata[key].normalize("NFC") !== metadata[key]
-      || !isWellFormedUnicode(metadata[key])) {
-      fail(`frontmatter.${key} must be a bounded canonical string`);
+      || !isWellFormedUnicode(metadata[key]) || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(metadata[key])) {
+      fail(`frontmatter.${key} must be bounded visible NFC text without controls`);
     }
   }
-  if (typeof metadata.emoji === "string" && !/\p{Extended_Pictographic}/u.test(metadata.emoji)) {
-    fail("frontmatter.emoji must contain an emoji pictograph");
-  }
-  if (typeof metadata.color === "string" && !/^[a-z]+(?:-[a-z]+)*$/u.test(metadata.color)) {
-    fail("frontmatter.color must be a lowercase portable color token");
-  }
   const body = markdown.slice(end + 5).trim();
-  if (/^---\s*$/mu.test(body) || /^\.\.\.\s*$/mu.test(body)) {
-    fail("expert instructions cannot contain YAML document markers");
-  }
   const lastCommentOpen = body.lastIndexOf("<!--");
   const lastCommentClose = body.lastIndexOf("-->");
   if (lastCommentOpen > lastCommentClose) fail("expert instructions contain an unterminated HTML comment");
@@ -627,6 +582,7 @@ export function normalizeExpertFile(value: NormalizeInput): Expert {
 }
 
 export function parseTaxonomyYaml(text: string): Taxonomy {
+  if (typeof text !== "string" || text.startsWith("\uFEFF")) fail("taxonomy must not begin with a BOM");
   const root = snapshotObject(parseOneYamlDocument(text, "taxonomy"), "taxonomy", TAXONOMY_KEYS);
   if (root.schemaVersion !== 1) fail("taxonomy.schemaVersion must be exactly 1");
   const divisionsObject = snapshotDictionary(root.divisions, "taxonomy.divisions", MAX_DIVISIONS);
@@ -681,39 +637,43 @@ export function parseTaxonomyYaml(text: string): Taxonomy {
 }
 
 export function parseSourceLockJson(text: string): ParsedSourceLock {
-  if (typeof text !== "string" || Buffer.byteLength(text, "utf8") > MAX_CONFIG_BYTES) fail("source lock JSON is too large");
+  try {
+    assertAttestedSourceLockTextBudget(text);
+  } catch (error: unknown) {
+    fail("source lock JSON exceeds the shared byte budget", error);
+  }
   try {
     JSON.parse(text);
   } catch (error: unknown) {
     fail("source lock must be strict JSON", error);
   }
-  const root = snapshotObject(parseOneYamlDocument(text, "source lock"), "source lock", LOCK_KEYS);
-  if (root.schemaVersion !== 2) fail("source lock schemaVersion must be exactly 2 with byte attestations");
-  const sourcesValue = root.sources;
-  if (Array.isArray(sourcesValue) && sourcesValue.length !== 2) fail("source lock must contain exactly the two reviewed sources");
-  const sources = snapshotArray(sourcesValue, "source lock.sources", 2);
-  if (sources.length !== 2) fail("source lock must contain exactly the two reviewed sources");
-  const found = new Map<string, SourceBase>();
-  for (const [index, value] of sources.entries()) {
-    const object = snapshotObject(value, `source lock.sources.${index}`, LOCKED_SOURCE_KEYS);
-    const id = requiredString(object, "id", `source lock.sources.${index}`, 64);
-    if (!Object.hasOwn(EXPECTED_SOURCES, id)) fail("source lock must contain exactly the two reviewed source ids");
-    if (found.has(id)) fail("source lock source ids must be unique");
-    const parsed = lockedSourceBase({
-      repository: object.repository,
-      commit: object.commit,
-      license: object.license,
-      tree: object.tree,
-      objectFormat: object.objectFormat,
-      markdown: object.markdown,
-    }, `source lock.sources.${index}`);
-    if (parsed.repository !== EXPECTED_SOURCES[id as keyof typeof EXPECTED_SOURCES]) fail(`source lock repository does not match ${id}`);
-    found.set(id, parsed);
+  const parsed = parseOneYamlDocument(text, "source lock");
+  let lock;
+  try {
+    lock = snapshotReviewedSourceLockV2(parsed);
+  } catch (error: unknown) {
+    fail("source lock must exactly match the reviewed v2 attestation contract", error);
   }
-  for (const id of Object.keys(EXPECTED_SOURCES)) if (!found.has(id)) fail("source lock must contain exactly the two reviewed sources");
+  const found = new Map(lock.sources.map((source) => [source.id, source]));
+  const english = found.get("agency-agents")!;
+  const chinese = found.get("agency-agents-zh")!;
   const sourcesById = Object.freeze({
-    "agency-agents": found.get("agency-agents")!,
-    "agency-agents-zh": found.get("agency-agents-zh")!,
+    "agency-agents": lockedSourceBase({
+      repository: english.repository,
+      commit: english.commit,
+      license: english.license,
+      tree: english.tree,
+      objectFormat: english.objectFormat,
+      markdown: english.markdown,
+    }, "source lock agency-agents"),
+    "agency-agents-zh": lockedSourceBase({
+      repository: chinese.repository,
+      commit: chinese.commit,
+      license: chinese.license,
+      tree: chinese.tree,
+      objectFormat: chinese.objectFormat,
+      markdown: chinese.markdown,
+    }, "source lock agency-agents-zh"),
   });
   return Object.freeze({ schemaVersion: 2, sourcesById });
 }
@@ -737,6 +697,13 @@ function sameDirectory(left: Stats, right: Stats): boolean {
     && left.ctimeMs === right.ctimeMs;
 }
 
+function sameDirectoryIdentity(left: Stats, right: Stats): boolean {
+  return left.isDirectory()
+    && right.isDirectory()
+    && left.dev === right.dev
+    && left.ino === right.ino;
+}
+
 function safeJoinedPath(root: string, relativePath: string): string {
   const path = resolve(root, ...relativePath.split("/"));
   const delta = relative(root, path);
@@ -754,7 +721,7 @@ async function readMarkdownHandleBound(
   const before = await runtime.lstat(path);
   if (before.isSymbolicLink()) fail(`source file ${relativePath} is a symlink`);
   if (!before.isFile()) fail(`source entry ${relativePath} is not a regular file`);
-  if (before.size < 1 || before.size > MAX_MARKDOWN_BYTES) fail(`source file ${relativePath} is empty or too large`);
+  if (before.size < 1 || before.size > MAX_ATTESTED_CHECKOUT_MARKDOWN_BYTES) fail(`source file ${relativePath} is empty or too large`);
   if (await realpath(path) !== expectedCanonicalPath) fail(`source file ${relativePath} escaped its canonical root`);
   let handle: MarkdownReadHandle | undefined;
   try {
@@ -762,25 +729,21 @@ async function readMarkdownHandleBound(
     const opened = await handle.stat();
     if (!sameFile(before, opened)) fail(`source file ${relativePath} changed before read`);
     const bytes = await handle.readBytes();
-    if (bytes.length !== opened.size || bytes.length > MAX_MARKDOWN_BYTES) fail(`source file ${relativePath} changed during read`);
+    if (bytes.length !== opened.size || bytes.length > MAX_ATTESTED_CHECKOUT_MARKDOWN_BYTES) fail(`source file ${relativePath} changed during read`);
     const afterHandle = await handle.stat();
     const afterPath = await runtime.lstat(path);
     if (!sameFile(opened, afterHandle) || !sameFile(opened, afterPath)
       || await realpath(path) !== expectedCanonicalPath) fail(`source file ${relativePath} changed during read`);
-    if (bytes.length !== expected.size) fail(`source file ${relativePath} does not match locked size`);
-    const sha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-    if (sha256 !== expected.sha256) fail(`source file ${relativePath} does not match locked bytes`);
-    const oid = createHash("sha1")
-      .update(Buffer.from(`blob ${bytes.length}\0`, "utf8"))
-      .update(bytes)
-      .digest("hex");
-    if (oid !== expected.oid) fail(`source file ${relativePath} does not match locked object id`);
-    let text: string;
+    let canonical;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      canonical = canonicalizeAttestedMarkdownBytes(bytes, MAX_ATTESTED_CHECKOUT_MARKDOWN_BYTES);
     } catch (error: unknown) {
-      fail(`source file ${relativePath} is not valid UTF-8`, error);
+      fail(`source file ${relativePath} is not valid canonical UTF-8 Markdown`, error);
     }
+    if (canonical.size !== expected.normalizedSize || canonical.sha256 !== expected.normalizedSha256) {
+      fail(`source file ${relativePath} does not match locked normalized bytes`);
+    }
+    const text = canonical.text;
     if (text.trim().length === 0) fail(`source file ${relativePath} is empty Markdown`);
     await handle.close();
     handle = undefined;
@@ -856,11 +819,13 @@ export async function indexMarkdownFiles(
     for (const entry of entries) {
       entriesSeen += 1;
       if (entriesSeen > MAX_ENTRIES) fail("source tree contains too many entries");
-      if (entry.name === ".git") continue;
       if (entry.name.normalize("NFC") !== entry.name || !isWellFormedUnicode(entry.name)) fail("source entry name is not canonical Unicode");
       const entryKey = collisionKey(entry.name);
       if (entryNames.has(entryKey)) fail("source directory contains a case or Unicode canonical collision");
       entryNames.add(entryKey);
+      // Policy: only Git metadata is excluded. Hidden paths and node_modules remain
+      // bounded release inputs, so any Markdown there must be attested and classified.
+      if (entry.name === ".git") continue;
       const relativePath = relativeDirectory === "" ? entry.name : `${relativeDirectory}/${entry.name}`;
       const absolutePath = safeJoinedPath(rootInput, relativePath);
       const stat = await runtime.lstat(absolutePath);
@@ -930,12 +895,14 @@ export async function importExpertCatalog(options: ImportExpertCatalogOptions): 
     }
   }
   const missingDivisions = new Set<string>();
-  const missingExpertPaths: string[] = [];
-  for (const [path] of Object.entries(taxonomy.experts)) {
+  for (const path of chinese.keys()) {
+    if (chineseIgnored.has(path)) continue;
     const division = path.split("/", 1)[0]!;
     if (!Object.hasOwn(taxonomy.divisions, division)) missingDivisions.add(division);
-    if (!chinese.has(path)) missingExpertPaths.push(path);
   }
+  const missingExpertPaths = [...chinese.keys()]
+    .filter((path) => !Object.hasOwn(taxonomy.experts, path) && !chineseIgnored.has(path))
+    .sort(comparePortable);
   const extraExpertPaths = Object.keys(taxonomy.experts).filter((path) => !chinese.has(path));
   const unclassifiedMarkdownPaths = [
     ...[...chinese.keys()]
@@ -951,7 +918,6 @@ export async function importExpertCatalog(options: ImportExpertCatalogOptions): 
     ...[...englishIgnored].filter((path) => !english.has(path)).map((path) => `agency-agents:${path}`),
   ].sort(comparePortable);
   const sortedMissingDivisions = [...missingDivisions].sort(comparePortable);
-  missingExpertPaths.sort(comparePortable);
   extraExpertPaths.sort(comparePortable);
   if (sortedMissingDivisions.length || missingExpertPaths.length || extraExpertPaths.length
     || unclassifiedMarkdownPaths.length || missingUpstreamPaths.length || extraIgnoredPaths.length) {
@@ -999,17 +965,27 @@ export function serializeNormalizedCatalog(expertsInput: readonly Expert[]): str
   return `${JSON.stringify({ schemaVersion: 1, experts }, null, 2)}\n`;
 }
 
+/**
+ * Publishes the one fixed generated catalog with no-clobber semantics.
+ *
+ * Threat model: cross-platform Node does not expose openat/renameat-style directory
+ * handles, so the invoking user must not concurrently replace catalog/normalized or
+ * its ancestors. Under that static-parent model, every ancestor is checked before and
+ * after, existing-file reads are handle-bound, and publication uses a hard-link create.
+ */
 export async function writeNormalizedCatalog(
   target: string,
   experts: readonly Expert[],
   runtime: NormalizedCatalogWriteRuntime,
 ): Promise<void> {
   const content = serializeNormalizedCatalog(experts);
-  const parent = dirname(target);
   const projectRoot = runtime.projectRoot;
   if (!isAbsolute(projectRoot) || projectRoot !== resolve(projectRoot) || !isAbsolute(target) || target !== resolve(target)) {
     fail("normalized catalog project root and target must be absolute normalized paths");
   }
+  const requiredTarget = join(projectRoot, "catalog", "normalized", "experts.json");
+  if (target !== requiredTarget) fail("normalized catalog target must be the fixed catalog/normalized/experts.json path");
+  const parent = dirname(target);
   const delta = relative(projectRoot, target);
   if (delta === "" || delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta)) {
     fail("normalized catalog target must stay inside the project root");
@@ -1033,37 +1009,119 @@ export async function writeNormalizedCatalog(
   }
   const parentStat = await lstat(parent);
   if (parentStat.isSymbolicLink() || !parentStat.isDirectory()) fail("normalized catalog parent must be a real directory");
-  const [canonicalParentBefore, canonicalProjectBefore] = await Promise.all([
-    realpath(parent),
-    realpath(runtime.projectRoot),
-  ]);
-  const parentDelta = relative(canonicalProjectBefore, canonicalParentBefore);
-  if (parentDelta === ".." || parentDelta.startsWith(`..${sep}`) || isAbsolute(parentDelta)) {
-    fail("normalized catalog parent escaped the canonical project root");
+  const ancestorPaths = [projectRoot, ...directoryComponents.map((_component, index) =>
+    join(projectRoot, ...directoryComponents.slice(0, index + 1)))];
+  const ancestorSnapshots = await Promise.all(ancestorPaths.map(async (path) => ({
+    path,
+    stat: await lstat(path),
+    canonical: await realpath(path),
+  })));
+  const canonicalProjectBefore = ancestorSnapshots[0]!.canonical;
+  for (const ancestor of ancestorSnapshots) {
+    const ancestorDelta = relative(canonicalProjectBefore, ancestor.canonical);
+    if (ancestor.stat.isSymbolicLink() || !ancestor.stat.isDirectory()
+      || ancestorDelta === ".." || ancestorDelta.startsWith(`..${sep}`) || isAbsolute(ancestorDelta)) {
+      fail("normalized catalog ancestor escaped the canonical project root or became unsafe");
+    }
   }
+  async function outputAncestorsAreStable(): Promise<boolean> {
+    try {
+      const observed = await Promise.all(ancestorSnapshots.map(async (ancestor) => ({
+        path: ancestor.path,
+        stat: await lstat(ancestor.path),
+        canonical: await realpath(ancestor.path),
+      })));
+      return observed.every((ancestor, index) => {
+        const expected = ancestorSnapshots[index]!;
+        return !ancestor.stat.isSymbolicLink()
+          && sameDirectoryIdentity(expected.stat, ancestor.stat)
+          && ancestor.canonical === expected.canonical;
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
+    ? 0
+    : fsConstants.O_NOFOLLOW;
+  async function inspectExisting(): Promise<"absent" | "identical"> {
+    let before: Stats;
+    try {
+      before = await lstat(target);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
+      throw error;
+    }
+    if (before.isSymbolicLink()) fail("normalized catalog target is a symlink");
+    if (!before.isFile()) fail("normalized catalog target is not a regular file");
+    if (before.size !== Buffer.byteLength(content, "utf8")) {
+      fail("normalized catalog already exists with different bytes; remove it manually after review");
+    }
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(target, fsConstants.O_RDONLY | noFollow);
+      const opened = await handle.stat();
+      if (!sameFile(before, opened)) fail("normalized catalog changed before idempotence check");
+      const existing = await handle.readFile();
+      const afterHandle = await handle.stat();
+      const afterPath = await lstat(target);
+      if (!sameFile(opened, afterHandle) || !sameFile(opened, afterPath)) {
+        fail("normalized catalog changed during idempotence check");
+      }
+      if (!existing.equals(Buffer.from(content, "utf8"))) {
+        fail("normalized catalog already exists with different bytes; remove it manually after review");
+      }
+      await handle.close();
+      handle = undefined;
+      return "identical";
+    } finally {
+      if (handle) {
+        try { await handle.close(); } catch { /* preserve primary failure */ }
+      }
+    }
+  }
+
+  if (await inspectExisting() === "identical") return;
   try {
-    const targetStat = await lstat(target);
-    if (targetStat.isSymbolicLink()) fail("normalized catalog target is a symlink");
-    if (!targetStat.isFile()) fail("normalized catalog target is not a regular file");
+    const staging = join(parent, `.experts.json.${randomUUID()}.tmp`);
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let parentStable = true;
+    try {
+      handle = await open(staging, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | noFollow, 0o600);
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+      const staged = await handle.stat();
+      if (!staged.isFile() || staged.size !== Buffer.byteLength(content, "utf8")) fail("normalized catalog staging write is incomplete");
+      await handle.close();
+      handle = undefined;
+      if (!await outputAncestorsAreStable()) {
+        parentStable = false;
+        fail("normalized catalog ancestor changed before publication");
+      }
+      try {
+        await link(staging, target);
+      } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        if (await inspectExisting() !== "identical") fail("normalized catalog publication lost a no-clobber race");
+      }
+      if (!await outputAncestorsAreStable()) {
+        parentStable = false;
+        fail("normalized catalog ancestor changed during publication");
+      }
+      if (await inspectExisting() !== "identical") fail("normalized catalog publication is not the reviewed content");
+    } finally {
+      if (handle) {
+        try { await handle.close(); } catch { /* preserve primary failure */ }
+      }
+      if (parentStable) {
+        try { await rm(staging, { force: true }); } catch { /* retained staging is safer than masking publication state */ }
+      }
+    }
   } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (error instanceof CatalogImportError) throw error;
+    fail("normalized catalog could not be published without clobbering", error);
   }
-  await runtime.beforePublish?.();
-  const [parentImmediatelyBefore, canonicalParentImmediatelyBefore] = await Promise.all([
-    lstat(parent),
-    realpath(parent),
-  ]);
-  if (!sameDirectory(parentStat, parentImmediatelyBefore)
-    || canonicalParentImmediatelyBefore !== canonicalParentBefore) {
-    fail("normalized catalog parent changed before publication");
-  }
-  await runtime.atomicWriteText(target, content);
-  const [parentAfter, canonicalParentAfter] = await Promise.all([lstat(parent), realpath(parent)]);
-  if (!sameDirectory(parentStat, parentAfter) || canonicalParentAfter !== canonicalParentBefore) {
-    fail("normalized catalog parent changed during publication");
-  }
-  const targetAfter = await lstat(target);
-  if (targetAfter.isSymbolicLink() || !targetAfter.isFile()) fail("normalized catalog publication is not a regular file");
 }
 
 export async function readBoundedTextFile(path: string, maximumBytes = MAX_CONFIG_BYTES): Promise<string> {
@@ -1083,7 +1141,7 @@ export async function readBoundedTextFile(path: string, maximumBytes = MAX_CONFI
     if (bytes.length !== opened.size || !sameFile(opened, after) || !sameFile(opened, pathAfter)) fail("release input changed during read");
     let text: string;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch (error: unknown) {
       fail("release input is not valid UTF-8", error);
     }

@@ -7,6 +7,7 @@
     "dist/src/**/*.js",
     "!dist/src/experts/source-lock.js",
     "!dist/src/experts/importer.js",
+    "!dist/src/experts/attested-source-contract.js",
     "README.md",
     "LICENSE*",
     "licenses/**"
