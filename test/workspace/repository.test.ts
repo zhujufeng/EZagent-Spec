@@ -449,6 +449,38 @@ describe("WorkspaceRepository.initialize", () => {
     },
   );
 
+  test.skipIf(process.platform === "win32").each(["specs", "audit"] as const)(
+    "rejects a linked %s directory in an otherwise completed workspace",
+    async (reservedDirectory) => {
+      const root = await temporaryProject();
+      const repository = new WorkspaceRepository(root);
+      const paths = workspacePaths(root);
+      await repository.initialize(demoConfig);
+      const linkPath = join(paths.root, reservedDirectory);
+      const external = join(root, `external-completed-${reservedDirectory}`);
+      const sentinel = join(external, "sentinel.txt");
+      await rm(linkPath, { recursive: true });
+      await mkdir(external, { recursive: true });
+      await writeFile(sentinel, "keep", "utf8");
+      expect(await createDirectorySymlink(external, linkPath)).toBe(true);
+      const fixedTime = new Date("2025-06-07T08:09:10.000Z");
+      await Promise.all([utimes(external, fixedTime, fixedTime), utimes(sentinel, fixedTime, fixedTime)]);
+      const before = await Promise.all([stat(external), stat(sentinel)]);
+
+      const error = await rejected(repository.initialize({ ...demoConfig }));
+
+      expect(error).toBeInstanceOf(WorkspaceCorruptError);
+      expect(error.message).toContain(linkPath);
+      expect(error.cause).toMatchObject({ message: expect.stringContaining("expected real workspace directory") });
+      await expect(readlink(linkPath)).resolves.toBe(external);
+      expect(await readdir(external)).toEqual(["sentinel.txt"]);
+      await expect(readFile(sentinel, "utf8")).resolves.toBe("keep");
+      const after = await Promise.all([stat(external), stat(sentinel)]);
+      expect(after.map(({ mtimeMs }) => mtimeMs)).toEqual(before.map(({ mtimeMs }) => mtimeMs));
+      await expect(readFile(paths.project, "utf8")).resolves.toBe(serializeProjectConfig(demoConfig));
+    },
+  );
+
   test.each(["workspace root", "reserved child"] as const)(
     "rejects a regular file used as the %s directory",
     async (kind) => {
@@ -716,6 +748,86 @@ describe("WorkspaceRepository reads", () => {
     expect(error.message).toContain(paths.project);
     expect(error.cause).toBeInstanceOf(Error);
   });
+
+  test.skipIf(process.platform === "win32")(
+    "rejects an external project reached through a linked workspace root",
+    async () => {
+      const root = await temporaryProject();
+      const repository = new WorkspaceRepository(root);
+      const paths = workspacePaths(root);
+      const external = join(root, "external-workspace-root");
+      const externalProject = join(external, "project.yaml");
+      const contents = serializeProjectConfig(demoConfig);
+      await mkdir(external, { recursive: true });
+      await writeFile(externalProject, contents, "utf8");
+      expect(await createDirectorySymlink(external, paths.root)).toBe(true);
+      const fixedTime = new Date("2025-07-08T09:10:11.000Z");
+      await Promise.all([utimes(external, fixedTime, fixedTime), utimes(externalProject, fixedTime, fixedTime)]);
+      const before = await Promise.all([stat(external), stat(externalProject)]);
+
+      const error = await rejected(repository.readProject());
+
+      expect(error).toBeInstanceOf(WorkspaceCorruptError);
+      expect(error.message).toContain(paths.root);
+      expect(error.cause).toMatchObject({ message: expect.stringContaining("expected real workspace directory") });
+      await expect(readlink(paths.root)).resolves.toBe(external);
+      await expect(readFile(externalProject, "utf8")).resolves.toBe(contents);
+      const after = await Promise.all([stat(external), stat(externalProject)]);
+      expect(after.map(({ mtimeMs }) => mtimeMs)).toEqual(before.map(({ mtimeMs }) => mtimeMs));
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "rejects external state reached through a linked state directory",
+    async () => {
+      const root = await temporaryProject();
+      const repository = new WorkspaceRepository(root);
+      const paths = workspacePaths(root);
+      const external = join(root, "external-state-directory");
+      const externalState = join(external, "workspace.json");
+      const contents = `${JSON.stringify(initialState, null, 2)}\n`;
+      await mkdir(paths.root, { recursive: true });
+      await writeFile(paths.project, serializeProjectConfig(demoConfig), "utf8");
+      await mkdir(external, { recursive: true });
+      await writeFile(externalState, contents, "utf8");
+      expect(await createDirectorySymlink(external, join(paths.root, "state"))).toBe(true);
+      const fixedTime = new Date("2025-08-09T10:11:12.000Z");
+      await Promise.all([utimes(external, fixedTime, fixedTime), utimes(externalState, fixedTime, fixedTime)]);
+      const before = await Promise.all([stat(external), stat(externalState)]);
+
+      const error = await rejected(repository.readState());
+
+      expect(error).toBeInstanceOf(WorkspaceCorruptError);
+      expect(error.message).toContain(join(paths.root, "state"));
+      expect(error.cause).toMatchObject({ message: expect.stringContaining("expected real workspace directory") });
+      await expect(readlink(join(paths.root, "state"))).resolves.toBe(external);
+      await expect(readFile(externalState, "utf8")).resolves.toBe(contents);
+      const after = await Promise.all([stat(external), stat(externalState)]);
+      expect(after.map(({ mtimeMs }) => mtimeMs)).toEqual(before.map(({ mtimeMs }) => mtimeMs));
+    },
+  );
+
+  test.each(["workspace root", "state"] as const)(
+    "rejects a regular file used as the %s parent while reading",
+    async (kind) => {
+      const root = await temporaryProject();
+      const repository = new WorkspaceRepository(root);
+      const paths = workspacePaths(root);
+      const parent = kind === "workspace root" ? paths.root : join(paths.root, "state");
+      if (kind === "state") {
+        await mkdir(paths.root, { recursive: true });
+        await writeFile(paths.project, serializeProjectConfig(demoConfig), "utf8");
+      }
+      await writeFile(parent, "sentinel", "utf8");
+
+      const error = await rejected(kind === "workspace root" ? repository.readProject() : repository.readState());
+
+      expect(error).toBeInstanceOf(WorkspaceCorruptError);
+      expect(error.message).toContain(parent);
+      expect(error.cause).toMatchObject({ message: expect.stringContaining("expected real workspace directory") });
+      await expect(readFile(parent, "utf8")).resolves.toBe("sentinel");
+    },
+  );
 
   test("rejects a linked project marker for both reads and initialization", async ({ skip }) => {
     const root = await temporaryProject();

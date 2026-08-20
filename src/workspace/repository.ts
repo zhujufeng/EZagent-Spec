@@ -11,7 +11,7 @@ import {
   WorkspaceLockedError,
   WorkspaceNotInitializedError,
 } from "./errors.js";
-import { WORKSPACE_DIRECTORIES, workspacePaths } from "./layout.js";
+import { WORKSPACE_DIRECTORIES, workspacePaths, type WorkspacePaths } from "./layout.js";
 import { withWorkspaceLock } from "./lock.js";
 import { workspaceInitializeRetryRuntime } from "./retry-runtime.js";
 import {
@@ -121,6 +121,18 @@ async function readExistingProject(path: string): Promise<ProjectConfig | undefi
   }
 }
 
+async function readExistingProjectWithinBoundaries(
+  paths: Readonly<WorkspacePaths>,
+  relativeDirectories: readonly string[],
+): Promise<ProjectConfig | undefined> {
+  await validateExistingWorkspaceDirectoryChains(
+    nodeWorkspaceDirectoryRuntime,
+    paths.root,
+    relativeDirectories,
+  );
+  return readExistingProject(paths.project);
+}
+
 function isInitialState(state: WorkspaceState): boolean {
   return state.schemaVersion === INITIAL_STATE.schemaVersion
     && state.revision === INITIAL_STATE.revision
@@ -174,7 +186,7 @@ export class WorkspaceRepository {
     for (;;) {
       normalizedOptions.signal?.throwIfAborted();
       if (hasContended) {
-        const completed = await readExistingProject(paths.project);
+        const completed = await readExistingProjectWithinBoundaries(paths, WORKSPACE_DIRECTORIES);
         if (completed !== undefined) {
           assertSameProjectConfig(completed, normalized);
           return;
@@ -186,17 +198,12 @@ export class WorkspaceRepository {
       }
       try {
         await withWorkspaceLock(this.projectRoot, async () => {
-          const existing = await readExistingProject(paths.project);
+          const existing = await readExistingProjectWithinBoundaries(paths, WORKSPACE_DIRECTORIES);
           if (existing !== undefined) {
             assertSameProjectConfig(existing, normalized);
             return;
           }
 
-          await validateExistingWorkspaceDirectoryChains(
-            nodeWorkspaceDirectoryRuntime,
-            paths.root,
-            WORKSPACE_DIRECTORIES,
-          );
           const stateExists = await inspectInitialState(paths.state);
           const auditExists = await inspectEmptyAudit(paths.audit);
           await ensureWorkspaceDirectoryChains(
@@ -219,7 +226,7 @@ export class WorkspaceRepository {
         }
         hasContended = true;
 
-        const completed = await readExistingProject(paths.project);
+        const completed = await readExistingProjectWithinBoundaries(paths, WORKSPACE_DIRECTORIES);
         if (completed !== undefined) {
           assertSameProjectConfig(completed, normalized);
           return;
@@ -237,10 +244,11 @@ export class WorkspaceRepository {
   }
 
   async readProject(): Promise<ProjectConfig> {
-    const project = workspacePaths(this.projectRoot).project;
-    const projectFile = await readWorkspaceText(project, "workspace project");
+    const paths = workspacePaths(this.projectRoot);
+    await validateExistingWorkspaceDirectoryChains(nodeWorkspaceDirectoryRuntime, paths.root, []);
+    const projectFile = await readWorkspaceText(paths.project, "workspace project");
     if (!projectFile.exists) {
-      throw new WorkspaceNotInitializedError(`workspace is not initialized: ${project}`, {
+      throw new WorkspaceNotInitializedError(`workspace is not initialized: ${paths.project}`, {
         cause: projectFile.cause,
       });
     }
@@ -248,16 +256,19 @@ export class WorkspaceRepository {
     try {
       return parseProjectConfig(projectFile.contents);
     } catch (error: unknown) {
-      throw new WorkspaceCorruptError(`workspace project is unreadable or corrupt: ${project}`, { cause: error });
+      throw new WorkspaceCorruptError(`workspace project is unreadable or corrupt: ${paths.project}`, {
+        cause: error,
+      });
     }
   }
 
   async readState(): Promise<WorkspaceState> {
     await this.readProject();
-    const state = workspacePaths(this.projectRoot).state;
-    const stateFile = await readWorkspaceText(state, "workspace state");
+    const paths = workspacePaths(this.projectRoot);
+    await validateExistingWorkspaceDirectoryChains(nodeWorkspaceDirectoryRuntime, paths.root, ["state"]);
+    const stateFile = await readWorkspaceText(paths.state, "workspace state");
     if (!stateFile.exists) {
-      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${state}`, {
+      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${paths.state}`, {
         cause: stateFile.cause,
       });
     }
@@ -266,7 +277,7 @@ export class WorkspaceRepository {
       const value: unknown = JSON.parse(stateFile.contents);
       return parseWorkspaceState(value);
     } catch (error: unknown) {
-      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${state}`, { cause: error });
+      throw new WorkspaceCorruptError(`workspace state is unreadable or corrupt: ${paths.state}`, { cause: error });
     }
   }
 }
