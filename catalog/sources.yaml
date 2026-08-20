@@ -1,0 +1,13 @@
+# Reviewed release-time inputs only. This file is never read by the EZagent runtime.
+schemaVersion: 1
+sources:
+  - id: agency-agents
+    repository: https://github.com/msitarzewski/agency-agents
+    ref: 3f78a30
+    checkout: vendor-sources/agency-agents
+    license: MIT
+  - id: agency-agents-zh
+    repository: https://github.com/jnMetaCode/agency-agents-zh
+    ref: main
+    checkout: vendor-sources/agency-agents-zh
+    license: MIT
