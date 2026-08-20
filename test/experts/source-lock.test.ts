@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   lstat,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -23,8 +25,12 @@ import {
   parseSourceCandidatesYaml,
   resolveLocalCheckoutCommit,
   serializeSourceLock,
+  nodeSourceConfigReadRuntime,
+  nodeSourceLockPublishRuntime,
   writeSourceLockFile,
   type GitRunner,
+  type SourceConfigReadRuntime,
+  type SourceLockPublishRuntime,
   type SourceCandidate,
   type SourceLock,
 } from "../../src/experts/source-lock.js";
@@ -35,7 +41,7 @@ const temporaryRoots: string[] = [];
 const validCandidate = (overrides: Partial<SourceCandidate> = {}): SourceCandidate => ({
   id: "agency-agents",
   repository: "https://github.com/msitarzewski/agency-agents",
-  ref: "main",
+  ref: "refs/heads/main",
   checkout: "vendor-sources/agency-agents",
   license: "MIT",
   ...overrides,
@@ -74,6 +80,7 @@ async function createLocalSource(root: string): Promise<{ checkout: string; head
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await Promise.all(temporaryRoots.splice(0).map(async (root) => rm(root, { force: true, recursive: true })));
 });
 
@@ -89,6 +96,7 @@ describe("parseSourceCandidatesConfig", () => {
           id: "agency-agents-zh",
           repository: "https://github.com/jnMetaCode/agency-agents-zh",
           checkout: "vendor-sources/agency-agents-zh",
+          ref: "refs/heads/main",
         }),
       ],
     });
@@ -123,6 +131,9 @@ describe("parseSourceCandidatesConfig", () => {
     [{ schemaVersion: 1, sources: [validCandidate({ license: "Apache-2.0" as "MIT" })] }, "MIT"],
     [{ schemaVersion: 1, sources: [validCandidate({ ref: "--upload-pack=evil" })] }, "ref"],
     [{ schemaVersion: 1, sources: [validCandidate({ ref: "HEAD" })] }, "ref"],
+    [{ schemaVersion: 1, sources: [validCandidate({ ref: "main" })] }, "full refs/heads"],
+    [{ schemaVersion: 1, sources: [validCandidate({ ref: "refs/tags/main" })] }, "full refs/heads"],
+    [{ schemaVersion: 1, sources: [validCandidate({ ref: "abcdef" })] }, "7-40"],
     [{ schemaVersion: 1, sources: [validCandidate({ checkout: "vendor-sources/a/b" })] }, "checkout"],
     [{ schemaVersion: 1, sources: [validCandidate({ checkout: "vendor-sources/../escape" })] }, "checkout"],
     [{ schemaVersion: 1, sources: [validCandidate({ checkout: "vendor-sources\\agency-agents" })] }, "checkout"],
@@ -226,10 +237,20 @@ describe("createSourceLock", () => {
   });
 
   it("does not expose an untrusted resolver exception", async () => {
+    const secret = new Error("SECRET RESOLVER DETAIL");
     await expect(createSourceLock([validCandidate()], async () => {
-      throw new Error("SECRET RESOLVER DETAIL");
-    })).rejects.toSatisfy((error: Error) =>
-      error.message.includes("could not be resolved") && !error.message.includes("SECRET"));
+      throw secret;
+    })).rejects.toSatisfy((error: Error & { code?: string; sourceId?: string; cause?: unknown }) =>
+      error.code === "RESOLVER_FAILED"
+      && error.sourceId === "agency-agents"
+      && error.cause === secret
+      && error.message.includes("could not be resolved")
+      && !error.message.includes("SECRET"));
+  });
+
+  it("uses a stable code for an invalid resolved commit", async () => {
+    await expect(createSourceLock([validCandidate()], async () => "abc"))
+      .rejects.toMatchObject({ code: "INVALID_RESOLVED_COMMIT", sourceId: "agency-agents" });
   });
 });
 
@@ -245,10 +266,12 @@ describe("resolveLocalCheckoutCommit", () => {
     };
 
     await expect(resolveLocalCheckoutCommit(root, validCandidate(), runner)).resolves.toBe(head);
-    expect(commands).toHaveLength(6);
+    expect(commands.length).toBeGreaterThanOrEqual(6);
     expect(commands.every((args) => args[0] === "-C")).toBe(true);
     expect(commands.every((args) => args.includes("--no-optional-locks"))).toBe(true);
     expect(commands.every((args) => args.includes("protocol.allow=never"))).toBe(true);
+    expect(commands.filter((args) => args.includes("rev-parse") && args.includes("--verify"))
+      .every((args) => args.includes("--end-of-options"))).toBe(true);
     expect(commands.find((args) => args.includes("status"))).toContain("--ignored=matching");
     expect(commands.flat()).not.toContain("fetch");
     expect(commands.flat()).not.toContain("pull");
@@ -260,8 +283,10 @@ describe("resolveLocalCheckoutCommit", () => {
     const root = await temporaryRoot();
     await mkdir(join(root, "vendor-sources", "agency-agents"), { recursive: true });
 
-    await expect(resolveLocalCheckoutCommit(root, validCandidate())).rejects.toSatisfy((error: Error) =>
-      error.message.includes("Git worktree") && !error.message.includes("fatal:"));
+    await expect(resolveLocalCheckoutCommit(root, validCandidate())).rejects.toMatchObject({
+      code: "NOT_GIT_WORKTREE",
+      sourceId: "agency-agents",
+    });
   });
 
   it("rejects a mismatched origin", async () => {
@@ -269,7 +294,10 @@ describe("resolveLocalCheckoutCommit", () => {
     const { checkout } = await createLocalSource(root);
     await runGit(checkout, ["remote", "set-url", "origin", "https://github.com/example/wrong"]);
 
-    await expect(resolveLocalCheckoutCommit(root, validCandidate())).rejects.toThrow("origin");
+    await expect(resolveLocalCheckoutCommit(root, validCandidate())).rejects.toMatchObject({
+      code: "ORIGIN_MISMATCH",
+      sourceId: "agency-agents",
+    });
   });
 
   it("does not normalize whitespace in the checkout origin URL", async () => {
@@ -289,7 +317,10 @@ describe("resolveLocalCheckoutCommit", () => {
     const dirtyRoot = await temporaryRoot();
     const { checkout } = await createLocalSource(dirtyRoot);
     await writeFile(join(checkout, "UNTRACKED"), "dirty\n", "utf8");
-    await expect(resolveLocalCheckoutCommit(dirtyRoot, validCandidate())).rejects.toThrow("clean");
+    await expect(resolveLocalCheckoutCommit(dirtyRoot, validCandidate())).rejects.toMatchObject({
+      code: "WORKTREE_DIRTY",
+      sourceId: "agency-agents",
+    });
 
     const refRoot = await temporaryRoot();
     const source = await createLocalSource(refRoot);
@@ -297,8 +328,200 @@ describe("resolveLocalCheckoutCommit", () => {
     await writeFile(join(source.checkout, "README.md"), "second commit\n", "utf8");
     await runGit(source.checkout, ["add", "README.md"]);
     await runGit(source.checkout, ["commit", "-m", "second"]);
-    await expect(resolveLocalCheckoutCommit(refRoot, validCandidate({ ref: "reviewed" })))
-      .rejects.toThrow("does not equal HEAD");
+    await expect(resolveLocalCheckoutCommit(refRoot, validCandidate({ ref: "refs/heads/reviewed" })))
+      .rejects.toMatchObject({ code: "REF_MISMATCH", sourceId: "agency-agents" });
+  });
+
+  it("removes inherited Git environment configuration before invoking real Git", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    const poisonRoot = await temporaryRoot();
+    const poison = await createLocalSource(poisonRoot);
+    const globalConfig = join(poisonRoot, "global.gitconfig");
+    await writeFile(globalConfig, "[remote \"origin\"]\n\turl = https://github.com/example/poison\n", "utf8");
+    vi.stubEnv("GIT_DIR", join(poison.checkout, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", poison.checkout);
+    vi.stubEnv("GIT_INDEX_FILE", join(poison.checkout, ".git", "index"));
+    vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "remote.origin.url");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "https://github.com/example/injected");
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate())).resolves.toBe(source.head);
+  });
+
+  it("sanitizes an unknown runner failure while retaining it as the cause", async () => {
+    const root = await temporaryRoot();
+    await createLocalSource(root);
+    const secret = new Error("SECRET RUNNER STDERR /private/path");
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate(), async () => {
+      throw secret;
+    })).rejects.toSatisfy((error: Error & { code?: string; cause?: unknown }) =>
+      error.code === "GIT_COMMAND_FAILED"
+      && error.cause === secret
+      && !error.message.includes("SECRET")
+      && !error.message.includes("/private/path"));
+  });
+
+  it("rejects assume-unchanged and skip-worktree index flags", async () => {
+    const assumeRoot = await temporaryRoot();
+    const assume = await createLocalSource(assumeRoot);
+    await runGit(assume.checkout, ["update-index", "--assume-unchanged", "README.md"]);
+    await writeFile(join(assume.checkout, "README.md"), "hidden modification\n", "utf8");
+    await expect(resolveLocalCheckoutCommit(assumeRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "INDEX_FLAGS_UNSAFE" });
+
+    const skipRoot = await temporaryRoot();
+    const skip = await createLocalSource(skipRoot);
+    await runGit(skip.checkout, ["update-index", "--skip-worktree", "README.md"]);
+    await expect(resolveLocalCheckoutCommit(skipRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "INDEX_FLAGS_UNSAFE" });
+  });
+
+  it("rejects sparse and partial/promisor repository configuration", async () => {
+    const sparseRoot = await temporaryRoot();
+    const sparse = await createLocalSource(sparseRoot);
+    await runGit(sparse.checkout, ["sparse-checkout", "init", "--cone"]);
+    await expect(resolveLocalCheckoutCommit(sparseRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "SPARSE_CHECKOUT_UNSUPPORTED" });
+
+    const partialRoot = await temporaryRoot();
+    const partial = await createLocalSource(partialRoot);
+    await runGit(partial.checkout, ["config", "core.repositoryFormatVersion", "1"]);
+    await runGit(partial.checkout, ["config", "extensions.partialClone", "origin"]);
+    await runGit(partial.checkout, ["config", "remote.origin.promisor", "true"]);
+    await expect(resolveLocalCheckoutCommit(partialRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "PARTIAL_CLONE_UNSUPPORTED" });
+
+    const promisorRoot = await temporaryRoot();
+    const promisor = await createLocalSource(promisorRoot);
+    await writeFile(join(promisor.checkout, ".git", "objects", "pack", "fixture.promisor"), "", "utf8");
+    await expect(resolveLocalCheckoutCommit(promisorRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "PARTIAL_CLONE_UNSUPPORTED" });
+  });
+
+  it("rejects tracked symbolic links and gitlinks", async () => {
+    const symlinkRoot = await temporaryRoot();
+    const symlinkSource = await createLocalSource(symlinkRoot);
+    await symlink("README.md", join(symlinkSource.checkout, "LINK.md"), "file");
+    await runGit(symlinkSource.checkout, ["add", "LINK.md"]);
+    await runGit(symlinkSource.checkout, ["commit", "-m", "tracked symlink"]);
+    await expect(resolveLocalCheckoutCommit(symlinkRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "TRACKED_SYMLINK_UNSUPPORTED" });
+
+    const gitlinkRoot = await temporaryRoot();
+    const gitlink = await createLocalSource(gitlinkRoot);
+    await runGit(gitlink.checkout, [
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      "160000",
+      gitlink.head,
+      "dependency",
+    ]);
+    await runGit(gitlink.checkout, ["commit", "-m", "gitlink"]);
+    await expect(resolveLocalCheckoutCommit(gitlinkRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "GITLINK_UNSUPPORTED" });
+  });
+
+  it("rejects a checkout with a missing reachable object", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    const blob = (await runGit(source.checkout, ["rev-parse", "HEAD:README.md"])).trim();
+    const objectPath = join(source.checkout, ".git", "objects", blob.slice(0, 2), blob.slice(2));
+    await rename(objectPath, `${objectPath}.missing`);
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "OBJECTS_INCOMPLETE" });
+  });
+
+  it("rejects a checkout with a corrupt reachable object", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    const blob = (await runGit(source.checkout, ["rev-parse", "HEAD:README.md"])).trim();
+    const objectPath = join(source.checkout, ".git", "objects", blob.slice(0, 2), blob.slice(2));
+    await rm(objectPath);
+    await writeFile(objectPath, "corrupt loose object", "utf8");
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate()))
+      .rejects.toMatchObject({ code: "OBJECTS_INCOMPLETE" });
+  });
+
+  it("uses an exact full branch ref even when a tag has the same name", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await runGit(source.checkout, ["tag", "main"]);
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate({ ref: "refs/heads/main" })))
+      .resolves.toBe(source.head);
+  });
+
+  it("rejects a detached checkout at an old tag instead of treating the tag as the branch", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await runGit(source.checkout, ["tag", "reviewed-old"]);
+    await writeFile(join(source.checkout, "README.md"), "new branch head\n", "utf8");
+    await runGit(source.checkout, ["add", "README.md"]);
+    await runGit(source.checkout, ["commit", "-m", "advance branch"]);
+    await runGit(source.checkout, ["checkout", "--detach", "refs/tags/reviewed-old"]);
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate({ ref: "refs/heads/main" })))
+      .rejects.toMatchObject({ code: "REF_MISMATCH", sourceId: "agency-agents" });
+  });
+
+  it("accepts a unique lowercase commit prefix and rejects a stale prefix", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    await expect(resolveLocalCheckoutCommit(root, validCandidate({ ref: source.head.slice(0, 7) })))
+      .resolves.toBe(source.head);
+
+    const oldHead = source.head;
+    await writeFile(join(source.checkout, "README.md"), "new head\n", "utf8");
+    await runGit(source.checkout, ["add", "README.md"]);
+    await runGit(source.checkout, ["commit", "-m", "new head"]);
+    await expect(resolveLocalCheckoutCommit(root, validCandidate({ ref: oldHead.slice(0, 7) })))
+      .rejects.toMatchObject({ code: "REF_MISMATCH", sourceId: "agency-agents" });
+  });
+
+  it("reports unborn HEAD and a missing full branch ref separately", async () => {
+    const unbornRoot = await temporaryRoot();
+    const unbornCheckout = join(unbornRoot, "vendor-sources", "agency-agents");
+    await mkdir(unbornCheckout, { recursive: true });
+    await execFileAsync("git", ["init", "-b", "main", unbornCheckout]);
+    await runGit(unbornCheckout, [
+      "remote", "add", "origin", "https://github.com/msitarzewski/agency-agents",
+    ]);
+    await expect(resolveLocalCheckoutCommit(unbornRoot, validCandidate()))
+      .rejects.toMatchObject({ code: "HEAD_UNRESOLVED", sourceId: "agency-agents" });
+
+    const missingRoot = await temporaryRoot();
+    await createLocalSource(missingRoot);
+    await expect(resolveLocalCheckoutCommit(
+      missingRoot,
+      validCandidate({ ref: "refs/heads/missing" }),
+    )).rejects.toMatchObject({ code: "REF_UNRESOLVED", sourceId: "agency-agents" });
+  });
+
+  it("fails closed when the checkout directory is replaced after final verification", async () => {
+    const root = await temporaryRoot();
+    const source = await createLocalSource(root);
+    const replacementRoot = await temporaryRoot();
+    const replacement = await createLocalSource(replacementRoot);
+    const stagedReplacement = join(root, "replacement-checkout");
+    await rename(replacement.checkout, stagedReplacement);
+    let fsckCount = 0;
+    const runner: GitRunner = async (args) => {
+      const { stdout } = await execFileAsync("git", [...args], { encoding: "utf8" });
+      if (args.includes("fsck") && ++fsckCount === 2) {
+        await rename(source.checkout, join(root, "replaced-checkout"));
+        await rename(stagedReplacement, source.checkout);
+      }
+      return stdout;
+    };
+
+    await expect(resolveLocalCheckoutCommit(root, validCandidate(), runner))
+      .rejects.toMatchObject({ code: "CHECKOUT_CHANGED", sourceId: "agency-agents" });
   });
 
   it("rejects a checkout reached through a symbolic-link directory", async () => {
@@ -342,6 +565,97 @@ describe("source lock file", () => {
     expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
   });
 
+  it("syncs the parent directory after publication through the runtime seam", async () => {
+    const root = await temporaryRoot();
+    const syncDirectory = vi.fn(async () => "synced" as const);
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      syncDirectory,
+    };
+
+    const result = await writeSourceLockFile(join(root, "sources.lock.json"), lock, runtime);
+
+    expect(result).toEqual({ published: true, warnings: [] });
+    expect(syncDirectory).toHaveBeenCalledExactlyOnceWith(root);
+  });
+
+  it("reports temporary cleanup failure as a published warning instead of a false failure", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      remove: async (path, options) => {
+        if (path.includes(".ezagent-source-lock.")) throw new Error("simulated cleanup failure");
+        await nodeSourceLockPublishRuntime.remove(path, options);
+      },
+    };
+
+    const result = await writeSourceLockFile(target, lock, runtime);
+
+    expect(result).toEqual({
+      published: true,
+      warnings: [{ code: "TEMP_CLEANUP_FAILED", message: expect.stringContaining("published") }],
+    });
+    expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
+  });
+
+  it("fails before linking when the parent directory identity changes", async () => {
+    const root = await temporaryRoot();
+    const other = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    let parentObservations = 0;
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      lstat: async (path) => {
+        if (path === root && ++parentObservations === 2) return lstat(other);
+        return nodeSourceLockPublishRuntime.lstat(path);
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime))
+      .rejects.toMatchObject({ code: "LOCK_PARENT_CHANGED", published: false });
+    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+  });
+
+  it("does not misreport a published lock as unpublished when the final parent observation fails", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const observationFailure = Object.assign(new Error("simulated final observation failure"), {
+      code: "EIO",
+    });
+    let parentObservations = 0;
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      lstat: async (path) => {
+        if (path === root && ++parentObservations === 3) throw observationFailure;
+        return nodeSourceLockPublishRuntime.lstat(path);
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
+      code: "LOCK_PARENT_CHANGED",
+      published: true,
+      cause: observationFailure,
+    });
+    expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
+  });
+
+  it("cleans staging and leaves no target when link publication fails", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const failure = Object.assign(new Error("simulated link failure"), { code: "EIO" });
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      link: async () => { throw failure; },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime))
+      .rejects.toMatchObject({ code: "LOCK_PUBLISH_FAILED", published: false, cause: failure });
+    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toEqual([]);
+  });
+
   it("does not follow or replace an existing symbolic-link target", async () => {
     const root = await temporaryRoot();
     const victim = join(root, "victim.json");
@@ -377,7 +691,7 @@ describe("lockCatalogSources", () => {
       "sources:",
       "  - id: agency-agents",
       "    repository: https://github.com/msitarzewski/agency-agents",
-      "    ref: main",
+      "    ref: refs/heads/main",
       "    checkout: vendor-sources/agency-agents",
       "    license: MIT",
       "",
@@ -399,7 +713,7 @@ describe("lockCatalogSources", () => {
       "sources:",
       "  - id: agency-agents",
       "    repository: https://github.com/msitarzewski/agency-agents",
-      "    ref: main",
+      "    ref: refs/heads/main",
       "    checkout: vendor-sources/agency-agents",
       "    license: MIT",
       "",
@@ -415,5 +729,64 @@ describe("lockCatalogSources", () => {
     expect(stdout).toContain("release-only");
     expect(stdout).toContain("local");
     expect(stdout).toContain("no network");
+  });
+
+  it("detects sources YAML replacement during its no-follow stable read", async () => {
+    const root = await temporaryRoot();
+    const catalog = join(root, "catalog");
+    const configPath = join(catalog, "sources.yaml");
+    await mkdir(catalog);
+    const configText = [
+      "schemaVersion: 1",
+      "sources:",
+      "  - id: agency-agents",
+      "    repository: https://github.com/msitarzewski/agency-agents",
+      "    ref: refs/heads/main",
+      "    checkout: vendor-sources/agency-agents",
+      "    license: MIT",
+      "",
+    ].join("\n");
+    await writeFile(configPath, configText, "utf8");
+    const runtime: SourceConfigReadRuntime = {
+      ...nodeSourceConfigReadRuntime,
+      openNoFollow: async (path) => {
+        const handle = await nodeSourceConfigReadRuntime.openNoFollow(path);
+        return {
+          ...handle,
+          readText: async () => {
+            const text = await handle.readText();
+            await rename(configPath, join(catalog, "sources.original.yaml"));
+            await writeFile(configPath, configText, "utf8");
+            return text;
+          },
+        };
+      },
+    };
+
+    await expect(lockCatalogSources(root, { configReadRuntime: runtime }))
+      .rejects.toMatchObject({ code: "SOURCE_CONFIG_CHANGED" });
+    await expect(readFile(join(catalog, "sources.lock.json"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("lock-catalog-sources script module", () => {
+  it("is import-safe and exports main without output, writes, or exit-code changes", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const previousExitCode = process.exitCode;
+    process.exitCode = 73;
+    const moduleUrl = new URL("../../scripts/lock-catalog-sources.ts", import.meta.url);
+    moduleUrl.searchParams.set("import-safe", randomUUID());
+
+    try {
+      const imported = await import(moduleUrl.href);
+      expect(imported.main).toBeTypeOf("function");
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(73);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
   });
 });

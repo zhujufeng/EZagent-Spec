@@ -8,6 +8,6 @@ sources:
     license: MIT
   - id: agency-agents-zh
     repository: https://github.com/jnMetaCode/agency-agents-zh
-    ref: main
+    ref: refs/heads/main
     checkout: vendor-sources/agency-agents-zh
     license: MIT

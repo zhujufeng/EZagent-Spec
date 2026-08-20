@@ -1,12 +1,40 @@
-import { lockCatalogSources } from "../src/experts/source-lock.js";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-try {
-  const lock = await lockCatalogSources();
+import {
+  lockCatalogSources,
+  type SourceLockPublishWarning,
+} from "../src/experts/source-lock.js";
+
+function safeErrorCode(error: unknown): string {
+  const code = (error as { readonly code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/u.test(code) ? code : "SOURCE_LOCK_FAILED";
+}
+
+export async function main(): Promise<number> {
   process.stdout.write(
-    `release-only: locked ${lock.sources.length} catalog sources from clean local checkouts; no network commands were run\n`,
+    "release-only: keep catalog/sources.yaml and vendor-sources checkouts unchanged until verification finishes; network is disabled\n",
   );
-} catch (error: unknown) {
-  const message = error instanceof Error ? error.message : "unknown local source-lock failure";
-  process.stderr.write(`catalog source lock failed: ${message}\n`);
-  process.exitCode = 1;
+  try {
+    const warnings: SourceLockPublishWarning[] = [];
+    const lock = await lockCatalogSources(process.cwd(), {
+      onPublishWarning: (warning) => warnings.push(warning),
+    });
+    process.stdout.write(
+      `release-only: locked ${lock.sources.length} catalog sources from clean local checkouts; no network commands were run\n`,
+    );
+    for (const warning of warnings) {
+      process.stderr.write(`catalog source lock warning [${warning.code}]: ${warning.message}\n`);
+    }
+    return 0;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "unknown local source-lock failure";
+    process.stderr.write(`catalog source lock failed [${safeErrorCode(error)}]: ${message}\n`);
+    return 1;
+  }
+}
+
+const entryPath = process.argv[1];
+if (entryPath !== undefined && pathToFileURL(resolve(entryPath)).href === import.meta.url) {
+  process.exitCode = await main();
 }
