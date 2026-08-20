@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { constants as fsConstants, type Stats } from "node:fs";
 import {
@@ -18,10 +18,14 @@ import { parseDocument } from "yaml";
 const CONFIG_KEYS = ["schemaVersion", "sources"] as const;
 const CANDIDATE_KEYS = ["id", "repository", "ref", "checkout", "license"] as const;
 const LOCK_KEYS = ["schemaVersion", "sources"] as const;
-const LOCKED_SOURCE_KEYS = ["id", "repository", "license", "commit"] as const;
+const LOCKED_SOURCE_KEYS = ["id", "repository", "license", "commit", "tree", "objectFormat", "markdown"] as const;
+const MARKDOWN_ATTESTATION_KEYS = ["path", "oid", "size", "sha256"] as const;
 const MAX_SOURCES = 64;
 const MAX_CONFIG_BYTES = 1_048_576;
 const MAX_GIT_OUTPUT = 1_048_576;
+const MAX_MARKDOWN_FILES = 4_096;
+const MAX_MARKDOWN_BYTES = 1_048_576;
+const MAX_TOTAL_MARKDOWN_BYTES = 64 * 1_048_576;
 const MAX_LENGTHS = {
   id: 64,
   repository: 256,
@@ -62,10 +66,20 @@ export interface LockedSource {
   readonly repository: string;
   readonly license: "MIT";
   readonly commit: string;
+  readonly tree?: string;
+  readonly objectFormat?: "sha1";
+  readonly markdown?: readonly MarkdownAttestation[];
+}
+
+export interface MarkdownAttestation {
+  readonly path: string;
+  readonly oid: string;
+  readonly size: number;
+  readonly sha256: string;
 }
 
 export interface SourceLock {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
   readonly sources: readonly LockedSource[];
 }
 
@@ -75,6 +89,7 @@ export type SourceCommitResolver = (
 ) => Promise<string>;
 
 export type GitRunner = (args: readonly string[]) => Promise<string>;
+export type GitBinaryRunner = (args: readonly string[]) => Promise<Buffer>;
 
 export interface SourceConfigReadHandle {
   readonly stat: () => Promise<Stats>;
@@ -124,6 +139,7 @@ export interface SourceLockPublishResult {
 export interface LockCatalogSourcesOptions {
   readonly configReadRuntime?: SourceConfigReadRuntime;
   readonly gitRunner?: GitRunner;
+  readonly gitBinaryRunner?: GitBinaryRunner;
   readonly publishRuntime?: SourceLockPublishRuntime;
   readonly onPublishWarning?: (warning: SourceLockPublishWarning) => void;
 }
@@ -481,6 +497,21 @@ const nodeGitRunner: GitRunner = async (args) => {
   });
   return stdout;
 };
+
+const nodeGitBinaryRunner: GitBinaryRunner = async (args) => new Promise<Buffer>((resolvePromise, rejectPromise) => {
+  execFile("git", [...args], {
+    encoding: "buffer",
+    env: isolatedGitEnvironment(),
+    maxBuffer: MAX_MARKDOWN_BYTES + 1,
+    windowsHide: true,
+  }, (error, stdout) => {
+    if (error !== null) {
+      rejectPromise(new GitCommandExecutionError("Local Git object read failed", { cause: error }));
+      return;
+    }
+    resolvePromise(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
+  });
+});
 
 function localCheckoutErrorMessage(code: LocalCheckoutErrorCode, sourceId: string): string {
   const prefix = `Source ${sourceId}`;
@@ -1045,6 +1076,156 @@ export async function resolveLocalCheckoutCommit(
   return second.commit;
 }
 
+function safeManifestPath(value: string, sourceId: string): string {
+  if (value.length === 0
+    || value.length > 1_024
+    || value.normalize("NFC") !== value
+    || value.startsWith("/")
+    || value.includes("\\")
+    || value.includes("\0")
+    || value.includes("%")
+    || !value.endsWith(".md")) {
+    throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
+  }
+  for (const component of value.split("/")) {
+    const compatibility = component.normalize("NFKC");
+    const basename = compatibility.split(".", 1)[0]!.toUpperCase();
+    if (component === "" || component === "." || component === ".."
+      || compatibility.endsWith(".") || compatibility.endsWith(" ")
+      || WINDOWS_RESERVED_BASENAME.test(basename)
+      || Buffer.byteLength(component, "utf8") > 255) {
+      throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
+    }
+  }
+  return value;
+}
+
+async function runCheckoutGitBytes(
+  runner: GitBinaryRunner,
+  checkoutPath: string,
+  args: readonly string[],
+  sourceId: string,
+): Promise<Buffer> {
+  try {
+    const bytes = await runner([
+      "-C",
+      checkoutPath,
+      "--no-optional-locks",
+      "--no-replace-objects",
+      "-c",
+      "core.fsmonitor=false",
+      "-c",
+      "protocol.allow=never",
+      "-c",
+      "gc.auto=0",
+      "-c",
+      "maintenance.auto=false",
+      ...args,
+    ]);
+    if (!Buffer.isBuffer(bytes) || bytes.length > MAX_MARKDOWN_BYTES) {
+      throw new LocalCheckoutError("GIT_OUTPUT_INVALID", sourceId);
+    }
+    return bytes;
+  } catch (error: unknown) {
+    if (error instanceof LocalCheckoutError) throw error;
+    if (error instanceof GitCommandExecutionError) {
+      throw new LocalCheckoutError("OBJECTS_INCOMPLETE", sourceId, { cause: error.cause });
+    }
+    throw new LocalCheckoutError("GIT_COMMAND_FAILED", sourceId, { cause: error });
+  }
+}
+
+async function attestCommittedMarkdown(
+  checkoutPath: string,
+  candidate: SourceCandidate,
+  commit: string,
+  runner: GitRunner,
+  binaryRunner: GitBinaryRunner,
+): Promise<Pick<LockedSource, "tree" | "objectFormat" | "markdown">> {
+  const objectFormat = singleGitOutputLine(await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["rev-parse", "--show-object-format"],
+    candidate.id,
+    "GIT_OUTPUT_INVALID",
+  ), candidate.id, "object format");
+  if (objectFormat !== "sha1") throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+  const tree = singleGitOutputLine(await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["rev-parse", "--verify", "--end-of-options", `${commit}^{tree}`],
+    candidate.id,
+    "GIT_OUTPUT_INVALID",
+  ), candidate.id, "commit tree");
+  if (!FULL_COMMIT_SHA.test(tree)) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+  const listing = await runCheckoutGit(
+    runner,
+    checkoutPath,
+    ["ls-tree", "-r", "-z", "--full-tree", commit],
+    candidate.id,
+    "GIT_OUTPUT_INVALID",
+  );
+  const manifest: MarkdownAttestation[] = [];
+  let totalBytes = 0;
+  const seen = new Set<string>();
+  const records = listing.split("\0");
+  if (records.at(-1) !== "") throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+  records.pop();
+  for (const record of records) {
+    const match = /^(100644|100755) blob ([0-9a-f]{40})\t([^\r\n\0]+)$/u.exec(record);
+    if (match === null) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+    const path = match[3]!;
+    if (/\.md$/iu.test(path) && !path.endsWith(".md")) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+    if (!path.endsWith(".md")) continue;
+    safeManifestPath(path, candidate.id);
+    const collision = path.normalize("NFKC").toUpperCase().normalize("NFKC");
+    if (seen.has(collision)) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+    seen.add(collision);
+    if (manifest.length >= MAX_MARKDOWN_FILES) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+    const oid = match[2]!;
+    const bytes = await runCheckoutGitBytes(binaryRunner, checkoutPath, ["cat-file", "blob", oid], candidate.id);
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_TOTAL_MARKDOWN_BYTES) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+    const calculatedOid = createHash("sha1")
+      .update(Buffer.from(`blob ${bytes.length}\0`, "utf8"))
+      .update(bytes)
+      .digest("hex");
+    if (calculatedOid !== oid) throw new LocalCheckoutError("OBJECTS_INCOMPLETE", candidate.id);
+    manifest.push(Object.freeze({
+      path,
+      oid,
+      size: bytes.length,
+      sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    }));
+  }
+  manifest.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  return Object.freeze({ tree, objectFormat: "sha1", markdown: Object.freeze(manifest) });
+}
+
+export async function resolveLocalCheckoutAttestation(
+  projectRoot: string,
+  untrustedCandidate: SourceCandidate,
+  runner: GitRunner = nodeGitRunner,
+  binaryRunner: GitBinaryRunner = nodeGitBinaryRunner,
+): Promise<LockedSource> {
+  const candidate = parseSourceCandidatesConfig({ schemaVersion: 1, sources: [untrustedCandidate] }).sources[0]!;
+  const root = await realpath(projectRoot).catch((error: unknown) => {
+    throw new LocalCheckoutError("PROJECT_ROOT_UNREADABLE", candidate.id, { cause: error });
+  });
+  const checkoutPath = resolve(root, candidate.checkout);
+  const commit = await resolveLocalCheckoutCommit(root, candidate, runner);
+  const attestation = await attestCommittedMarkdown(checkoutPath, candidate, commit, runner, binaryRunner);
+  const finalCommit = await resolveLocalCheckoutCommit(root, candidate, runner);
+  if (finalCommit !== commit) throw new LocalCheckoutError("CHECKOUT_CHANGED", candidate.id);
+  return Object.freeze({
+    id: candidate.id,
+    repository: candidate.repository,
+    license: "MIT",
+    commit,
+    ...attestation,
+  });
+}
+
 function snapshotLockedSource(value: unknown, path: string): LockedSource {
   const object = ownDataObject(value, path, LOCKED_SOURCE_KEYS);
   const id = requiredString(object, "id", path);
@@ -1055,17 +1236,75 @@ function snapshotLockedSource(value: unknown, path: string): LockedSource {
   validateRepository(repository, path);
   if (license !== "MIT") configFail(`${path}.license must be MIT`);
   if (!FULL_COMMIT_SHA.test(commit)) configFail(`${path}.commit must be a full lowercase commit SHA`);
-  return Object.freeze({ id, repository, license: "MIT", commit });
+  const attestationKeys = ["tree", "objectFormat", "markdown"] as const;
+  const attestationCount = attestationKeys.filter((key) => Object.hasOwn(object, key)).length;
+  if (attestationCount === 0) return Object.freeze({ id, repository, license: "MIT", commit });
+  if (attestationCount !== attestationKeys.length) configFail(`${path} attestation must include tree, objectFormat, and markdown together`);
+  if (typeof object.tree !== "string" || !FULL_COMMIT_SHA.test(object.tree)) configFail(`${path}.tree is invalid`);
+  if (object.objectFormat !== "sha1") configFail(`${path}.objectFormat must be sha1`);
+  if (nodeTypes.isProxy(object.markdown) || !Array.isArray(object.markdown)) configFail(`${path}.markdown must be an array`);
+  if (object.markdown.length > MAX_MARKDOWN_FILES) configFail(`${path}.markdown contains too many entries`);
+  for (const key of Reflect.ownKeys(object.markdown)) {
+    if (key === "length") continue;
+    if (typeof key !== "string" || !/^(?:0|[1-9]\d*)$/u.test(key) || Number(key) >= object.markdown.length) {
+      configFail(`${path}.markdown contains an unsupported array key`);
+    }
+  }
+  const markdown: MarkdownAttestation[] = [];
+  const seen = new Set<string>();
+  let totalBytes = 0;
+  for (let index = 0; index < object.markdown.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(object.markdown, String(index));
+    if (!descriptor?.enumerable || !("value" in descriptor)) configFail(`${path}.markdown must be dense data`);
+    const entry = ownDataObject(descriptor.value, `${path}.markdown.${index}`, MARKDOWN_ATTESTATION_KEYS);
+    if (typeof entry.path !== "string") configFail(`${path}.markdown.${index}.path must be a string`);
+    try {
+      safeManifestPath(entry.path, id);
+    } catch (error: unknown) {
+      configFail(`${path}.markdown.${index}.path is invalid`);
+    }
+    if (typeof entry.oid !== "string" || !FULL_COMMIT_SHA.test(entry.oid)) configFail(`${path}.markdown.${index}.oid is invalid`);
+    if (!Number.isSafeInteger(entry.size) || (entry.size as number) < 0 || (entry.size as number) > MAX_MARKDOWN_BYTES) {
+      configFail(`${path}.markdown.${index}.size is invalid`);
+    }
+    if (typeof entry.sha256 !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(entry.sha256)) {
+      configFail(`${path}.markdown.${index}.sha256 is invalid`);
+    }
+    const collision = entry.path.normalize("NFKC").toUpperCase().normalize("NFKC");
+    if (seen.has(collision)) configFail(`${path}.markdown contains duplicate paths`);
+    seen.add(collision);
+    totalBytes += entry.size as number;
+    if (totalBytes > MAX_TOTAL_MARKDOWN_BYTES) configFail(`${path}.markdown total bytes are too large`);
+    markdown.push(Object.freeze({
+      path: entry.path,
+      oid: entry.oid,
+      size: entry.size as number,
+      sha256: entry.sha256,
+    }));
+  }
+  markdown.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  return Object.freeze({
+    id,
+    repository,
+    license: "MIT",
+    commit,
+    tree: object.tree,
+    objectFormat: "sha1",
+    markdown: Object.freeze(markdown),
+  });
 }
 
 function snapshotSourceLock(lock: SourceLock): SourceLock {
   const object = ownDataObject(lock, "lock", LOCK_KEYS);
-  if (object.schemaVersion !== 1) configFail("lock.schemaVersion must be exactly 1");
+  if (object.schemaVersion !== 1 && object.schemaVersion !== 2) configFail("lock.schemaVersion must be 1 or 2");
   const sources = snapshotDenseArray(object.sources, "lock.sources")
     .map((source, index) => snapshotLockedSource(source, `lock.sources.${index}`))
     .sort(compareAsciiIds);
   assertUnique(sources.map((source) => ({ ...source, ref: "main", checkout: `vendor-sources/${source.id}` })));
-  return Object.freeze({ schemaVersion: 1, sources: Object.freeze(sources) });
+  const attestedCount = sources.filter((source) => source.markdown !== undefined).length;
+  if (object.schemaVersion === 1 && attestedCount !== 0) configFail("lock schemaVersion 1 cannot contain attestations");
+  if (object.schemaVersion === 2 && attestedCount !== sources.length) configFail("lock schemaVersion 2 requires every source attestation");
+  return Object.freeze({ schemaVersion: object.schemaVersion, sources: Object.freeze(sources) });
 }
 
 export function serializeSourceLock(lock: SourceLock): string {
@@ -1422,8 +1661,19 @@ export async function lockCatalogSources(
     options.configReadRuntime ?? nodeSourceConfigReadRuntime,
   );
   const config = parseSourceCandidatesYaml(configText);
-  const lock = await createSourceLock(config.sources, async (_checkout, candidate) =>
-    resolveLocalCheckoutCommit(projectRoot, candidate, options.gitRunner));
+  const lockedSources: LockedSource[] = [];
+  for (const candidate of [...config.sources].sort(compareAsciiIds)) {
+    lockedSources.push(await resolveLocalCheckoutAttestation(
+      projectRoot,
+      candidate,
+      options.gitRunner,
+      options.gitBinaryRunner,
+    ));
+  }
+  const lock: SourceLock = Object.freeze({
+    schemaVersion: 2,
+    sources: Object.freeze(lockedSources),
+  });
   const publication = await writeSourceLockFile(
     resolve(projectRoot, "catalog", "sources.lock.json"),
     lock,

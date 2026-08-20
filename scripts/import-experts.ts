@@ -13,7 +13,6 @@ import { atomicWriteText } from "../src/workspace/atomic-write.js";
 
 export interface ImportExpertsCommandOptions {
   readonly projectRoot?: string;
-  readonly outputPath?: string;
 }
 
 export interface ImportExpertsCommandRuntime {
@@ -44,9 +43,10 @@ export async function main(
   runtime: ImportExpertsCommandRuntime = nodeRuntime,
 ): Promise<number> {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
-  const outputPath = resolve(options.outputPath ?? join(projectRoot, "catalog", "normalized", "experts.json"));
+  const outputPath = join(projectRoot, "catalog", "normalized", "experts.json");
   try {
     const experts = await runtime.importCatalog({
+      projectRoot,
       englishRoot: join(projectRoot, "vendor-sources", "agency-agents"),
       chineseRoot: join(projectRoot, "vendor-sources", "agency-agents-zh"),
       sourceLockText: await runtime.readText(join(projectRoot, "catalog", "sources.lock.json")),

@@ -1,5 +1,7 @@
 # EZagent original release-time metadata. It is curated per Chinese source file and is
-# never a runtime dependency. Task 7 expands this fixture-sized mapping to the full snapshot.
+# never a runtime dependency. Every attested Markdown path must be classified exactly once
+# as a Chinese expert, mapped English upstream, or reviewed ignore. Task 7 expands this
+# fixture-sized inventory to the full snapshot.
 schemaVersion: 1
 divisions:
   engineering:
@@ -7,7 +9,9 @@ divisions:
   design:
     defaultDomains: [design]
 experts:
-  engineering/frontend-architect.md:
+  engineering/frontend-developer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-frontend-developer.md
     domains: [engineering, frontend]
     capabilities: [frontend-architecture, state-design]
     projectSignals: [react, vue, web-ui]
@@ -16,6 +20,7 @@ experts:
     preferredTasks: [design, review]
     qualityGates: [引用实际文件, 覆盖错误状态]
   design/product-designer.md:
+    origin: china_original
     domains: [design, product]
     capabilities: [user-journey, interaction-design]
     projectSignals: [product-ui, user-flow]
@@ -23,3 +28,16 @@ experts:
     exclusionConditions: [纯基础设施维护]
     preferredTasks: [clarify, design, review]
     qualityGates: [覆盖关键用户旅程, 定义可验证验收标准]
+  design/ux-researcher.md:
+    origin: upstream_translation
+    upstreamPath: design/design-ux-researcher.md
+    domains: [design, research]
+    capabilities: [user-research, evidence-synthesis]
+    projectSignals: [usability, user-feedback]
+    activationConditions: [需要研究用户行为]
+    exclusionConditions: [已有充分研究证据]
+    preferredTasks: [clarify, design, review]
+    qualityGates: [引用研究证据, 定义可验证研究结论]
+ignoredMarkdown:
+  agency-agents: [README.md, AGENT-LIST.md, UPSTREAM.md, strategy/strategy-advisor.md]
+  agency-agents-zh: [README.md, AGENT-LIST.md, UPSTREAM.md, strategy/strategy-advisor.md]

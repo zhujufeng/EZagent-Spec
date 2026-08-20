@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   lstat,
   mkdir,
@@ -1011,7 +1011,18 @@ describe("lockCatalogSources", () => {
     ].join("\n"), "utf8");
 
     const result = await lockCatalogSources(root);
+    expect(result.schemaVersion).toBe(2);
     expect(result.sources[0]?.commit).toBe(source.head);
+    expect(result.sources[0]).toMatchObject({
+      objectFormat: "sha1",
+      tree: await runGit(source.checkout, ["rev-parse", `${source.head}^{tree}`]).then((value) => value.trim()),
+      markdown: [{
+        path: "README.md",
+        oid: await runGit(source.checkout, ["rev-parse", `${source.head}:README.md`]).then((value) => value.trim()),
+        size: Buffer.byteLength("offline fixture\n"),
+        sha256: `sha256:${createHash("sha256").update("offline fixture\n").digest("hex")}`,
+      }],
+    });
     const target = join(root, "catalog", "sources.lock.json");
     expect(JSON.parse(await readFile(target, "utf8"))).toEqual(result);
     await expect(lockCatalogSources(root)).rejects.toThrow("already exists");

@@ -4,7 +4,8 @@ import {
   lstat,
   mkdir,
   open,
-  readdir,
+  opendir,
+  realpath,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { types as nodeTypes } from "node:util";
@@ -21,7 +22,6 @@ import {
 
 import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
-import { atomicWriteText } from "../workspace/atomic-write.js";
 import { parseExpert, type Expert, type SourceRef } from "./expert.js";
 
 const NORMALIZE_KEYS = [
@@ -32,7 +32,7 @@ const NORMALIZE_KEYS = [
   "upstreamSource",
   "taxonomy",
 ] as const;
-const TAXONOMY_KEYS = ["schemaVersion", "divisions", "experts"] as const;
+const TAXONOMY_KEYS = ["schemaVersion", "divisions", "experts", "ignoredMarkdown"] as const;
 const DIVISION_KEYS = ["defaultDomains"] as const;
 const META_KEYS = [
   "domains",
@@ -42,17 +42,21 @@ const META_KEYS = [
   "exclusionConditions",
   "preferredTasks",
   "qualityGates",
+  "origin",
+  "upstreamPath",
 ] as const;
-const SOURCE_BASE_KEYS = ["repository", "commit", "license"] as const;
+const SOURCE_BASE_KEYS = ["repository", "commit", "license", "tree", "objectFormat", "markdown"] as const;
 const LOCK_KEYS = ["schemaVersion", "sources"] as const;
-const LOCKED_SOURCE_KEYS = ["id", "repository", "license", "commit"] as const;
-const FRONTMATTER_KEYS = ["name", "description"] as const;
+const LOCKED_SOURCE_KEYS = ["id", "repository", "license", "commit", "tree", "objectFormat", "markdown"] as const;
+const MANIFEST_KEYS = ["path", "oid", "size", "sha256"] as const;
+const FRONTMATTER_KEYS = ["name", "description", "emoji", "color"] as const;
 const MAX_MARKDOWN_BYTES = 1_048_576;
 const MAX_CONFIG_BYTES = 1_048_576;
 const MAX_FILES = 4_096;
 const MAX_DIRECTORIES = 4_096;
 const MAX_DEPTH = 12;
 const MAX_TOTAL_BYTES = 64 * 1_048_576;
+const MAX_ENTRIES = 16_384;
 const MAX_TAXONOMY_EXPERTS = 4_096;
 const MAX_DIVISIONS = 128;
 const MAX_TEXT = 4_096;
@@ -72,7 +76,6 @@ const PORTABLE_PATH_COMPONENT = /^[\p{L}\p{N}._-]+$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const HAN = /\p{Script=Han}/u;
 const WINDOWS_RESERVED = /^(?:CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[1-9]|LPT[1-9])$/u;
-const IGNORED_DIRECTORIES = new Set(["node_modules"]);
 const EXPECTED_SOURCES = Object.freeze({
   "agency-agents": "https://github.com/msitarzewski/agency-agents",
   "agency-agents-zh": "https://github.com/jnMetaCode/agency-agents-zh",
@@ -81,6 +84,8 @@ const EXPECTED_SOURCES = Object.freeze({
 export type PreferredTask = "clarify" | "design" | "implement" | "verify" | "review";
 
 export interface TaxonomyMeta {
+  readonly origin: "upstream_translation" | "china_original";
+  readonly upstreamPath?: string;
   readonly domains: readonly string[];
   readonly capabilities: readonly string[];
   readonly projectSignals: readonly string[];
@@ -94,12 +99,23 @@ export interface Taxonomy {
   readonly schemaVersion: 1;
   readonly divisions: Readonly<Record<string, { readonly defaultDomains: readonly string[] }>>;
   readonly experts: Readonly<Record<string, TaxonomyMeta>>;
+  readonly ignoredMarkdown: Readonly<Record<keyof typeof EXPECTED_SOURCES, readonly string[]>>;
 }
 
 export interface SourceBase {
   readonly repository: string;
   readonly commit: string;
   readonly license: "MIT";
+  readonly tree: string;
+  readonly objectFormat: "sha1";
+  readonly markdown: readonly MarkdownManifestEntry[];
+}
+
+export interface MarkdownManifestEntry {
+  readonly path: string;
+  readonly oid: string;
+  readonly size: number;
+  readonly sha256: string;
 }
 
 export interface IndexedMarkdownFile {
@@ -137,11 +153,12 @@ export interface NormalizeInput {
 }
 
 export interface ParsedSourceLock {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly sourcesById: Readonly<Record<keyof typeof EXPECTED_SOURCES, SourceBase>>;
 }
 
 export interface ImportExpertCatalogOptions {
+  readonly projectRoot: string;
   readonly englishRoot: string;
   readonly chineseRoot: string;
   readonly sourceLockText: string;
@@ -150,7 +167,8 @@ export interface ImportExpertCatalogOptions {
 
 export interface NormalizedCatalogWriteRuntime {
   readonly atomicWriteText: (target: string, content: string) => Promise<void>;
-  readonly projectRoot?: string;
+  readonly projectRoot: string;
+  readonly beforePublish?: () => Promise<void>;
 }
 
 export class CatalogImportError extends Error {
@@ -161,6 +179,9 @@ export class CatalogImportError extends Error {
     readonly missingDivisions: readonly string[] = [],
     readonly missingExpertPaths: readonly string[] = [],
     readonly extraExpertPaths: readonly string[] = [],
+    readonly unclassifiedMarkdownPaths: readonly string[] = [],
+    readonly missingUpstreamPaths: readonly string[] = [],
+    readonly extraIgnoredPaths: readonly string[] = [],
     options?: ErrorOptions,
   ) {
     super(message, options);
@@ -169,9 +190,29 @@ export class CatalogImportError extends Error {
 
 export const nodeMarkdownIndexRuntime: MarkdownIndexRuntime = Object.freeze<MarkdownIndexRuntime>({
   lstat,
-  readdir: async (path) => readdir(path, { withFileTypes: true }),
+  readdir: async (path) => {
+    const directory = await opendir(path);
+    const entries: MarkdownDirectoryEntry[] = [];
+    try {
+      for await (const entry of directory) {
+        if (entries.length >= MAX_ENTRIES) fail("source directory contains too many entries");
+        entries.push(entry);
+      }
+    } finally {
+      try { await directory.close(); } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code !== "ERR_DIR_CLOSED") throw error;
+      }
+    }
+    return entries;
+  },
   openNoFollow: async (path) => {
-    const handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    // Windows does not reliably expose O_NOFOLLOW. The release tool therefore uses
+    // a static-input threat model plus pre-lstat, handle-bound read/stat, post-lstat,
+    // canonical realpath checks, and the locked byte manifest as the final backstop.
+    const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
+      ? 0
+      : fsConstants.O_NOFOLLOW;
+    const handle = await open(path, fsConstants.O_RDONLY | noFollow);
     return {
       stat: async () => handle.stat(),
       readBytes: async () => handle.readFile(),
@@ -183,6 +224,9 @@ export const nodeMarkdownIndexRuntime: MarkdownIndexRuntime = Object.freeze<Mark
 function fail(message: string, cause?: unknown): never {
   throw new CatalogImportError(
     `Invalid expert catalog input: ${message}`,
+    [],
+    [],
+    [],
     [],
     [],
     [],
@@ -306,10 +350,15 @@ function stringList(
 
 function snapshotTaxonomyMeta(value: unknown, path: string): TaxonomyMeta {
   const object = snapshotObject(value, path, META_KEYS);
-  for (const key of META_KEYS) {
+  for (const key of [
+    "domains", "capabilities", "projectSignals", "activationConditions",
+    "exclusionConditions", "preferredTasks", "qualityGates", "origin",
+  ] as const) {
     if (!Object.hasOwn(object, key)) fail(`${path}.${key} is required`);
   }
-  return Object.freeze({
+  const origin = requiredString(object, "origin", path, 32);
+  if (origin !== "upstream_translation" && origin !== "china_original") fail(`${path}.origin is invalid`);
+  const shared = {
     domains: stringList(object.domains, `${path}.domains`, MAX_LISTS.domains, { minimum: 1, slug: true }),
     capabilities: stringList(object.capabilities, `${path}.capabilities`, MAX_LISTS.capabilities, { minimum: 1, slug: true }),
     projectSignals: stringList(object.projectSignals, `${path}.projectSignals`, MAX_LISTS.projectSignals, { slug: true }),
@@ -317,7 +366,15 @@ function snapshotTaxonomyMeta(value: unknown, path: string): TaxonomyMeta {
     exclusionConditions: stringList(object.exclusionConditions, `${path}.exclusionConditions`, MAX_LISTS.exclusionConditions),
     preferredTasks: stringList(object.preferredTasks, `${path}.preferredTasks`, MAX_LISTS.preferredTasks, { minimum: 1, preferred: true }) as readonly PreferredTask[],
     qualityGates: stringList(object.qualityGates, `${path}.qualityGates`, MAX_LISTS.qualityGates, { minimum: 1 }),
-  });
+  };
+  if (origin === "upstream_translation") {
+    if (!Object.hasOwn(object, "upstreamPath")) fail(`${path}.upstreamPath is required for translated experts`);
+    const upstreamPath = requiredString(object, "upstreamPath", path, 1_024);
+    validatePath(upstreamPath, `${path}.upstreamPath`);
+    return Object.freeze({ origin, upstreamPath, ...shared });
+  }
+  if (Object.hasOwn(object, "upstreamPath")) fail(`${path}.upstreamPath is unsupported for China-original experts`);
+  return Object.freeze({ origin, ...shared });
 }
 
 function yamlNodeToPlain(node: unknown, path: string, depth = 0): unknown {
@@ -349,6 +406,7 @@ function parseOneYamlDocument(text: string, label: string): unknown {
   if (Buffer.byteLength(text, "utf8") > MAX_CONFIG_BYTES || !isWellFormedUnicode(text)) {
     fail(`${label} is too large or invalid Unicode`);
   }
+  if (/^(?:%YAML|%TAG)\b/mu.test(text)) fail(`${label} cannot contain YAML directives`);
   let documents: Document.Parsed[];
   try {
     documents = parseAllDocuments(text, {
@@ -366,7 +424,7 @@ function parseOneYamlDocument(text: string, label: string): unknown {
   return yamlNodeToPlain(documents[0]!.contents as Node, label);
 }
 
-function validatePath(value: string, label: string): readonly string[] {
+function validatePath(value: string, label: string, allowHiddenComponents = false): readonly string[] {
   if (
     value.length === 0
     || value.length > 1_024
@@ -386,7 +444,7 @@ function validatePath(value: string, label: string): readonly string[] {
       component === ""
       || component === "."
       || component === ".."
-      || component.startsWith(".")
+      || (!allowHiddenComponents && component.startsWith("."))
       || component.endsWith(".")
       || component.endsWith(" ")
       || Buffer.byteLength(component, "utf8") > 255
@@ -397,8 +455,8 @@ function validatePath(value: string, label: string): readonly string[] {
   return components;
 }
 
-function sourceBase(value: unknown, path: string): SourceBase {
-  const object = snapshotObject(value, path, SOURCE_BASE_KEYS);
+function sourceReferenceBase(value: unknown, path: string): Omit<SourceRef, "path"> {
+  const object = snapshotObject(value, path, ["repository", "commit", "license"]);
   const repository = requiredString(object, "repository", path, 256);
   const commit = requiredString(object, "commit", path, 40);
   const license = requiredString(object, "license", path, 3);
@@ -406,6 +464,44 @@ function sourceBase(value: unknown, path: string): SourceBase {
   if (license !== "MIT") fail(`${path}.license must be MIT`);
   if (!Object.values(EXPECTED_SOURCES).includes(repository as never)) fail(`${path}.repository is not reviewed`);
   return Object.freeze({ repository, commit, license: "MIT" });
+}
+
+function lockedSourceBase(value: unknown, path: string): SourceBase {
+  const object = snapshotObject(value, path, SOURCE_BASE_KEYS);
+  const repository = requiredString(object, "repository", path, 256);
+  const commit = requiredString(object, "commit", path, 40);
+  const license = requiredString(object, "license", path, 3);
+  const tree = requiredString(object, "tree", path, 40);
+  const objectFormat = requiredString(object, "objectFormat", path, 8);
+  if (!FULL_SHA.test(commit)) fail(`${path}.commit must be a full lowercase SHA`);
+  if (license !== "MIT") fail(`${path}.license must be MIT`);
+  if (!FULL_SHA.test(tree)) fail(`${path}.tree must be a full lowercase SHA`);
+  if (objectFormat !== "sha1") fail(`${path}.objectFormat must be sha1`);
+  if (!Object.values(EXPECTED_SOURCES).includes(repository as never)) fail(`${path}.repository is not reviewed`);
+  const entries = snapshotArray(object.markdown, `${path}.markdown`, MAX_FILES);
+  const markdown: MarkdownManifestEntry[] = [];
+  const seen = new Set<string>();
+  let total = 0;
+  for (const [index, rawEntry] of entries.entries()) {
+    const entry = snapshotObject(rawEntry, `${path}.markdown.${index}`, MANIFEST_KEYS);
+    const manifestPath = requiredString(entry, "path", `${path}.markdown.${index}`, 1_024);
+    validatePath(manifestPath, `${path}.markdown.${index}.path`, true);
+    const oid = requiredString(entry, "oid", `${path}.markdown.${index}`, 40);
+    const sha256 = requiredString(entry, "sha256", `${path}.markdown.${index}`, 71);
+    if (!FULL_SHA.test(oid)) fail(`${path}.markdown.${index}.oid is invalid`);
+    if (!/^sha256:[0-9a-f]{64}$/u.test(sha256)) fail(`${path}.markdown.${index}.sha256 is invalid`);
+    if (!Number.isSafeInteger(entry.size) || (entry.size as number) < 0 || (entry.size as number) > MAX_MARKDOWN_BYTES) {
+      fail(`${path}.markdown.${index}.size is invalid`);
+    }
+    const key = collisionKey(manifestPath);
+    if (seen.has(key)) fail(`${path}.markdown contains duplicate paths`);
+    seen.add(key);
+    total += entry.size as number;
+    if (total > MAX_TOTAL_BYTES) fail(`${path}.markdown total bytes are too large`);
+    markdown.push(Object.freeze({ path: manifestPath, oid, size: entry.size as number, sha256 }));
+  }
+  markdown.sort((left, right) => comparePortable(left.path, right.path));
+  return Object.freeze({ repository, commit, license: "MIT", tree, objectFormat: "sha1", markdown: Object.freeze(markdown) });
 }
 
 function canonicalizeMarkdown(markdown: unknown): string {
@@ -430,11 +526,32 @@ function splitFrontmatter(markdown: string): { readonly metadata: Readonly<Recor
   const frontmatter = markdown.slice(4, end);
   const raw = parseOneYamlDocument(frontmatter, "frontmatter");
   const metadata = snapshotObject(raw, "frontmatter", FRONTMATTER_KEYS);
-  for (const key of FRONTMATTER_KEYS) if (!Object.hasOwn(metadata, key)) fail(`frontmatter.${key} is required`);
+  for (const key of ["name", "description"] as const) if (!Object.hasOwn(metadata, key)) fail(`frontmatter.${key} is required`);
+  for (const key of ["emoji", "color"] as const) {
+    if (!Object.hasOwn(metadata, key)) continue;
+    if (typeof metadata[key] !== "string" || metadata[key].length === 0 || metadata[key].length > 32
+      || metadata[key].trim() !== metadata[key] || metadata[key].normalize("NFC") !== metadata[key]
+      || !isWellFormedUnicode(metadata[key])) {
+      fail(`frontmatter.${key} must be a bounded canonical string`);
+    }
+  }
+  if (typeof metadata.emoji === "string" && !/\p{Extended_Pictographic}/u.test(metadata.emoji)) {
+    fail("frontmatter.emoji must contain an emoji pictograph");
+  }
+  if (typeof metadata.color === "string" && !/^[a-z]+(?:-[a-z]+)*$/u.test(metadata.color)) {
+    fail("frontmatter.color must be a lowercase portable color token");
+  }
   const body = markdown.slice(end + 5).trim();
+  if (/^---\s*$/mu.test(body) || /^\.\.\.\s*$/mu.test(body)) {
+    fail("expert instructions cannot contain YAML document markers");
+  }
+  const lastCommentOpen = body.lastIndexOf("<!--");
+  const lastCommentClose = body.lastIndexOf("-->");
+  if (lastCommentOpen > lastCommentClose) fail("expert instructions contain an unterminated HTML comment");
   const meaningful = body
     .replace(/<!--[^]*?-->/gu, "")
     .replace(/^\s{0,3}#{1,6}\s+.*$/gmu, "")
+    .replace(/^.*\n\s{0,3}(?:=+|-+)\s*$/gmu, "")
     .trim();
   if (body.length === 0 || meaningful.length === 0 || !HAN.test(meaningful)) {
     fail("expert instructions must contain substantive Chinese body text beyond headings and comments");
@@ -456,7 +573,7 @@ export function normalizeExpertFile(value: NormalizeInput): Expert {
   const sourceObject = snapshotObject(input.source, "source", ["repository", "path", "commit", "license"]);
   if (sourceObject.path !== relativePath) fail("source.path must exactly match relativePath");
   const source = Object.freeze({
-    ...sourceBase({ repository: sourceObject.repository, commit: sourceObject.commit, license: sourceObject.license }, "source"),
+    ...sourceReferenceBase({ repository: sourceObject.repository, commit: sourceObject.commit, license: sourceObject.license }, "source"),
     path: relativePath,
   });
   if (source.repository !== EXPECTED_SOURCES["agency-agents-zh"]) {
@@ -465,16 +582,23 @@ export function normalizeExpertFile(value: NormalizeInput): Expert {
   let upstreamSource: SourceRef | undefined;
   if (Object.hasOwn(input, "upstreamSource")) {
     const upstreamObject = snapshotObject(input.upstreamSource, "upstreamSource", ["repository", "path", "commit", "license"]);
-    if (upstreamObject.path !== relativePath) fail("upstreamSource.path must exactly match relativePath");
+    if (typeof upstreamObject.path !== "string") fail("upstreamSource.path must be a string");
+    validatePath(upstreamObject.path, "upstreamSource.path");
     upstreamSource = Object.freeze({
-      ...sourceBase({ repository: upstreamObject.repository, commit: upstreamObject.commit, license: upstreamObject.license }, "upstreamSource"),
-      path: relativePath,
+      ...sourceReferenceBase({ repository: upstreamObject.repository, commit: upstreamObject.commit, license: upstreamObject.license }, "upstreamSource"),
+      path: upstreamObject.path,
     });
     if (upstreamSource.repository !== EXPECTED_SOURCES["agency-agents"]) {
       fail("upstreamSource must identify the reviewed English repository");
     }
   }
   const taxonomy = snapshotTaxonomyMeta(input.taxonomy, "taxonomy");
+  if (taxonomy.origin === "upstream_translation") {
+    if (!upstreamSource) fail("translated expert requires an attested upstreamSource");
+    if (upstreamSource.path !== taxonomy.upstreamPath) fail("upstreamSource.path must match taxonomy.upstreamPath");
+  } else if (upstreamSource) {
+    fail("China-original expert cannot include upstreamSource");
+  }
   const { metadata, body } = splitFrontmatter(markdown);
   const nameZh = requiredString(metadata, "name", "frontmatter", 128);
   const summaryZh = requiredString(metadata, "description", "frontmatter", 2_048);
@@ -495,7 +619,7 @@ export function normalizeExpertFile(value: NormalizeInput): Expert {
     exclusionConditions: taxonomy.exclusionConditions,
     preferredTasks: taxonomy.preferredTasks,
     qualityGates: taxonomy.qualityGates,
-    origin: upstreamSource ? "upstream_translation" : "china_original",
+    origin: taxonomy.origin,
     source,
     ...(upstreamSource ? { upstreamSource } : {}),
     contentHash,
@@ -529,10 +653,30 @@ export function parseTaxonomyYaml(text: string): Taxonomy {
     pathCollisions.add(key);
     experts[path] = snapshotTaxonomyMeta(expertsObject[path], `taxonomy.experts.${path}`);
   }
+  const ignoredObject = snapshotObject(
+    root.ignoredMarkdown,
+    "taxonomy.ignoredMarkdown",
+    Object.keys(EXPECTED_SOURCES),
+  );
+  const ignoredMarkdown = Object.create(null) as Record<keyof typeof EXPECTED_SOURCES, readonly string[]>;
+  for (const sourceId of Object.keys(EXPECTED_SOURCES) as Array<keyof typeof EXPECTED_SOURCES>) {
+    if (!Object.hasOwn(ignoredObject, sourceId)) fail(`taxonomy.ignoredMarkdown.${sourceId} is required`);
+    const values = snapshotArray(ignoredObject[sourceId], `taxonomy.ignoredMarkdown.${sourceId}`, MAX_FILES);
+    const seen = new Set<string>();
+    ignoredMarkdown[sourceId] = Object.freeze(values.map((value, index) => {
+      if (typeof value !== "string") fail(`taxonomy.ignoredMarkdown.${sourceId}.${index} must be a string`);
+      validatePath(value, `taxonomy.ignoredMarkdown.${sourceId}.${index}`, true);
+      const key = collisionKey(value);
+      if (seen.has(key)) fail(`taxonomy.ignoredMarkdown.${sourceId} contains duplicate paths`);
+      seen.add(key);
+      return value;
+    }).sort(comparePortable));
+  }
   return Object.freeze({
     schemaVersion: 1,
     divisions: Object.freeze(divisions),
     experts: Object.freeze(experts),
+    ignoredMarkdown: Object.freeze(ignoredMarkdown),
   });
 }
 
@@ -544,7 +688,7 @@ export function parseSourceLockJson(text: string): ParsedSourceLock {
     fail("source lock must be strict JSON", error);
   }
   const root = snapshotObject(parseOneYamlDocument(text, "source lock"), "source lock", LOCK_KEYS);
-  if (root.schemaVersion !== 1) fail("source lock schemaVersion must be exactly 1");
+  if (root.schemaVersion !== 2) fail("source lock schemaVersion must be exactly 2 with byte attestations");
   const sourcesValue = root.sources;
   if (Array.isArray(sourcesValue) && sourcesValue.length !== 2) fail("source lock must contain exactly the two reviewed sources");
   const sources = snapshotArray(sourcesValue, "source lock.sources", 2);
@@ -555,7 +699,14 @@ export function parseSourceLockJson(text: string): ParsedSourceLock {
     const id = requiredString(object, "id", `source lock.sources.${index}`, 64);
     if (!Object.hasOwn(EXPECTED_SOURCES, id)) fail("source lock must contain exactly the two reviewed source ids");
     if (found.has(id)) fail("source lock source ids must be unique");
-    const parsed = sourceBase({ repository: object.repository, commit: object.commit, license: object.license }, `source lock.sources.${index}`);
+    const parsed = lockedSourceBase({
+      repository: object.repository,
+      commit: object.commit,
+      license: object.license,
+      tree: object.tree,
+      objectFormat: object.objectFormat,
+      markdown: object.markdown,
+    }, `source lock.sources.${index}`);
     if (parsed.repository !== EXPECTED_SOURCES[id as keyof typeof EXPECTED_SOURCES]) fail(`source lock repository does not match ${id}`);
     found.set(id, parsed);
   }
@@ -564,7 +715,7 @@ export function parseSourceLockJson(text: string): ParsedSourceLock {
     "agency-agents": found.get("agency-agents")!,
     "agency-agents-zh": found.get("agency-agents-zh")!,
   });
-  return Object.freeze({ schemaVersion: 1, sourcesById });
+  return Object.freeze({ schemaVersion: 2, sourcesById });
 }
 
 function sameFile(left: Stats, right: Stats): boolean {
@@ -596,12 +747,15 @@ function safeJoinedPath(root: string, relativePath: string): string {
 async function readMarkdownHandleBound(
   path: string,
   relativePath: string,
+  expected: MarkdownManifestEntry,
   runtime: MarkdownIndexRuntime,
+  expectedCanonicalPath: string,
 ): Promise<string> {
   const before = await runtime.lstat(path);
   if (before.isSymbolicLink()) fail(`source file ${relativePath} is a symlink`);
   if (!before.isFile()) fail(`source entry ${relativePath} is not a regular file`);
   if (before.size < 1 || before.size > MAX_MARKDOWN_BYTES) fail(`source file ${relativePath} is empty or too large`);
+  if (await realpath(path) !== expectedCanonicalPath) fail(`source file ${relativePath} escaped its canonical root`);
   let handle: MarkdownReadHandle | undefined;
   try {
     handle = await runtime.openNoFollow(path);
@@ -611,7 +765,16 @@ async function readMarkdownHandleBound(
     if (bytes.length !== opened.size || bytes.length > MAX_MARKDOWN_BYTES) fail(`source file ${relativePath} changed during read`);
     const afterHandle = await handle.stat();
     const afterPath = await runtime.lstat(path);
-    if (!sameFile(opened, afterHandle) || !sameFile(opened, afterPath)) fail(`source file ${relativePath} changed during read`);
+    if (!sameFile(opened, afterHandle) || !sameFile(opened, afterPath)
+      || await realpath(path) !== expectedCanonicalPath) fail(`source file ${relativePath} changed during read`);
+    if (bytes.length !== expected.size) fail(`source file ${relativePath} does not match locked size`);
+    const sha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    if (sha256 !== expected.sha256) fail(`source file ${relativePath} does not match locked bytes`);
+    const oid = createHash("sha1")
+      .update(Buffer.from(`blob ${bytes.length}\0`, "utf8"))
+      .update(bytes)
+      .digest("hex");
+    if (oid !== expected.oid) fail(`source file ${relativePath} does not match locked object id`);
     let text: string;
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -637,16 +800,48 @@ export async function indexMarkdownFiles(
   rootInput: string,
   sourceInput: SourceBase,
   runtime: MarkdownIndexRuntime = nodeMarkdownIndexRuntime,
+  projectRootInput: string = rootInput,
 ): Promise<ReadonlyMap<string, IndexedMarkdownFile>> {
   if (typeof rootInput !== "string" || !isAbsolute(rootInput) || rootInput !== resolve(rootInput)) fail("source root must be an absolute normalized path");
-  const source = sourceBase(sourceInput, "indexed source");
+  if (typeof projectRootInput !== "string" || !isAbsolute(projectRootInput) || projectRootInput !== resolve(projectRootInput)) {
+    fail("project root must be an absolute normalized path");
+  }
+  const [canonicalProjectRoot, canonicalSourceRoot] = await Promise.all([
+    realpath(projectRootInput),
+    realpath(rootInput),
+  ]).catch((error: unknown) => fail("source or project root is unreadable", error));
+  const sourceDelta = relative(canonicalProjectRoot, canonicalSourceRoot);
+  if (sourceDelta === ".." || sourceDelta.startsWith(`..${sep}`) || isAbsolute(sourceDelta)) {
+    fail("source root must stay inside the canonical project root");
+  }
+  const inputDelta = relative(resolve(projectRootInput), resolve(rootInput));
+  if (inputDelta === ".." || inputDelta.startsWith(`..${sep}`) || isAbsolute(inputDelta)) {
+    fail("source root input must stay inside the project root");
+  }
+  let inputBoundary = resolve(projectRootInput);
+  for (const component of inputDelta === "" ? [] : inputDelta.split(sep)) {
+    inputBoundary = join(inputBoundary, component);
+    const observed = await runtime.lstat(inputBoundary);
+    if (observed.isSymbolicLink() || !observed.isDirectory()) fail("source root input path contains a symlink or non-directory");
+  }
+  let boundary = canonicalProjectRoot;
+  for (const component of sourceDelta === "" ? [] : sourceDelta.split(sep)) {
+    boundary = join(boundary, component);
+    const observed = await runtime.lstat(boundary);
+    if (observed.isSymbolicLink() || !observed.isDirectory()) fail("source root path contains a symlink or non-directory");
+  }
+  const source = lockedSourceBase(sourceInput, "indexed source");
   const rootBefore = await runtime.lstat(rootInput).catch((error: unknown) => fail("source root is unreadable", error));
   if (rootBefore.isSymbolicLink()) fail("source root is a symlink");
   if (!rootBefore.isDirectory()) fail("source root is not a directory");
   const indexed = new Map<string, IndexedMarkdownFile>();
+  const manifestByPath = new Map(source.markdown.map((entry) => [entry.path, entry]));
   const pathKeys = new Map<string, string>();
   let directories = 0;
   let totalBytes = 0;
+  let entriesSeen = 0;
+  let filesSeen = 0;
+  let treeBytes = 0;
 
   async function visit(relativeDirectory: string, depth: number): Promise<void> {
     if (depth > MAX_DEPTH) fail("source tree exceeds maximum depth");
@@ -659,7 +854,9 @@ export async function indexMarkdownFiles(
     entries.sort((left, right) => comparePortable(left.name, right.name));
     const entryNames = new Set<string>();
     for (const entry of entries) {
-      if (entry.name.startsWith(".") || IGNORED_DIRECTORIES.has(entry.name)) continue;
+      entriesSeen += 1;
+      if (entriesSeen > MAX_ENTRIES) fail("source tree contains too many entries");
+      if (entry.name === ".git") continue;
       if (entry.name.normalize("NFC") !== entry.name || !isWellFormedUnicode(entry.name)) fail("source entry name is not canonical Unicode");
       const entryKey = collisionKey(entry.name);
       if (entryNames.has(entryKey)) fail("source directory contains a case or Unicode canonical collision");
@@ -673,21 +870,33 @@ export async function indexMarkdownFiles(
         continue;
       }
       if (!stat.isFile()) fail(`source entry ${relativePath} is not a regular file`);
+      filesSeen += 1;
+      treeBytes += stat.size;
+      if (filesSeen > MAX_ENTRIES || treeBytes > MAX_TOTAL_BYTES * 2) fail("source tree exceeds bounded file inventory");
+      if (/\.md$/iu.test(entry.name) && !entry.name.endsWith(".md")) fail(`source path uses a non-canonical Markdown extension: ${relativePath}`);
       if (!entry.name.endsWith(".md")) continue;
-      validatePath(relativePath, `source path ${relativePath}`);
+      validatePath(relativePath, `source path ${relativePath}`, true);
       const pathKey = collisionKey(relativePath);
       const collision = pathKeys.get(pathKey);
       if (collision) fail(`source paths ${collision} and ${relativePath} collide canonically`);
       pathKeys.set(pathKey, relativePath);
       if (indexed.size >= MAX_FILES) fail("source tree contains too many Markdown files");
-      const markdown = await readMarkdownHandleBound(absolutePath, relativePath, runtime);
+      const expected = manifestByPath.get(relativePath);
+      if (!expected) fail(`source Markdown path is not attested: ${relativePath}`);
+      const canonicalFile = resolve(canonicalSourceRoot, ...relativePath.split("/"));
+      const markdown = await readMarkdownHandleBound(absolutePath, relativePath, expected, runtime, canonicalFile);
       totalBytes += Buffer.byteLength(markdown, "utf8");
       if (totalBytes > MAX_TOTAL_BYTES) fail("source tree exceeds total Markdown byte limit");
       indexed.set(relativePath, Object.freeze({
         division: relativePath.split("/", 1)[0]!,
         relativePath,
         markdown,
-        source: Object.freeze({ ...source, path: relativePath }),
+        source: Object.freeze({
+          repository: source.repository,
+          commit: source.commit,
+          license: source.license,
+          path: relativePath,
+        }),
       }));
     }
     const directoryAfter = await runtime.lstat(directoryPath);
@@ -697,41 +906,83 @@ export async function indexMarkdownFiles(
   await visit("", 0);
   const rootAfter = await runtime.lstat(rootInput);
   if (!sameDirectory(rootBefore, rootAfter)) fail("source root changed during indexing");
+  for (const entry of source.markdown) {
+    if (!indexed.has(entry.path)) fail(`locked Markdown path is missing: ${entry.path}`);
+  }
   return new Map([...indexed.entries()].sort(([left], [right]) => comparePortable(left, right)));
 }
 
 export async function importExpertCatalog(options: ImportExpertCatalogOptions): Promise<readonly Expert[]> {
   const lock = parseSourceLockJson(options.sourceLockText);
   const taxonomy = parseTaxonomyYaml(options.taxonomyText);
-  const english = await indexMarkdownFiles(options.englishRoot, lock.sourcesById["agency-agents"]);
-  const chinese = await indexMarkdownFiles(options.chineseRoot, lock.sourcesById["agency-agents-zh"]);
+  const english = await indexMarkdownFiles(options.englishRoot, lock.sourcesById["agency-agents"], nodeMarkdownIndexRuntime, options.projectRoot);
+  const chinese = await indexMarkdownFiles(options.chineseRoot, lock.sourcesById["agency-agents-zh"], nodeMarkdownIndexRuntime, options.projectRoot);
+  const chineseIgnored = new Set(taxonomy.ignoredMarkdown["agency-agents-zh"]);
+  const englishIgnored = new Set(taxonomy.ignoredMarkdown["agency-agents"]);
+  const upstreamOwners = new Map<string, string>();
+  for (const [path, metadata] of Object.entries(taxonomy.experts)) {
+    if (chineseIgnored.has(path)) fail(`Chinese Markdown path is classified as both expert and ignored: ${path}`);
+    if (metadata.origin === "upstream_translation") {
+      if (englishIgnored.has(metadata.upstreamPath!)) fail(`English Markdown path is classified as both upstream and ignored: ${metadata.upstreamPath}`);
+      const owner = upstreamOwners.get(metadata.upstreamPath!);
+      if (owner) fail(`English upstream path is mapped by both ${owner} and ${path}`);
+      upstreamOwners.set(metadata.upstreamPath!, path);
+    }
+  }
   const missingDivisions = new Set<string>();
   const missingExpertPaths: string[] = [];
-  for (const file of chinese.values()) {
-    if (!Object.hasOwn(taxonomy.divisions, file.division)) missingDivisions.add(file.division);
-    if (!Object.hasOwn(taxonomy.experts, file.relativePath)) missingExpertPaths.push(file.relativePath);
+  for (const [path] of Object.entries(taxonomy.experts)) {
+    const division = path.split("/", 1)[0]!;
+    if (!Object.hasOwn(taxonomy.divisions, division)) missingDivisions.add(division);
+    if (!chinese.has(path)) missingExpertPaths.push(path);
   }
   const extraExpertPaths = Object.keys(taxonomy.experts).filter((path) => !chinese.has(path));
+  const unclassifiedMarkdownPaths = [
+    ...[...chinese.keys()]
+      .filter((path) => !Object.hasOwn(taxonomy.experts, path) && !chineseIgnored.has(path))
+      .map((path) => `agency-agents-zh:${path}`),
+    ...[...english.keys()]
+      .filter((path) => !upstreamOwners.has(path) && !englishIgnored.has(path))
+      .map((path) => `agency-agents:${path}`),
+  ].sort(comparePortable);
+  const missingUpstreamPaths = [...upstreamOwners.keys()].filter((path) => !english.has(path)).sort(comparePortable);
+  const extraIgnoredPaths = [
+    ...[...chineseIgnored].filter((path) => !chinese.has(path)).map((path) => `agency-agents-zh:${path}`),
+    ...[...englishIgnored].filter((path) => !english.has(path)).map((path) => `agency-agents:${path}`),
+  ].sort(comparePortable);
   const sortedMissingDivisions = [...missingDivisions].sort(comparePortable);
   missingExpertPaths.sort(comparePortable);
   extraExpertPaths.sort(comparePortable);
-  if (sortedMissingDivisions.length || missingExpertPaths.length || extraExpertPaths.length) {
+  if (sortedMissingDivisions.length || missingExpertPaths.length || extraExpertPaths.length
+    || unclassifiedMarkdownPaths.length || missingUpstreamPaths.length || extraIgnoredPaths.length) {
     throw new CatalogImportError(
       [
         `missing divisions: ${sortedMissingDivisions.join(", ") || "none"}`,
         `missing expert paths: ${missingExpertPaths.join(", ") || "none"}`,
         `extra taxonomy paths: ${extraExpertPaths.join(", ") || "none"}`,
+        `unclassified Markdown paths: ${unclassifiedMarkdownPaths.join(", ") || "none"}`,
+        `missing upstream paths: ${missingUpstreamPaths.join(", ") || "none"}`,
+        `missing ignored paths: ${extraIgnoredPaths.join(", ") || "none"}`,
       ].join("; "),
       Object.freeze(sortedMissingDivisions),
       Object.freeze(missingExpertPaths),
       Object.freeze(extraExpertPaths),
+      Object.freeze(unclassifiedMarkdownPaths),
+      Object.freeze(missingUpstreamPaths),
+      Object.freeze(extraIgnoredPaths),
     );
   }
-  const experts = [...chinese.values()].map((file) => normalizeExpertFile({
-    ...file,
-    taxonomy: taxonomy.experts[file.relativePath]!,
-    ...(english.get(file.relativePath) ? { upstreamSource: english.get(file.relativePath)!.source } : {}),
-  }));
+  const experts = Object.keys(taxonomy.experts).sort(comparePortable).map((path) => {
+    const file = chinese.get(path)!;
+    const metadata = taxonomy.experts[path]!;
+    return normalizeExpertFile({
+      ...file,
+      taxonomy: metadata,
+      ...(metadata.origin === "upstream_translation"
+        ? { upstreamSource: english.get(metadata.upstreamPath!)!.source }
+        : {}),
+    });
+  });
   serializeNormalizedCatalog(experts);
   return Object.freeze(experts.sort((left, right) => comparePortable(left.id, right.id)));
 }
@@ -751,41 +1002,45 @@ export function serializeNormalizedCatalog(expertsInput: readonly Expert[]): str
 export async function writeNormalizedCatalog(
   target: string,
   experts: readonly Expert[],
-  runtime: NormalizedCatalogWriteRuntime = { atomicWriteText },
+  runtime: NormalizedCatalogWriteRuntime,
 ): Promise<void> {
   const content = serializeNormalizedCatalog(experts);
   const parent = dirname(target);
-  if (runtime.projectRoot !== undefined) {
-    const projectRoot = runtime.projectRoot;
-    if (!isAbsolute(projectRoot) || projectRoot !== resolve(projectRoot) || !isAbsolute(target) || target !== resolve(target)) {
-      fail("normalized catalog project root and target must be absolute normalized paths");
+  const projectRoot = runtime.projectRoot;
+  if (!isAbsolute(projectRoot) || projectRoot !== resolve(projectRoot) || !isAbsolute(target) || target !== resolve(target)) {
+    fail("normalized catalog project root and target must be absolute normalized paths");
+  }
+  const delta = relative(projectRoot, target);
+  if (delta === "" || delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta)) {
+    fail("normalized catalog target must stay inside the project root");
+  }
+  const rootStat = await lstat(projectRoot);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) fail("normalized catalog project root must be a real directory");
+  const directoryComponents = delta.split(sep).slice(0, -1);
+  let current = projectRoot;
+  for (const component of directoryComponents) {
+    current = join(current, component);
+    try {
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink()) fail("normalized catalog directory chain contains a symlink");
+      if (!stat.isDirectory()) fail("normalized catalog directory chain contains a non-directory");
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await mkdir(current);
+      const created = await lstat(current);
+      if (created.isSymbolicLink() || !created.isDirectory()) fail("normalized catalog directory creation was replaced");
     }
-    const delta = relative(projectRoot, target);
-    if (delta === "" || delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta)) {
-      fail("normalized catalog target must stay inside the project root");
-    }
-    const rootStat = await lstat(projectRoot);
-    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) fail("normalized catalog project root must be a real directory");
-    const directoryComponents = delta.split(sep).slice(0, -1);
-    let current = projectRoot;
-    for (const component of directoryComponents) {
-      current = join(current, component);
-      try {
-        const stat = await lstat(current);
-        if (stat.isSymbolicLink()) fail("normalized catalog directory chain contains a symlink");
-        if (!stat.isDirectory()) fail("normalized catalog directory chain contains a non-directory");
-      } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        await mkdir(current);
-        const created = await lstat(current);
-        if (created.isSymbolicLink() || !created.isDirectory()) fail("normalized catalog directory creation was replaced");
-      }
-    }
-  } else {
-    await mkdir(parent, { recursive: true });
   }
   const parentStat = await lstat(parent);
   if (parentStat.isSymbolicLink() || !parentStat.isDirectory()) fail("normalized catalog parent must be a real directory");
+  const [canonicalParentBefore, canonicalProjectBefore] = await Promise.all([
+    realpath(parent),
+    realpath(runtime.projectRoot),
+  ]);
+  const parentDelta = relative(canonicalProjectBefore, canonicalParentBefore);
+  if (parentDelta === ".." || parentDelta.startsWith(`..${sep}`) || isAbsolute(parentDelta)) {
+    fail("normalized catalog parent escaped the canonical project root");
+  }
   try {
     const targetStat = await lstat(target);
     if (targetStat.isSymbolicLink()) fail("normalized catalog target is a symlink");
@@ -793,7 +1048,22 @@ export async function writeNormalizedCatalog(
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  await runtime.beforePublish?.();
+  const [parentImmediatelyBefore, canonicalParentImmediatelyBefore] = await Promise.all([
+    lstat(parent),
+    realpath(parent),
+  ]);
+  if (!sameDirectory(parentStat, parentImmediatelyBefore)
+    || canonicalParentImmediatelyBefore !== canonicalParentBefore) {
+    fail("normalized catalog parent changed before publication");
+  }
   await runtime.atomicWriteText(target, content);
+  const [parentAfter, canonicalParentAfter] = await Promise.all([lstat(parent), realpath(parent)]);
+  if (!sameDirectory(parentStat, parentAfter) || canonicalParentAfter !== canonicalParentBefore) {
+    fail("normalized catalog parent changed during publication");
+  }
+  const targetAfter = await lstat(target);
+  if (targetAfter.isSymbolicLink() || !targetAfter.isFile()) fail("normalized catalog publication is not a regular file");
 }
 
 export async function readBoundedTextFile(path: string, maximumBytes = MAX_CONFIG_BYTES): Promise<string> {
@@ -801,7 +1071,10 @@ export async function readBoundedTextFile(path: string, maximumBytes = MAX_CONFI
   if (before.isSymbolicLink() || !before.isFile() || before.size < 1 || before.size > maximumBytes) fail("release input must be a bounded regular file");
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
+      ? 0
+      : fsConstants.O_NOFOLLOW;
+    handle = await open(path, fsConstants.O_RDONLY | noFollow);
     const opened = await handle.stat();
     if (!sameFile(before, opened)) fail("release input changed before read");
     const bytes = await handle.readFile();

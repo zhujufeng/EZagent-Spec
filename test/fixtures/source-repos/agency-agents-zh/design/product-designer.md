@@ -1,6 +1,8 @@
 ---
 name: 产品设计师
 description: 负责产品体验与用户旅程。
+emoji: "🎨"
+color: purple
 ---
 # 产品设计师
 
