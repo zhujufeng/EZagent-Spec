@@ -272,6 +272,7 @@ describe("withWorkspaceLock", () => {
     const lock = workspacePaths(root).lock;
     const replacement = "replacement lock";
     const lockWithUnavailableIdentity = createWorkspaceLock(lockRuntime({
+      stat: async (path) => ({ ...(await stat(path)), dev: 0, ino: 0 }),
       open: async (...args) => {
         const handle = await open(...args);
         return new Proxy(handle, {
@@ -309,18 +310,29 @@ describe("withWorkspaceLock", () => {
       },
     }));
 
-    await expect(lockWithReleaseRace(root, async () => "done")).rejects.toMatchObject({
-      name: "WorkspaceLockedError",
-      message: expect.stringContaining(lock),
-    });
+    let failure: unknown;
+    try {
+      await lockWithReleaseRace(root, async () => "done");
+    } catch (error: unknown) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(WorkspaceLockedError);
     await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
-    expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toHaveLength(1);
+    const quarantines = (await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"));
+    expect(quarantines).toHaveLength(1);
+    const quarantine = join(dirname(lock), quarantines[0]!);
+    expect((failure as Error).message).toContain(lock);
+    expect((failure as Error).message).toContain(quarantine);
   });
 
   test("does not recover a stale lock whose content changes between observations", async () => {
     const root = await temporaryProject();
-    const lock = await writeLock(root, JSON.stringify({ token: randomUUID(), pid: 2_147_483_647, createdAt: oldDate().toISOString() }));
-    const replacement = JSON.stringify({ token: randomUUID(), pid: 2_147_483_647, createdAt: oldDate().toISOString() });
+    const token = randomUUID();
+    const createdAt = oldDate().toISOString();
+    const original = JSON.stringify({ token, pid: 2_147_483_647, createdAt });
+    const lock = await writeLock(root, original);
+    const replacement = JSON.stringify({ pid: 2_147_483_647, token, createdAt });
+    expect(replacement.length).toBe(original.length);
     const originalMtime = oldDate();
     await utimes(lock, originalMtime, originalMtime);
     let canonicalReads = 0;
