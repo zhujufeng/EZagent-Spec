@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
-import { lstat } from "node:fs/promises";
+import { constants, realpathSync } from "node:fs";
+import { access, lstat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
@@ -69,6 +69,7 @@ export interface CliRuntime {
   readonly cwd: () => string;
   readonly nodeVersion: string;
   readonly lstat: (path: string) => Promise<{ readonly isDirectory: () => boolean }>;
+  readonly access: (path: string, mode: number) => Promise<void>;
   readonly createRepository: (root: string) => WorkspaceRepository;
 }
 
@@ -76,6 +77,7 @@ const defaultRuntime: CliRuntime = {
   cwd: () => process.cwd(),
   nodeVersion: process.version,
   lstat,
+  access,
   createRepository: (root) => new WorkspaceRepository(root),
 };
 
@@ -211,6 +213,11 @@ async function assertDoctorRoot(runtime: CliRuntime, root: string): Promise<void
     throw error;
   }
   if (!observed.isDirectory()) throw new Error(`project root is not a directory: ${root}`);
+  try {
+    await runtime.access(root, constants.R_OK | constants.W_OK | constants.X_OK);
+  } catch (error: unknown) {
+    throw new Error(`project root is not readable, writable, and traversable: ${root}`, { cause: error });
+  }
 }
 
 export async function runCli(
@@ -249,6 +256,18 @@ export async function runCli(
   const context = await repository.readContext();
   if (context.state.safeMode) throw new Error("workspace is in safe mode; transition is disabled");
   if (context.state.activeWorkItem === null) throw new Error("no active work item");
+  if (
+    normalizedAuthorization !== undefined
+    && !(
+      context.state.activeWorkItem.risk === "high"
+      && context.state.activeWorkItem.status === "planned"
+      && to === "implementing"
+    )
+  ) {
+    throw new Error(
+      "--high-risk-authorization is only valid for a high-risk planned -> implementing transition",
+    );
+  }
 
   const activeWorkItem = transitionWorkItem(context.state.activeWorkItem, {
     to,
@@ -262,6 +281,8 @@ export async function runCli(
     revision: context.state.revision + 1,
     activeWorkItem,
   };
+  // This CLI layer records only the caller-provided authorization reference. The workflow gate
+  // is responsible for checking its file, fingerprint, and one-time consumption before execution.
   await repository.commitMutation(
     next,
     context.state.revision,
@@ -276,8 +297,32 @@ export async function runCli(
 
 export function formatCliError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  const singleLine = raw.replace(/[\r\n\u2028\u2029]+/gu, " ").trim();
+  const wellFormed = replaceLoneSurrogates(raw);
+  const singleLine = wellFormed
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]|\p{Cf}/gu, " ")
+    .replace(/ {2,}/gu, " ")
+    .trim();
   return (singleLine || "command failed").replace(UUID, "<redacted>");
+}
+
+function replaceLoneSurrogates(value: string): string {
+  let normalized = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        normalized += value[index]! + value[index + 1]!;
+        index += 1;
+      } else {
+        normalized += "\ufffd";
+      }
+      continue;
+    }
+    normalized += code >= 0xdc00 && code <= 0xdfff ? "\ufffd" : value[index]!;
+  }
+  return normalized;
 }
 
 function isDirectExecution(): boolean {

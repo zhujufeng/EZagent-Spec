@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { chmod, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,6 +11,8 @@ import { readAuditEvents } from "../../src/audit/events.js";
 import { WorkspaceRepository } from "../../src/workspace/repository.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
 import type { WorkItemState } from "../../src/domain/work-item.js";
+import { formatCliError, runCli as runCliInProcess, type CliRuntime } from "../../src/cli/main.js";
+import { isWellFormedUnicode } from "../../src/text/unicode.js";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 const CLI_PATH = join(PROJECT_ROOT, "dist", "src", "cli", "main.js");
@@ -81,7 +84,7 @@ beforeAll(async () => {
   await execa("npm", ["run", "build"], { cwd: PROJECT_ROOT });
 });
 
-describe("ezagent CLI", () => {
+describe.sequential("ezagent CLI", () => {
   test("publishes the configured bin with a hashbang and direct-execution permission", async () => {
     const packageJson = JSON.parse(await readFile(join(PROJECT_ROOT, "package.json"), "utf8")) as {
       readonly bin?: Readonly<Record<string, string>>;
@@ -102,20 +105,35 @@ describe("ezagent CLI", () => {
     }
   });
 
-  test("packs the bin target as executable without leaving an archive", async () => {
-    const before = await readdir(PROJECT_ROOT);
+  test("builds a clean runtime-only package without leaving an archive", async () => {
+    const before = (await readdir(PROJECT_ROOT)).sort();
     const cache = await temporaryProject("EZagent npm cache ");
-    const packed = await execa("npm", ["pack", "--dry-run", "--json"], {
-      cwd: PROJECT_ROOT,
-      env: { npm_config_cache: cache },
-    });
-    const manifests = JSON.parse(packed.stdout) as readonly [{
+    await rm(join(PROJECT_ROOT, "dist"), { recursive: true, force: true });
+    let packedStdout: string | undefined;
+    try {
+      const packed = await execa("npm", ["pack", "--dry-run", "--json"], {
+        cwd: PROJECT_ROOT,
+        env: { npm_config_cache: cache },
+      });
+      packedStdout = packed.stdout;
+    } finally {
+      await execa("npm", ["run", "build"], { cwd: PROJECT_ROOT });
+    }
+    if (packedStdout === undefined) throw new Error("npm pack did not produce a manifest");
+    const manifests = JSON.parse(packedStdout) as readonly [{
       readonly files: readonly { readonly path: string; readonly mode: number }[];
     }];
-    const cliEntry = manifests[0].files.find(({ path }) => path === "dist/src/cli/main.js");
+    const files = manifests[0].files;
+    const paths = files.map(({ path }) => path);
+    const cliEntry = files.find(({ path }) => path === "dist/src/cli/main.js");
 
     expect(cliEntry?.mode).toBe(0o755);
-    expect(await readdir(PROJECT_ROOT)).toEqual(before);
+    expect(paths).toContain("dist/src/workspace/repository.js");
+    expect(paths).toContain("dist/src/domain/state-machine.js");
+    expect(paths).toContain("README.md");
+    expect(paths.some((path) => /^(?:src|test|docs|dist\/test)\//u.test(path))).toBe(false);
+    expect(paths.some((path) => path.endsWith(".map") || path.endsWith(".d.ts"))).toBe(false);
+    expect((await readdir(PROJECT_ROOT)).sort()).toEqual(before);
   });
 
   test("doctor resolves a real directory without creating workspace state", async () => {
@@ -128,7 +146,7 @@ describe("ezagent CLI", () => {
       node: process.version,
     });
     expect(await realpath((output as { root: string }).root)).toBe(await realpath(root));
-    expect(await readdir(root)).toEqual([]);
+    expect((await readdir(root)).sort()).toEqual([]);
   });
 
   test("doctor rejects missing roots and regular files", async () => {
@@ -138,7 +156,44 @@ describe("ezagent CLI", () => {
 
     expectSingleLineFailure(await runCli(["doctor", "--root", join(root, "missing")]), "does not exist");
     expectSingleLineFailure(await runCli(["doctor", "--root", file]), "not a directory");
-    expect(await readdir(root)).toEqual(["not-a-directory"]);
+    expect((await readdir(root)).sort()).toEqual(["not-a-directory"]);
+  });
+
+  test("doctor checks read, write, and traversal access without writing", async () => {
+    const writes: string[] = [];
+    let checkedMode: number | undefined;
+    const denied = Object.assign(new Error("denied"), { code: "EACCES" });
+    const runtime = {
+      cwd: () => PROJECT_ROOT,
+      nodeVersion: process.version,
+      lstat: async () => ({ isDirectory: () => true }),
+      access: async (_path: string, mode: number) => {
+        checkedMode = mode;
+        throw denied;
+      },
+      createRepository: (root: string) => new WorkspaceRepository(root),
+    } as unknown as CliRuntime;
+
+    await expect(runCliInProcess(
+      ["doctor", "--root", PROJECT_ROOT],
+      { stdout: { write: (contents) => writes.push(contents) } },
+      runtime,
+    )).rejects.toThrow("not readable, writable, and traversable");
+    expect(checkedMode).toBe(constants.R_OK | constants.W_OK | constants.X_OK);
+    expect(writes).toEqual([]);
+  });
+
+  test("doctor rejects an unwritable directory without creating workspace state on POSIX", async () => {
+    if (process.platform === "win32" || process.getuid?.() === 0) return;
+    const root = await temporaryProject();
+    await chmod(root, 0o500);
+    try {
+      const result = await runCli(["doctor", "--root", root]);
+      expectSingleLineFailure(result, "not readable, writable, and traversable");
+      expect((await readdir(root)).sort()).toEqual([]);
+    } finally {
+      await chmod(root, 0o700);
+    }
   });
 
   test("initializes a path with spaces and returns machine-readable context", async () => {
@@ -189,7 +244,7 @@ describe("ezagent CLI", () => {
         await runCli(["init", "--root", root, "--name", name]),
         "project name",
       );
-      expect(await readdir(root)).toEqual([]);
+      expect((await readdir(root)).sort()).toEqual([]);
     },
   );
 
@@ -241,6 +296,11 @@ describe("ezagent CLI", () => {
       "invalid authorization date",
       ["--to", "clarifying", "--revision", "0", "--high-risk-authorization", "AUTH-20260230-001"],
       "authorization",
+    ],
+    [
+      "authorization on an ordinary transition",
+      ["--to", "clarifying", "--revision", "0", "--high-risk-authorization", "AUTH-20260820-001"],
+      "only valid for a high-risk planned",
     ],
   ])("rejects %s without changing state or audit", async (_label, options, message) => {
     const active: WorkItemState = {
@@ -334,6 +394,29 @@ describe("ezagent CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("");
+  });
+
+  test("removes terminal controls and ANSI injection from child-process errors", async () => {
+    const injectedOption = "--unknown\u001b[31m\t\u0085";
+
+    const result = await runCli(["doctor", injectedOption]);
+
+    expectSingleLineFailure(result, "unknown option");
+    const body = result.stderr.slice(0, -1);
+    expect(body).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/u);
+    expect(body).not.toMatch(/\u001b\[[0-?]*[ -/]*[@-~]/u);
+  });
+
+  test("formats arbitrary errors as safe well-formed single-line text", () => {
+    const formatted = formatCliError(new Error(
+      "失败\u0000\t\u001b[31m\u0085\u2028\u2029\u202e\u2066\ud800中文",
+    ));
+
+    expect(formatted).toContain("失败");
+    expect(formatted).toContain("中文");
+    expect(formatted).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u);
+    expect(formatted).not.toMatch(/\p{Cf}/u);
+    expect(isWellFormedUnicode(formatted)).toBe(true);
   });
 
   test("does not mutate the project root while reading context", async () => {

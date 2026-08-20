@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist/src/**/*.js",
+    "README.md",
+    "LICENSE*"
+  ],
   "bin": {
     "ezagent": "./dist/src/cli/main.js"
   },
@@ -12,6 +17,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "postbuild": "node scripts/set-cli-executable.mjs",
+    "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:core": "vitest run test/domain test/workspace test/cli",
