@@ -62,4 +62,11 @@ describe("work item IDs", () => {
       isWorkItemId(createWorkItemId("spec", new Date("2026-08-20T01:00:00Z"), 1000)),
     ).toBe(true);
   });
+
+  test("accepts only canonical four-digit years from 1000 through 9999", () => {
+    expect(isWorkItemId("TASK-09990101-001")).toBe(false);
+    expect(isWorkItemId("TASK-00000101-001")).toBe(false);
+    expect(isWorkItemId("TASK-10000101-001")).toBe(true);
+    expect(isWorkItemId("TASK-99991231-001")).toBe(true);
+  });
 });

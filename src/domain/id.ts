@@ -19,6 +19,9 @@ function parseWorkItemId(value: string): { sequence: number } | undefined {
   const month = Number(monthText);
   const day = Number(dayText);
   const sequence = Number(sequenceText);
+  if (year < 1000 || year > 9999) {
+    return undefined;
+  }
   if (!Number.isSafeInteger(sequence) || sequence < 1) {
     return undefined;
   }
