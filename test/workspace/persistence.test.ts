@@ -582,4 +582,63 @@ describe("withWorkspaceLock", () => {
     await expect(readFile(lock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(dirname(lock))).filter((entry) => entry.includes(".pending"))).toEqual([]);
   });
+
+  test("continues after publishing when pending cleanup fails", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    const publisher = createWorkspaceLock(lockRuntime({
+      rm: async (path, options) => {
+        if (path.includes(".pending")) {
+          throw Object.assign(new Error("pending cleanup failed"), { code: "EIO" });
+        }
+        await rm(path, options);
+      },
+    }));
+
+    await expect(publisher(root, async () => "first")).resolves.toBe("first");
+    await expect(readFile(lock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes(".pending"))).toHaveLength(1);
+    await expect(withWorkspaceLock(root, async () => "second")).resolves.toBe("second");
+  });
+
+  test("exposes pending cleanup failure when a competing publication loses", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    let markWinnerEntered!: () => void;
+    let releaseWinner!: () => void;
+    const winnerEntered = new Promise<void>((resolve) => { markWinnerEntered = resolve; });
+    const releaseWinnerOperation = new Promise<void>((resolve) => { releaseWinner = resolve; });
+    const winner = withWorkspaceLock(root, async () => {
+      markWinnerEntered();
+      await releaseWinnerOperation;
+    });
+    await winnerEntered;
+    const winnerMetadata = await readFile(lock, "utf8");
+    const competitor = createWorkspaceLock(lockRuntime({
+      rm: async (path, options) => {
+        if (path.includes(".pending")) {
+          throw Object.assign(new Error("pending cleanup failed"), { code: "EIO" });
+        }
+        await rm(path, options);
+      },
+    }));
+
+    let failure: unknown;
+    try {
+      await competitor(root, async () => undefined);
+    } catch (error: unknown) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    const pending = (await readdir(dirname(lock))).find((entry) => entry.includes(".pending"));
+    expect(pending).toBeDefined();
+    expect((failure as Error).message).toContain("EEXIST");
+    expect((failure as Error).message).toContain("pending cleanup failed");
+    expect((failure as Error).message).toContain(lock);
+    expect((failure as Error).message).toContain(join(dirname(lock), pending!));
+    await expect(readFile(lock, "utf8")).resolves.toBe(winnerMetadata);
+
+    releaseWinner();
+    await winner;
+  });
 });

@@ -45,6 +45,23 @@ interface LockObservation {
   readonly fingerprint: FileFingerprint;
 }
 
+class LockPublicationCleanupError extends Error {
+  readonly primaryError: unknown;
+  readonly cleanupError: unknown;
+
+  constructor(canonical: string, pending: string, primaryError: unknown, cleanupError: unknown) {
+    const primary = primaryError instanceof Error ? primaryError.message : String(primaryError);
+    const cleanup = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+    super(
+      `Workspace lock publication failed; canonical ${canonical}; pending ${pending}; primary ${primary}; pending cleanup failed: ${cleanup}`,
+      { cause: primaryError },
+    );
+    this.name = "LockPublicationCleanupError";
+    this.primaryError = primaryError;
+    this.cleanupError = cleanupError;
+  }
+}
+
 function parseLockMetadata(contents: string): LockMetadata | undefined {
   try {
     const parsed: unknown = JSON.parse(contents);
@@ -190,6 +207,7 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
     let handle: LockFileHandle | undefined;
     let created = false;
     let cleaned = false;
+    let linked = false;
     let failed = false;
     let failure: unknown;
     let published: LockObservation | undefined;
@@ -207,8 +225,7 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
       await handle.close();
       handle = undefined;
       await runtime.link(pending, lock);
-      await runtime.rm(pending, { force: true });
-      cleaned = true;
+      linked = true;
     } catch (error: unknown) {
       failed = true;
       failure = error;
@@ -225,11 +242,25 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
     if (created && !cleaned) {
       try {
         await runtime.rm(pending, { force: true });
+        cleaned = true;
       } catch (error: unknown) {
         cleanupFailure ??= error;
       }
     }
+    if (linked) {
+      if (cleanupFailure !== undefined) {
+        try {
+          await runtime.rm(pending, { force: true });
+        } catch {
+          // A pending orphan is safe evidence and must not downgrade successful publication.
+        }
+      }
+      return published!;
+    }
     if (failed) {
+      if (cleanupFailure !== undefined) {
+        throw new LockPublicationCleanupError(lock, pending, failure, cleanupFailure);
+      }
       throw failure;
     }
     if (cleanupFailure !== undefined) {
