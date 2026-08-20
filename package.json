@@ -27,9 +27,9 @@
     "@types/node": "22.15.21",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "3.2.4"
+    "vitest": "3.2.7"
   },
   "overrides": {
-    "vite": "6.3.6"
+    "vite": "6.4.3"
   }
 }
