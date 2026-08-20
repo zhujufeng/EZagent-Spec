@@ -1,9 +1,11 @@
-import { lstat, mkdir, readFile } from "node:fs/promises";
-import { performance } from "node:perf_hooks";
-import { setTimeout as delay } from "node:timers/promises";
-import { join } from "node:path";
+import { lstat, readFile } from "node:fs/promises";
 
 import { atomicWriteText } from "./atomic-write.js";
+import {
+  ensureWorkspaceDirectoryChains,
+  nodeWorkspaceDirectoryRuntime,
+  validateExistingWorkspaceDirectoryChains,
+} from "./directory-boundary.js";
 import {
   WorkspaceCorruptError,
   WorkspaceLockedError,
@@ -11,6 +13,7 @@ import {
 } from "./errors.js";
 import { WORKSPACE_DIRECTORIES, workspacePaths } from "./layout.js";
 import { withWorkspaceLock } from "./lock.js";
+import { workspaceInitializeRetryRuntime } from "./retry-runtime.js";
 import {
   parseProjectConfig,
   parseWorkspaceState,
@@ -164,11 +167,23 @@ export class WorkspaceRepository {
     const normalized = normalizeProjectConfig(config);
     const normalizedOptions = normalizeInitializeOptions(options);
     const paths = workspacePaths(this.projectRoot);
-    const startedAt = performance.now();
+    const startedAt = workspaceInitializeRetryRuntime.now();
     let retryDelay = INITIALIZE_LOCK_RETRY_INITIAL_MS;
+    let hasContended = false;
 
     for (;;) {
       normalizedOptions.signal?.throwIfAborted();
+      if (hasContended) {
+        const completed = await readExistingProject(paths.project);
+        if (completed !== undefined) {
+          assertSameProjectConfig(completed, normalized);
+          return;
+        }
+        normalizedOptions.signal?.throwIfAborted();
+        if (workspaceInitializeRetryRuntime.now() - startedAt >= normalizedOptions.timeoutMs) {
+          throw lockWaitTimeout(paths.lock, normalizedOptions.timeoutMs);
+        }
+      }
       try {
         await withWorkspaceLock(this.projectRoot, async () => {
           const existing = await readExistingProject(paths.project);
@@ -177,11 +192,18 @@ export class WorkspaceRepository {
             return;
           }
 
+          await validateExistingWorkspaceDirectoryChains(
+            nodeWorkspaceDirectoryRuntime,
+            paths.root,
+            WORKSPACE_DIRECTORIES,
+          );
           const stateExists = await inspectInitialState(paths.state);
           const auditExists = await inspectEmptyAudit(paths.audit);
-          for (const directory of WORKSPACE_DIRECTORIES) {
-            await mkdir(join(paths.root, directory), { recursive: true });
-          }
+          await ensureWorkspaceDirectoryChains(
+            nodeWorkspaceDirectoryRuntime,
+            paths.root,
+            WORKSPACE_DIRECTORIES,
+          );
           if (!stateExists) {
             await atomicWriteText(paths.state, `${JSON.stringify(INITIAL_STATE, null, 2)}\n`);
           }
@@ -195,6 +217,7 @@ export class WorkspaceRepository {
         if (!isLockContention(error)) {
           throw error;
         }
+        hasContended = true;
 
         const completed = await readExistingProject(paths.project);
         if (completed !== undefined) {
@@ -202,16 +225,12 @@ export class WorkspaceRepository {
           return;
         }
         normalizedOptions.signal?.throwIfAborted();
-        const remaining = normalizedOptions.timeoutMs - (performance.now() - startedAt);
+        const remaining = normalizedOptions.timeoutMs - (workspaceInitializeRetryRuntime.now() - startedAt);
         if (remaining <= 0) {
           throw lockWaitTimeout(paths.lock, normalizedOptions.timeoutMs);
         }
         const wait = Math.min(retryDelay, remaining);
-        if (normalizedOptions.signal === undefined) {
-          await delay(wait);
-        } else {
-          await delay(wait, undefined, { signal: normalizedOptions.signal });
-        }
+        await workspaceInitializeRetryRuntime.wait(wait, normalizedOptions.signal);
         retryDelay = Math.min(retryDelay * 2, INITIALIZE_LOCK_RETRY_MAX_MS);
       }
     }

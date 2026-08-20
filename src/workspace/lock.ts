@@ -1,9 +1,10 @@
-import { copyFile, link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { copyFile, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import { WorkspaceLockedError } from "./errors.js";
+import { ensureWorkspaceDirectoryChains, type WorkspaceDirectoryRuntime } from "./directory-boundary.js";
 import { workspacePaths } from "./layout.js";
 
 const STALE_LOCK_MS = 30_000;
@@ -12,10 +13,9 @@ const MAX_PORTABLE_PID = 2_147_483_647;
 
 type LockFileHandle = Awaited<ReturnType<typeof open>>;
 
-export interface WorkspaceLockRuntime {
+export interface WorkspaceLockRuntime extends WorkspaceDirectoryRuntime {
   readonly copyFile: (source: string, destination: string, mode: number) => Promise<void>;
   readonly link: (existingPath: string, newPath: string) => Promise<void>;
-  readonly mkdir: (path: string, options: { readonly recursive: true }) => Promise<string | undefined>;
   readonly open: (path: string, flags: string, mode?: number) => Promise<LockFileHandle>;
   readonly readFile: (path: string, encoding: "utf8") => Promise<string>;
   readonly rename: (oldPath: string, newPath: string) => Promise<void>;
@@ -333,8 +333,9 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
   }
 
   return async function withWorkspaceLock<T>(projectRoot: string, operation: () => Promise<T>): Promise<T> {
-    const lock = workspacePaths(projectRoot).lock;
-    await runtime.mkdir(dirname(lock), { recursive: true });
+    const paths = workspacePaths(projectRoot);
+    await ensureWorkspaceDirectoryChains(runtime, paths.root, ["state"]);
+    const lock = paths.lock;
 
     for (let attempt = 0; attempt < MAX_ACQUISITION_ATTEMPTS; attempt += 1) {
       const token = runtime.randomUUID();
@@ -390,7 +391,8 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
 const nodeRuntime: WorkspaceLockRuntime = {
   copyFile,
   link,
-  mkdir,
+  lstat,
+  mkdir: async (path) => { await mkdir(path); },
   open,
   readFile,
   rename,

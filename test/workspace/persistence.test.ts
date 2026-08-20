@@ -1,4 +1,4 @@
-import { copyFile, link, mkdtemp, mkdir, open, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { copyFile, link, lstat, mkdtemp, mkdir, open, readFile, readlink, readdir, rename, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { atomicWriteText } from "../../src/workspace/atomic-write.js";
-import { WorkspaceLockedError } from "../../src/workspace/errors.js";
+import { WorkspaceCorruptError, WorkspaceLockedError } from "../../src/workspace/errors.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
 import { createWorkspaceLock, type WorkspaceLockRuntime, withWorkspaceLock } from "../../src/workspace/lock.js";
 
@@ -27,6 +27,18 @@ async function writeLock(projectRoot: string, contents: string): Promise<string>
   return lock;
 }
 
+async function createDirectorySymlink(target: string, path: string): Promise<boolean> {
+  try {
+    await symlink(target, path, "dir");
+    return true;
+  } catch (error: unknown) {
+    if (["EACCES", "ENOSYS", "ENOTSUP", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function oldDate(): Date {
   return new Date(Date.now() - 60_000);
 }
@@ -35,7 +47,8 @@ function lockRuntime(overrides: Partial<WorkspaceLockRuntime> = {}): WorkspaceLo
   return {
     copyFile,
     link,
-    mkdir,
+    lstat,
+    mkdir: async (path) => { await mkdir(path); },
     open,
     readFile,
     rename,
@@ -102,6 +115,38 @@ describe("atomicWriteText", () => {
 });
 
 describe("withWorkspaceLock", () => {
+  test("rejects a linked state directory without publishing lock evidence externally", async ({ skip }) => {
+    const root = await temporaryProject();
+    const paths = workspacePaths(root);
+    const external = join(root, "external-lock-state");
+    const sentinel = join(external, "sentinel.txt");
+    await mkdir(paths.root, { recursive: true });
+    await mkdir(external, { recursive: true });
+    await writeFile(sentinel, "keep", "utf8");
+    if (!await createDirectorySymlink(external, dirname(paths.lock))) {
+      skip();
+      return;
+    }
+    const fixedTime = new Date("2025-06-07T08:09:10.000Z");
+    await Promise.all([utimes(external, fixedTime, fixedTime), utimes(sentinel, fixedTime, fixedTime)]);
+    const before = await Promise.all([stat(external), stat(sentinel)]);
+
+    const attempt = withWorkspaceLock(root, async () => undefined);
+    await expect(attempt).rejects.toBeInstanceOf(WorkspaceCorruptError);
+    await expect(attempt).rejects.toMatchObject({
+      name: "WorkspaceCorruptError",
+      message: expect.stringContaining(dirname(paths.lock)),
+      cause: expect.objectContaining({ message: expect.stringContaining("expected real workspace directory") }),
+    });
+
+    await expect(readlink(dirname(paths.lock))).resolves.toBe(external);
+    expect(await readdir(external)).toEqual(["sentinel.txt"]);
+    await expect(readFile(sentinel, "utf8")).resolves.toBe("keep");
+    const after = await Promise.all([stat(external), stat(sentinel)]);
+    expect(after.map(({ mtimeMs }) => mtimeMs)).toEqual(before.map(({ mtimeMs }) => mtimeMs));
+    expect((await lstat(dirname(paths.lock))).isSymbolicLink()).toBe(true);
+  });
+
   test("rejects a concurrent writer deterministically", async () => {
     const root = await temporaryProject();
     let markEntered!: () => void;
