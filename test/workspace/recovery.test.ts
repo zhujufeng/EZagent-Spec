@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readFile,
   readlink,
+  readdir,
   rm,
   symlink,
   writeFile,
@@ -25,6 +26,7 @@ import { recoverState } from "../../src/audit/recovery.js";
 import { WorkspaceCorruptError } from "../../src/workspace/errors.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
 import { WorkspaceRepository } from "../../src/workspace/repository.js";
+import { parsePendingMutation } from "../../src/workspace/mutation.js";
 import type { WorkspaceState } from "../../src/workspace/schema.js";
 
 const roots: string[] = [];
@@ -172,26 +174,39 @@ describe("audit events", () => {
     await expect(readlink(paths.audit)).resolves.toBe(external);
   });
 
-  test("closes an append handle when writing fails", async () => {
-    const close = vi.fn(async () => undefined);
-    const runtime = {
-      lstat: vi.fn(async (path: string) => {
-        if (path === "/audit") return { isDirectory: () => true, isFile: () => false };
-        const error = Object.assign(new Error("missing"), { code: "ENOENT" });
-        throw error;
-      }),
-      readFile: vi.fn(),
-      open: vi.fn(async () => ({
-        writeFile: async () => { throw new Error("disk full"); },
-        sync: async () => undefined,
-        close,
-      })),
-    } as unknown as AuditFileRuntime;
-    const store = createAuditStore(runtime);
+  test.each(["write", "sync", "close"] as const)(
+    "closes the append handle and preserves the primary %s failure",
+    async (failurePoint) => {
+      const writeError = new Error("write failed");
+      const syncError = new Error("sync failed");
+      const closeError = new Error("close failed");
+      const close = vi.fn(async () => {
+        if (failurePoint === "close" || failurePoint === "write" || failurePoint === "sync") throw closeError;
+      });
+      const runtime = {
+        lstat: vi.fn(async (path: string) => {
+          if (path === "/audit") return { isDirectory: () => true, isFile: () => false };
+          const error = Object.assign(new Error("missing"), { code: "ENOENT" });
+          throw error;
+        }),
+        readFile: vi.fn(),
+        open: vi.fn(async () => ({
+          writeFile: async () => {
+            if (failurePoint === "write") throw writeError;
+          },
+          sync: async () => {
+            if (failurePoint === "sync") throw syncError;
+          },
+          close,
+        })),
+      } as unknown as AuditFileRuntime;
+      const store = createAuditStore(runtime);
+      const expected = failurePoint === "write" ? writeError : failurePoint === "sync" ? syncError : closeError;
 
-    await expect(store.appendAuditEvent("/audit/events.jsonl", event(1))).rejects.toThrow("disk full");
-    expect(close).toHaveBeenCalledOnce();
-  });
+      await expect(store.appendAuditEvent("/audit/events.jsonl", event(1))).rejects.toBe(expected);
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe("recoverState", () => {
@@ -307,16 +322,70 @@ describe("WorkspaceRepository recovery and mutations", () => {
     ])).rejects.toThrow("duplicate");
   });
 
+  test.each([
+    ["Greek final sigma", "specs/Σ.md", "specs/ς.md"],
+    ["canonical Unicode equivalence", "specs/é.md", "specs/e\u0301.md"],
+  ])("rejects %s path collisions before any filesystem side effect", async (_label, first, second) => {
+    const root = await mkdtemp(join(tmpdir(), "ezagent-collision-"));
+    roots.push(root);
+    const repository = new WorkspaceRepository(root);
+
+    await expect(repository.commitMutation(state(1), 0, "duplicate", [
+      { relativePath: first, content: "one" },
+      { relativePath: second, content: "two" },
+    ])).rejects.toThrow("duplicate");
+    expect(await readdir(root)).toEqual([]);
+  });
+
   test("rejects a sparse write list before publishing transaction evidence", async () => {
-    const { repository, paths } = await temporaryWorkspace();
-    const before = await Promise.all([readFile(paths.state, "utf8"), readFile(paths.audit, "utf8")]);
+    const root = await mkdtemp(join(tmpdir(), "ezagent-sparse-"));
+    roots.push(root);
+    const repository = new WorkspaceRepository(root);
 
     await expect(repository.commitMutation(
       state(1), 0, "sparse", Array(1) as unknown as readonly { relativePath: string; content: string }[],
-    )).rejects.toThrow();
+    )).rejects.toBeInstanceOf(TypeError);
 
-    expect(await Promise.all([readFile(paths.state, "utf8"), readFile(paths.audit, "utf8")])).toEqual(before);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  test("rejects sparse pending marker writes", () => {
+    expect(() => parsePendingMutation({
+      schemaVersion: 1,
+      token: "token",
+      createdAt: "2026-08-20T08:00:00.000Z",
+      fromRevision: 0,
+      toRevision: 1,
+      stateHash: "0".repeat(64),
+      eventHash: "1".repeat(64),
+      writes: Array(1),
+    })).toThrow(TypeError);
+  });
+
+  test("commits a long portable basename without leaving transaction or temporary files", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const basename = `${"a".repeat(220)}.md`;
+    await repository.commitMutation(
+      state(1), 0, "long-name", [{ relativePath: `specs/${basename}`, content: "portable" }],
+    );
+
+    expect(await readdir(join(paths.root, "specs"))).toEqual([basename]);
+    await expect(readFile(join(paths.root, "specs", basename), "utf8")).resolves.toBe("portable");
     await expect(lstat(paths.pendingMutation)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test.each([
+    ["overlong ASCII", `specs/${"a".repeat(256)}.md`],
+    ["overlong UTF-8", `specs/${"中".repeat(86)}.md`],
+  ])("rejects %s path components before any filesystem side effect", async (_label, relativePath) => {
+    const root = await mkdtemp(join(tmpdir(), "ezagent-overlong-"));
+    roots.push(root);
+    const repository = new WorkspaceRepository(root);
+
+    await expect(repository.commitMutation(
+      state(1), 0, "overlong", [{ relativePath, content: "blocked" }],
+    )).rejects.toBeInstanceOf(TypeError);
+    expect(await readdir(root)).toEqual([]);
   });
 
   test("commits artifact writes, audit and state and leaves no transaction marker", async () => {

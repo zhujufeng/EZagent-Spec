@@ -68,6 +68,18 @@ function assertExactKeys(value: Record<string, unknown>, keys: readonly string[]
   if (missing !== undefined) throw new TypeError(`${label} is missing required key: ${missing}`);
 }
 
+function assertDenseArray(value: readonly unknown[], label: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) {
+      throw new TypeError(`${label} must not contain sparse entries`);
+    }
+  }
+}
+
+function portableCollisionKey(relativePath: string): string {
+  return relativePath.normalize("NFKC").toUpperCase().normalize("NFKC");
+}
+
 function assertCanonicalTimestamp(value: unknown, label: string): asserts value is string {
   if (
     typeof value !== "string"
@@ -101,6 +113,7 @@ export function validateArtifactRelativePath(value: unknown): string {
     if (
       component.length === 0
       || component.length > 255
+      || Buffer.byteLength(component, "utf8") > 255
       || component === "."
       || component === ".."
       || component.endsWith(".")
@@ -118,13 +131,14 @@ function normalizeWrites(writes: readonly WorkspaceMutationWrite[]): readonly Wo
   if (!Array.isArray(writes) || writes.length > MAX_MUTATION_WRITES) {
     throw new TypeError(`workspace mutation must contain at most ${MAX_MUTATION_WRITES} writes`);
   }
+  assertDenseArray(writes, "workspace mutation writes");
   const seen = new Set<string>();
   return writes.map((write) => {
     if (!isRecord(write)) throw new TypeError("workspace mutation write must be an object");
     assertExactKeys(write, ["relativePath", "content"], "workspace mutation write");
     const relativePath = validateArtifactRelativePath(write.relativePath);
     if (typeof write.content !== "string") throw new TypeError("workspace mutation content must be text");
-    const duplicateKey = relativePath.toLocaleLowerCase("en-US");
+    const duplicateKey = portableCollisionKey(relativePath);
     if (seen.has(duplicateKey)) throw new TypeError(`duplicate workspace mutation target: ${relativePath}`);
     seen.add(duplicateKey);
     return { relativePath, content: write.content };
@@ -253,6 +267,7 @@ export function parsePendingMutation(value: unknown): PendingMutation {
   if (!Array.isArray(value.writes) || value.writes.length > MAX_MUTATION_WRITES) {
     throw new TypeError("pending mutation writes are invalid");
   }
+  assertDenseArray(value.writes, "pending mutation writes");
   const seen = new Set<string>();
   const writes = value.writes.map((rawWrite) => {
     if (!isRecord(rawWrite)) throw new TypeError("pending mutation write must be an object");
@@ -261,7 +276,7 @@ export function parsePendingMutation(value: unknown): PendingMutation {
     if (typeof rawWrite.contentHash !== "string" || !SHA256.test(rawWrite.contentHash)) {
       throw new TypeError("pending mutation contentHash is invalid");
     }
-    const duplicateKey = relativePath.toLocaleLowerCase("en-US");
+    const duplicateKey = portableCollisionKey(relativePath);
     if (seen.has(duplicateKey)) throw new TypeError(`duplicate pending mutation target: ${relativePath}`);
     seen.add(duplicateKey);
     return { relativePath, contentHash: rawWrite.contentHash };

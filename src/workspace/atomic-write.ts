@@ -1,11 +1,12 @@
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 
 // The temporary file is synced before its atomic rename; parent-directory durability remains platform-dependent.
 export async function atomicWriteText(target: string, content: string): Promise<void> {
   const parent = dirname(target);
-  const temporary = join(parent, `.${basename(target)}.${process.pid}.${randomUUID()}.tmp`);
+  // Keep the adjacent staging basename bounded independently of the target basename.
+  const temporary = join(parent, `.ezagent-write.${process.pid}.${randomUUID()}.tmp`);
   let file: Awaited<ReturnType<typeof open>> | undefined;
   let ownsTemporary = false;
   let failed = false;
