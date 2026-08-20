@@ -1,0 +1,27 @@
+{
+  "id": "ezagent.engineering.frontend-architect",
+  "nameZh": "前端架构师",
+  "summaryZh": "负责前端边界、状态和可维护性设计。",
+  "instructionsZh": "基于项目证据分析前端结构，只在任务范围内给出结论。",
+  "capabilities": ["frontend-architecture", "state-design"],
+  "domains": ["engineering", "frontend"],
+  "projectSignals": ["react", "vue", "web-ui"],
+  "activationConditions": ["跨组件行为变化"],
+  "exclusionConditions": ["纯后端数据迁移"],
+  "preferredTasks": ["design", "review"],
+  "qualityGates": ["引用实际文件", "覆盖错误状态"],
+  "origin": "upstream_translation",
+  "source": {
+    "repository": "https://github.com/jnMetaCode/agency-agents-zh",
+    "path": "engineering/frontend-architect.md",
+    "commit": "1111111111111111111111111111111111111111",
+    "license": "MIT"
+  },
+  "upstreamSource": {
+    "repository": "https://github.com/msitarzewski/agency-agents",
+    "path": "engineering/frontend-architect.md",
+    "commit": "2222222222222222222222222222222222222222",
+    "license": "MIT"
+  },
+  "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
