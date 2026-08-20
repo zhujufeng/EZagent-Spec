@@ -14,14 +14,23 @@ export interface WorkspacePaths {
   readonly pendingMutation: string;
 }
 
-export function workspacePaths(projectRoot: string): Readonly<WorkspacePaths> {
-  const root = join(projectRoot, ".ezagent");
+export interface WorkspacePathApi {
+  readonly join: (...paths: string[]) => string;
+}
+
+const nodeWorkspacePathApi: WorkspacePathApi = { join };
+
+export function workspacePaths(
+  projectRoot: string,
+  pathApi: WorkspacePathApi = nodeWorkspacePathApi,
+): Readonly<WorkspacePaths> {
+  const root = pathApi.join(projectRoot, ".ezagent");
   return {
     root,
-    project: join(root, "project.yaml"),
-    state: join(root, "state", "workspace.json"),
-    lock: join(root, "state", "write.lock"),
-    audit: join(root, "audit", "events.jsonl"),
-    pendingMutation: join(root, "state", "pending-mutation.json"),
+    project: pathApi.join(root, "project.yaml"),
+    state: pathApi.join(root, "state", "workspace.json"),
+    lock: pathApi.join(root, "state", "write.lock"),
+    audit: pathApi.join(root, "audit", "events.jsonl"),
+    pendingMutation: pathApi.join(root, "state", "pending-mutation.json"),
   };
 }
