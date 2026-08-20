@@ -345,7 +345,7 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
         published = await recoverStaleLock(lock, contents);
       }
       if (published === undefined) {
-        throw new WorkspaceLockedError("Workspace is locked");
+        throw new WorkspaceLockedError("Workspace is locked", { code: "LOCK_CONTENDED" });
       }
 
       let canonical: LockObservation | undefined;
@@ -383,7 +383,7 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
       return result as T;
     }
 
-    throw new WorkspaceLockedError("Workspace is locked");
+    throw new WorkspaceLockedError("Workspace is locked", { code: "LOCK_CONTENDED" });
   };
 }
 

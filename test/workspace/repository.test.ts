@@ -16,6 +16,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   WorkspaceCorruptError,
+  WorkspaceLockedError,
   WorkspaceNotInitializedError,
 } from "../../src/workspace/errors.js";
 import { atomicWriteText } from "../../src/workspace/atomic-write.js";
@@ -98,6 +99,30 @@ async function startGatedWorkspacePublication(
   void completed.catch(rejectEntered);
   await entered;
   return { release, completed, state, audit };
+}
+
+async function startHeldWorkspaceLock(
+  root: string,
+): Promise<{ readonly release: () => void; readonly completed: Promise<void>; readonly lockContents: string }> {
+  let markEntered!: () => void;
+  let rejectEntered!: (error: unknown) => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve, reject) => {
+    markEntered = resolve;
+    rejectEntered = reject;
+  });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const completed = withWorkspaceLock(root, async () => {
+    markEntered();
+    await gate;
+  });
+  void completed.catch(rejectEntered);
+  await entered;
+  return {
+    release,
+    completed,
+    lockContents: await readFile(workspacePaths(root).lock, "utf8"),
+  };
 }
 
 function observe<T>(operation: Promise<T>): Promise<
@@ -230,30 +255,92 @@ describe("WorkspaceRepository.initialize", () => {
     ])).toEqual(before);
   });
 
-  test("retries an uncommitted partial initialization safely", async () => {
+  test.each([
+    {
+      label: "non-initial state",
+      existing: "state" as const,
+      contents: `${JSON.stringify({ ...initialState, revision: 42 }, null, 2)}\n`,
+    },
+    { label: "non-empty audit", existing: "audit" as const, contents: '{"sequence":1}\n' },
+  ])("fails closed without writing when an uncommitted workspace has $label", async ({ existing, contents }) => {
     const root = await temporaryProject();
     const repository = new WorkspaceRepository(root);
     const paths = workspacePaths(root);
+    const existingPath = paths[existing];
+    const missingPath = existing === "state" ? paths.audit : paths.state;
+    await mkdir(join(paths.root, existing), { recursive: true });
+    await writeFile(existingPath, contents, "utf8");
+    const fixedTime = new Date("2025-02-03T04:05:06.000Z");
+    await utimes(existingPath, fixedTime, fixedTime);
+    const before = await stat(existingPath);
+
+    const error = await rejected(repository.initialize(demoConfig));
+
+    expect(error).toBeInstanceOf(WorkspaceCorruptError);
+    expect(error.message).toContain(existingPath);
+    expect(error.cause).toBeInstanceOf(Error);
+    await expect(readFile(existingPath, "utf8")).resolves.toBe(contents);
+    expect((await stat(existingPath)).mtimeMs).toBe(before.mtimeMs);
+    await expect(readFile(missingPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(paths.project, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("publishes a project over canonical partial files without rewriting them", async () => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const state = JSON.stringify(initialState);
     await mkdir(join(paths.root, "state"), { recursive: true });
     await mkdir(join(paths.root, "audit"), { recursive: true });
-    await writeFile(paths.state, "partial state", "utf8");
-    await writeFile(paths.audit, "partial audit", "utf8");
+    await writeFile(paths.state, state, "utf8");
+    await writeFile(paths.audit, "", "utf8");
+    const fixedTime = new Date("2025-03-04T05:06:07.000Z");
+    await Promise.all([utimes(paths.state, fixedTime, fixedTime), utimes(paths.audit, fixedTime, fixedTime)]);
+    const before = await Promise.all([stat(paths.state), stat(paths.audit)]);
 
     await repository.initialize(demoConfig);
 
-    await expect(readFile(paths.state, "utf8")).resolves.toBe(`${JSON.stringify(initialState, null, 2)}\n`);
+    await expect(readFile(paths.state, "utf8")).resolves.toBe(state);
+    await expect(readFile(paths.audit, "utf8")).resolves.toBe("");
+    const after = await Promise.all([stat(paths.state), stat(paths.audit)]);
+    expect(after.map(({ mtimeMs }) => mtimeMs)).toEqual(before.map(({ mtimeMs }) => mtimeMs));
+    await expect(repository.readProject()).resolves.toEqual(demoConfig);
+  });
+
+  test.each(["state", "audit"] as const)("creates only a missing %s file during partial retry", async (missing) => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const existingPath = missing === "state" ? paths.audit : paths.state;
+    const existingContents = missing === "state" ? "" : JSON.stringify(initialState);
+    await mkdir(join(paths.root, missing === "state" ? "audit" : "state"), { recursive: true });
+    await writeFile(existingPath, existingContents, "utf8");
+    const fixedTime = new Date("2025-04-05T06:07:08.000Z");
+    await utimes(existingPath, fixedTime, fixedTime);
+    const before = await stat(existingPath);
+
+    await repository.initialize(demoConfig);
+
+    await expect(readFile(existingPath, "utf8")).resolves.toBe(existingContents);
+    expect((await stat(existingPath)).mtimeMs).toBe(before.mtimeMs);
+    await expect(readFile(paths.state, "utf8")).resolves.toBe(
+      missing === "state" ? `${JSON.stringify(initialState, null, 2)}\n` : existingContents,
+    );
     await expect(readFile(paths.audit, "utf8")).resolves.toBe("");
     await expect(repository.readProject()).resolves.toEqual(demoConfig);
   });
 
-  test("writes the project completion marker last and can retry after a failed commit", async () => {
+  test("fails closed on an unreadable audit remnant and can retry after it is removed", async () => {
     const root = await temporaryProject();
     const repository = new WorkspaceRepository(root);
     const paths = workspacePaths(root);
     await mkdir(paths.audit, { recursive: true });
 
-    await expect(repository.initialize(demoConfig)).rejects.toBeInstanceOf(Error);
+    const error = await rejected(repository.initialize(demoConfig));
+    expect(error).toBeInstanceOf(WorkspaceCorruptError);
+    expect(error.message).toContain(paths.audit);
     await expect(readFile(paths.project, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(paths.state, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 
     await rm(paths.audit, { recursive: true });
     await repository.initialize(demoConfig);
@@ -328,6 +415,76 @@ describe("WorkspaceRepository.initialize", () => {
     await expect(readFile(paths.state, "utf8")).resolves.toBe(winner.state);
     await expect(readFile(paths.audit, "utf8")).resolves.toBe(winner.audit);
   }, 10_000);
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid timeout %s before filesystem side effects",
+    async (timeoutMs) => {
+      const root = await temporaryProject();
+      const repository = new WorkspaceRepository(root);
+
+      await expect(repository.initialize(demoConfig, { timeoutMs })).rejects.toThrow("timeoutMs");
+      expect(await readdir(root)).toEqual([]);
+    },
+  );
+
+  test("honors a pre-aborted signal before filesystem side effects", async () => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(repository.initialize(demoConfig, { signal: controller.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  test("times out lock contention without modifying the winner lock", async () => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const holder = await startHeldWorkspaceLock(root);
+    const safetyRelease = setTimeout(holder.release, 1_000);
+
+    try {
+      const error = await rejected(repository.initialize(demoConfig, { timeoutMs: 40 }));
+      expect(error).toBeInstanceOf(WorkspaceLockedError);
+      expect(error).toMatchObject({ code: "LOCK_WAIT_TIMEOUT" });
+      expect(error.message).toContain(paths.lock);
+      expect(error.message).toContain("40ms");
+      await expect(readFile(paths.lock, "utf8")).resolves.toBe(holder.lockContents);
+      await expect(readFile(paths.project, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      clearTimeout(safetyRelease);
+      holder.release();
+      await holder.completed;
+    }
+  }, 5_000);
+
+  test("aborts during lock waiting without modifying the winner lock", async () => {
+    const root = await temporaryProject();
+    const repository = new WorkspaceRepository(root);
+    const paths = workspacePaths(root);
+    const holder = await startHeldWorkspaceLock(root);
+    const controller = new AbortController();
+    const result = observe(repository.initialize(demoConfig, { signal: controller.signal }));
+    const safetyRelease = setTimeout(holder.release, 1_000);
+
+    try {
+      await delay(30);
+      controller.abort();
+      await expect(result).resolves.toMatchObject({
+        status: "rejected",
+        reason: expect.objectContaining({ name: "AbortError" }),
+      });
+      await expect(readFile(paths.lock, "utf8")).resolves.toBe(holder.lockContents);
+      await expect(readFile(paths.project, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      clearTimeout(safetyRelease);
+      holder.release();
+      await holder.completed;
+    }
+  }, 5_000);
 
   test("allows only one of two different concurrent configurations to win", async () => {
     const root = await temporaryProject();

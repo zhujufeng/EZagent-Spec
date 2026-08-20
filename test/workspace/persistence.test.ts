@@ -117,6 +117,7 @@ describe("withWorkspaceLock", () => {
 
     await expect(withWorkspaceLock(root, async () => undefined)).rejects.toMatchObject({
       name: "WorkspaceLockedError",
+      code: "LOCK_CONTENDED",
       message: expect.stringContaining("locked"),
     });
 

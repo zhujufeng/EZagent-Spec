@@ -130,6 +130,14 @@ describe("workspace errors", () => {
       expect(error.cause).toBe(cause);
     }
   });
+
+  test("workspace lock errors expose an optional stable code", () => {
+    const cause = new Error("root");
+    const error = new WorkspaceLockedError("timed out", { cause, code: "LOCK_WAIT_TIMEOUT" });
+
+    expect(error.code).toBe("LOCK_WAIT_TIMEOUT");
+    expect(error.cause).toBe(cause);
+  });
 });
 
 describe("workspace layout", () => {
