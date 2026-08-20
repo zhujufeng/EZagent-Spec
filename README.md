@@ -48,9 +48,9 @@ macOS/Linux 构建后也可以直接执行 CLI：
 - `state/`：当前状态投影，以及写锁和未完成 mutation 标记等短期事务证据。
 - `requirements/`、`specs/`、`tasks/`、`knowledge/`、`experts/`、`quality/`：结构化工作产物的本地目录。
 - `audit/events.jsonl`：按 revision 连续追加的审计事件。
-- `backups/`：恢复过程中保留损坏状态投影的本地备份。
+- `backups/`：预留的本地目录；当前 local core 尚不会自动写入或归档备份。
 
-每次成功 mutation 会将 revision 增加 `1`，并先记录可恢复的事务/审计证据，再发布状态投影。如果状态投影损坏但审计链有效，`context` 会从审计记录恢复上下文并报告 `recovered`。无法信任关键证据时，core 会进入或返回 safe mode；safe mode 禁止继续 mutation，避免在不确定状态上写入。
+每次成功 mutation 会将 revision 增加 `1`，并先记录可恢复的事务/审计证据，再发布状态投影。如果状态投影损坏但审计链有效，`context` 会从审计记录生成内存中的恢复投影并报告 `recovered`，后续成功 mutation 可修复状态文件。无法信任关键证据时，core 会进入或返回 safe mode；safe mode 禁止继续 mutation，避免在不确定状态上写入。
 
 ## Local-only 与隐私边界
 
