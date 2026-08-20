@@ -1,0 +1,32 @@
+{
+  "name": "@ezagent/spec",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ezagent": "./dist/src/cli/main.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:core": "vitest run test/domain test/workspace test/cli",
+    "test:experts": "vitest run test/experts",
+    "test:codex": "vitest run test/codex",
+    "test:workflow": "vitest run test/workflow test/e2e",
+    "verify": "npm run check && npm run test && npm run build"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
