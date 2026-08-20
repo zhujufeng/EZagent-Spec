@@ -22,14 +22,22 @@ async function temporaryProject(label = "EZagent CLI project with spaces "): Pro
 }
 
 async function runCli(args: readonly string[], cwd = PROJECT_ROOT) {
-  return execa(process.execPath, [CLI_PATH, ...args], {
+  const command = process.platform === "win32" ? process.execPath : CLI_PATH;
+  const commandArgs = process.platform === "win32" ? [CLI_PATH, ...args] : args;
+  return execa(command, commandArgs, {
     cwd,
     reject: false,
     stripFinalNewline: false,
   });
 }
 
-function expectJsonSuccess(result: Awaited<ReturnType<typeof runCli>>): unknown {
+interface CliResult {
+  readonly exitCode?: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+function expectJsonSuccess(result: CliResult): unknown {
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe("");
   expect(result.stdout.endsWith("\n")).toBe(true);
@@ -37,7 +45,7 @@ function expectJsonSuccess(result: Awaited<ReturnType<typeof runCli>>): unknown 
   return JSON.parse(result.stdout) as unknown;
 }
 
-function expectSingleLineFailure(result: Awaited<ReturnType<typeof runCli>>, message?: string): void {
+function expectSingleLineFailure(result: CliResult, message?: string): void {
   expect(result.exitCode).not.toBe(0);
   expect(result.stdout).toBe("");
   expect(result.stderr.endsWith("\n")).toBe(true);
@@ -74,6 +82,42 @@ beforeAll(async () => {
 });
 
 describe("ezagent CLI", () => {
+  test("publishes the configured bin with a hashbang and direct-execution permission", async () => {
+    const packageJson = JSON.parse(await readFile(join(PROJECT_ROOT, "package.json"), "utf8")) as {
+      readonly bin?: Readonly<Record<string, string>>;
+    };
+    const builtCli = await readFile(CLI_PATH, "utf8");
+
+    expect(packageJson.bin).toEqual({ ezagent: "./dist/src/cli/main.js" });
+    expect(builtCli.startsWith("#!/usr/bin/env node\n")).toBe(true);
+
+    if (process.platform !== "win32") {
+      expect((await stat(CLI_PATH)).mode & 0o777).toBe(0o755);
+      const root = await temporaryProject();
+      const result = await execa(CLI_PATH, ["doctor", "--root", root], {
+        reject: false,
+        stripFinalNewline: false,
+      });
+      expect(expectJsonSuccess(result)).toMatchObject({ ok: true, root });
+    }
+  });
+
+  test("packs the bin target as executable without leaving an archive", async () => {
+    const before = await readdir(PROJECT_ROOT);
+    const cache = await temporaryProject("EZagent npm cache ");
+    const packed = await execa("npm", ["pack", "--dry-run", "--json"], {
+      cwd: PROJECT_ROOT,
+      env: { npm_config_cache: cache },
+    });
+    const manifests = JSON.parse(packed.stdout) as readonly [{
+      readonly files: readonly { readonly path: string; readonly mode: number }[];
+    }];
+    const cliEntry = manifests[0].files.find(({ path }) => path === "dist/src/cli/main.js");
+
+    expect(cliEntry?.mode).toBe(0o755);
+    expect(await readdir(PROJECT_ROOT)).toEqual(before);
+  });
+
   test("doctor resolves a real directory without creating workspace state", async () => {
     const root = await temporaryProject();
     const result = await runCli(["doctor", "--root", basename(root)], dirname(root));

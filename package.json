@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "postbuild": "node scripts/set-cli-executable.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:core": "vitest run test/domain test/workspace test/cli",
