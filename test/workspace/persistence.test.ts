@@ -1,4 +1,4 @@
-import { copyFile, mkdtemp, mkdir, open, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdtemp, mkdir, open, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -34,6 +34,7 @@ function oldDate(): Date {
 function lockRuntime(overrides: Partial<WorkspaceLockRuntime> = {}): WorkspaceLockRuntime {
   return {
     copyFile,
+    link,
     mkdir,
     open,
     readFile,
@@ -267,7 +268,7 @@ describe("withWorkspaceLock", () => {
     },
   );
 
-  test("retains an acquisition lock when its identity is unavailable", async () => {
+  test("fails closed without publishing canonical lock when staged identity is unavailable", async () => {
     const root = await temporaryProject();
     const lock = workspacePaths(root).lock;
     const replacement = "replacement lock";
@@ -293,8 +294,9 @@ describe("withWorkspaceLock", () => {
     }));
 
     await expect(lockWithUnavailableIdentity(root, async () => undefined)).rejects.toThrow("write failed");
-    await expect(readFile(lock, "utf8")).resolves.toBe(replacement);
+    await expect(readFile(lock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(dirname(lock))).filter((entry) => entry.includes("quarantine"))).toEqual([]);
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes(".pending"))).toEqual([]);
   });
 
   test("retains canonical and quarantine evidence when release changes after prevalidation", async () => {
@@ -367,40 +369,30 @@ describe("withWorkspaceLock", () => {
     await expect(lockWithReleaseFailure(root, async () => { throw sentinel; })).rejects.toBe(sentinel);
   });
 
-  test("does not enter an operation from an old handle after another owner acquires canonical lock", async () => {
+  test("does not enter an operation when another publisher wins canonical lock", async () => {
     const root = await temporaryProject();
     const lock = workspacePaths(root).lock;
-    let allowFirstWrite!: () => void;
+    let allowFirstPublish!: () => void;
     let markFirstReady!: () => void;
     let releaseSecond!: () => void;
     let markSecondEntered!: () => void;
     const firstReady = new Promise<void>((resolve) => { markFirstReady = resolve; });
-    const allowWrite = new Promise<void>((resolve) => { allowFirstWrite = resolve; });
+    const allowPublish = new Promise<void>((resolve) => { allowFirstPublish = resolve; });
     const secondEntered = new Promise<void>((resolve) => { markSecondEntered = resolve; });
     const releaseSecondOperation = new Promise<void>((resolve) => { releaseSecond = resolve; });
     let firstEnteredOperation = false;
     const first = createWorkspaceLock(lockRuntime({
-      open: async (...args) => {
-        const handle = await open(...args);
-        return new Proxy(handle, {
-          get(target, property, receiver) {
-            if (property === "writeFile") {
-              return async (...writeArgs: Parameters<typeof target.writeFile>) => {
-                markFirstReady();
-                await allowWrite;
-                return target.writeFile(...writeArgs);
-              };
-            }
-            return Reflect.get(target, property, receiver);
-          },
-        }) as Awaited<ReturnType<typeof open>>;
+      link: async (source, destination) => {
+        if (destination === lock) {
+          markFirstReady();
+          await allowPublish;
+        }
+        await link(source, destination);
       },
     }));
 
     const firstTask = first(root, async () => { firstEnteredOperation = true; });
     await firstReady;
-    const stale = oldDate();
-    await utimes(lock, stale, stale);
 
     const secondTask = withWorkspaceLock(root, async () => {
       markSecondEntered();
@@ -409,7 +401,7 @@ describe("withWorkspaceLock", () => {
     await secondEntered;
     const secondMetadata = await readFile(lock, "utf8");
 
-    allowFirstWrite();
+    allowFirstPublish();
     await expect(firstTask).rejects.toBeInstanceOf(WorkspaceLockedError);
     expect(firstEnteredOperation).toBe(false);
     await expect(readFile(lock, "utf8")).resolves.toBe(secondMetadata);
@@ -451,5 +443,150 @@ describe("withWorkspaceLock", () => {
 
     releaseThird();
     await thirdTask;
+  });
+
+  test("never exposes an empty canonical lock while metadata is being published", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    let allowWrite!: () => void;
+    let markWriteStarted!: () => void;
+    const writeStarted = new Promise<void>((resolve) => { markWriteStarted = resolve; });
+    const allowMetadataWrite = new Promise<void>((resolve) => { allowWrite = resolve; });
+    const writer = createWorkspaceLock(lockRuntime({
+      open: async (...args) => {
+        const handle = await open(...args);
+        return new Proxy(handle, {
+          get(target, property, receiver) {
+            if (property === "writeFile") {
+              return async (...writeArgs: Parameters<typeof target.writeFile>) => {
+                markWriteStarted();
+                await allowMetadataWrite;
+                return target.writeFile(...writeArgs);
+              };
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }) as Awaited<ReturnType<typeof open>>;
+      },
+    }));
+
+    const writerTask = writer(root, async () => undefined);
+    await writeStarted;
+    await expect(readFile(lock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+    allowWrite();
+    await writerTask;
+  });
+
+  test("never runs more than one operation across a stale reclaimer and a later publisher", async () => {
+    const root = await temporaryProject();
+    const lock = await writeLock(root, "corrupt stale lock");
+    const stale = oldDate();
+    await utimes(lock, stale, stale);
+    let allowFirstPublish!: () => void;
+    let markFirstReady!: () => void;
+    let allowReclaimerRename!: () => void;
+    let markReclaimerReady!: () => void;
+    let releaseFirst!: () => void;
+    let markFirstOperation!: () => void;
+    const firstReady = new Promise<void>((resolve) => { markFirstReady = resolve; });
+    const allowPublish = new Promise<void>((resolve) => { allowFirstPublish = resolve; });
+    const reclaimerReady = new Promise<void>((resolve) => { markReclaimerReady = resolve; });
+    const allowRename = new Promise<void>((resolve) => { allowReclaimerRename = resolve; });
+    const firstOperation = new Promise<void>((resolve) => { markFirstOperation = resolve; });
+    const releaseFirstOperation = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let activeOperations = 0;
+    let maximumActiveOperations = 0;
+    const enter = () => {
+      activeOperations += 1;
+      maximumActiveOperations = Math.max(maximumActiveOperations, activeOperations);
+    };
+    const leave = () => { activeOperations -= 1; };
+    const first = createWorkspaceLock(lockRuntime({
+      link: async (source, destination) => {
+        if (destination === lock) {
+          markFirstReady();
+          await allowPublish;
+        }
+        await link(source, destination);
+      },
+    }));
+    let allowReclaimerPublish!: () => void;
+    let markReclaimerPublishReady!: () => void;
+    const reclaimerPublishReady = new Promise<void>((resolve) => { markReclaimerPublishReady = resolve; });
+    const allowPublishAttempt = new Promise<void>((resolve) => { allowReclaimerPublish = resolve; });
+    let reclaimerLinkCalls = 0;
+    const reclaimer = createWorkspaceLock(lockRuntime({
+      rename: async (source, destination) => {
+        if (source === lock) {
+          markReclaimerReady();
+          await allowRename;
+        }
+        await rename(source, destination);
+      },
+      link: async (source, destination) => {
+        reclaimerLinkCalls += 1;
+        if (destination === lock && reclaimerLinkCalls === 2) {
+          markReclaimerPublishReady();
+          await allowPublishAttempt;
+        }
+        await link(source, destination);
+      },
+    }));
+
+    const firstTask = first(root, async () => {
+      enter();
+      markFirstOperation();
+      await releaseFirstOperation;
+      leave();
+    });
+    await firstReady;
+    const reclaimerTask = reclaimer(root, async () => undefined);
+    const reclaimerFailure = expect(reclaimerTask).rejects.toBeInstanceOf(WorkspaceLockedError);
+    await reclaimerReady;
+
+    allowReclaimerRename();
+    await reclaimerPublishReady;
+    allowFirstPublish();
+    await firstOperation;
+    const thirdTask = withWorkspaceLock(root, async () => {
+      enter();
+      leave();
+    });
+    await expect(thirdTask).rejects.toBeInstanceOf(WorkspaceLockedError);
+    allowReclaimerPublish();
+
+    releaseFirst();
+    await firstTask;
+    await reclaimerFailure;
+    expect(maximumActiveOperations).toBe(1);
+  });
+
+  test("cleans its staged publication resource when exclusive publish fails", async () => {
+    const root = await temporaryProject();
+    const lock = workspacePaths(root).lock;
+    let closeCalls = 0;
+    const publisher = createWorkspaceLock(lockRuntime({
+      link: async () => { throw Object.assign(new Error("link failed"), { code: "EIO" }); },
+      open: async (...args) => {
+        const handle = await open(...args);
+        return new Proxy(handle, {
+          get(target, property, receiver) {
+            if (property === "close") {
+              return async () => {
+                closeCalls += 1;
+                return target.close();
+              };
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }) as Awaited<ReturnType<typeof open>>;
+      },
+    }));
+
+    await expect(publisher(root, async () => undefined)).rejects.toThrow("link failed");
+    expect(closeCalls).toBeGreaterThan(0);
+    await expect(readFile(lock, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(dirname(lock))).filter((entry) => entry.includes(".pending"))).toEqual([]);
   });
 });

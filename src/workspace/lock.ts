@@ -1,7 +1,7 @@
-import { copyFile, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { copyFile, link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { WorkspaceLockedError } from "./errors.js";
 import { workspacePaths } from "./layout.js";
@@ -14,6 +14,7 @@ type LockFileHandle = Awaited<ReturnType<typeof open>>;
 
 export interface WorkspaceLockRuntime {
   readonly copyFile: (source: string, destination: string, mode: number) => Promise<void>;
+  readonly link: (existingPath: string, newPath: string) => Promise<void>;
   readonly mkdir: (path: string, options: { readonly recursive: true }) => Promise<string | undefined>;
   readonly open: (path: string, flags: string, mode?: number) => Promise<LockFileHandle>;
   readonly readFile: (path: string, encoding: "utf8") => Promise<string>;
@@ -90,11 +91,6 @@ function sameFingerprint(left: FileFingerprint, right: FileFingerprint): boolean
     && left.size === right.size
     && left.mtimeMs === right.mtimeMs
     && left.contentHash === right.contentHash;
-}
-
-function sameIdentity(left: FileFingerprint, right: FileFingerprint): boolean {
-  return hasStableIdentity(left) && hasStableIdentity(right)
-    && left.dev === right.dev && left.ino === right.ino;
 }
 
 function sameObservation(left: LockObservation, right: LockObservation): boolean {
@@ -185,17 +181,66 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
     await discardOrRetain(lock, quarantine, expected);
   }
 
-  async function removeFailedAcquisition(lock: string, expected: LockObservation): Promise<void> {
-    const quarantine = await moveToQuarantine(lock);
-    if (quarantine === undefined) {
-      return;
-    }
-    await discardOrRetain(lock, quarantine, expected);
+  function pendingPath(lock: string): string {
+    return join(dirname(lock), `.${basename(lock)}.${runtime.pid}.${runtime.randomUUID()}.pending`);
   }
 
-  async function reserveCanonical(lock: string): Promise<LockFileHandle | undefined> {
+  async function publishLock(lock: string, contents: string): Promise<LockObservation> {
+    const pending = pendingPath(lock);
+    let handle: LockFileHandle | undefined;
+    let created = false;
+    let cleaned = false;
+    let failed = false;
+    let failure: unknown;
+    let published: LockObservation | undefined;
+
     try {
-      return await runtime.open(lock, "wx", 0o600);
+      handle = await runtime.open(pending, "wx", 0o600);
+      created = true;
+      await handle.writeFile(contents, "utf8");
+      await handle.sync();
+      const staged = fingerprint(await handle.stat(), contents);
+      if (!hasStableIdentity(staged)) {
+        throw new WorkspaceLockedError("Workspace lock publication requires stable file identity");
+      }
+      published = { metadata: parseLockMetadata(contents), fingerprint: staged };
+      await handle.close();
+      handle = undefined;
+      await runtime.link(pending, lock);
+      await runtime.rm(pending, { force: true });
+      cleaned = true;
+    } catch (error: unknown) {
+      failed = true;
+      failure = error;
+    }
+
+    let cleanupFailure: unknown;
+    if (handle !== undefined) {
+      try {
+        await handle.close();
+      } catch (error: unknown) {
+        cleanupFailure = error;
+      }
+    }
+    if (created && !cleaned) {
+      try {
+        await runtime.rm(pending, { force: true });
+      } catch (error: unknown) {
+        cleanupFailure ??= error;
+      }
+    }
+    if (failed) {
+      throw failure;
+    }
+    if (cleanupFailure !== undefined) {
+      throw cleanupFailure;
+    }
+    return published!;
+  }
+
+  async function tryPublishLock(lock: string, contents: string): Promise<LockObservation | undefined> {
+    try {
+      return await publishLock(lock, contents);
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
         return undefined;
@@ -204,12 +249,12 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
     }
   }
 
-  async function recoverStaleLock(lock: string): Promise<LockFileHandle | undefined> {
+  async function recoverStaleLock(lock: string, contents: string): Promise<LockObservation | undefined> {
     let observed: LockObservation;
     try {
       const inspection = await inspectLock(lock);
       if (inspection === undefined) {
-        return reserveCanonical(lock);
+        return tryPublishLock(lock, contents);
       }
       observed = inspection;
     } catch {
@@ -225,7 +270,7 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
 
     const current = await inspectLock(lock);
     if (current === undefined) {
-      return reserveCanonical(lock);
+      return tryPublishLock(lock, contents);
     }
     if (!sameObservation(current, observed)) {
       return undefined;
@@ -233,37 +278,27 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
 
     const quarantine = await moveToQuarantine(lock);
     if (quarantine === undefined) {
-      return reserveCanonical(lock);
+      return tryPublishLock(lock, contents);
     }
     const quarantined = await inspectLock(quarantine);
     if (quarantined === undefined || !sameObservation(quarantined, observed)) {
       await retainConflictingQuarantine(quarantine, lock);
     }
 
-    const reservation = await reserveCanonical(lock);
-    if (reservation === undefined) {
+    const published = await tryPublishLock(lock, contents);
+    if (published === undefined) {
       throw new WorkspaceLockedError(`Workspace lock recovery conflict; canonical ${lock}; quarantine ${quarantine}`);
     }
     const finalQuarantine = await inspectLock(quarantine);
     if (finalQuarantine === undefined || !sameObservation(finalQuarantine, observed)) {
-      try {
-        await reservation.close();
-      } catch {
-        // The conflicting evidence is retained even if reservation cleanup fails.
-      }
       throw new WorkspaceLockedError(`Workspace lock recovery conflict; canonical ${lock}; quarantine ${quarantine}`);
     }
     try {
       await runtime.rm(quarantine, { force: true });
     } catch (error: unknown) {
-      try {
-        await reservation.close();
-      } catch {
-        // The reservation cannot be released safely without retaining the canonical evidence.
-      }
       throw new WorkspaceLockedError(`Workspace stale lock cleanup failed; canonical ${lock}; quarantine ${quarantine}`, { cause: error });
     }
-    return reservation;
+    return published;
   }
 
   return async function withWorkspaceLock<T>(projectRoot: string, operation: () => Promise<T>): Promise<T> {
@@ -273,61 +308,22 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
     for (let attempt = 0; attempt < MAX_ACQUISITION_ATTEMPTS; attempt += 1) {
       const token = runtime.randomUUID();
       const metadata: LockMetadata = { token, pid: runtime.pid, createdAt: new Date().toISOString() };
-      let handle: LockFileHandle;
-      let acquiredIdentity: FileFingerprint | undefined;
-
-      try {
-        handle = await runtime.open(lock, "wx", 0o600);
-      } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-          const recovered = await recoverStaleLock(lock);
-          if (recovered !== undefined) {
-            handle = recovered;
-          } else {
-            throw new WorkspaceLockedError("Workspace is locked");
-          }
-        } else {
-          throw error;
-        }
+      const contents = JSON.stringify(metadata);
+      let published = await tryPublishLock(lock, contents);
+      if (published === undefined) {
+        published = await recoverStaleLock(lock, contents);
+      }
+      if (published === undefined) {
+        throw new WorkspaceLockedError("Workspace is locked");
       }
 
+      let canonical: LockObservation | undefined;
       try {
-        acquiredIdentity = fingerprint(await handle.stat(), "");
-        await handle.writeFile(JSON.stringify(metadata), "utf8");
-        await handle.sync();
-        await handle.close();
-      } catch (error: unknown) {
-        try {
-          await handle.close();
-        } catch {
-          // Preserve the acquisition failure while still attempting handle cleanup.
-        }
-        if (acquiredIdentity !== undefined && hasStableIdentity(acquiredIdentity)) {
-          try {
-            const failed = await inspectLock(lock);
-            if (failed !== undefined && sameIdentity(failed.fingerprint, acquiredIdentity)) {
-              await removeFailedAcquisition(lock, failed);
-            }
-          } catch {
-            // A failed cleanup must not mask the original acquisition failure.
-          }
-        }
-        throw error;
-      }
-
-      let published: LockObservation | undefined;
-      try {
-        published = await inspectLock(lock);
+        canonical = await inspectLock(lock);
       } catch (error: unknown) {
         throw new WorkspaceLockedError("Workspace lock ownership was lost before operation", { cause: error });
       }
-      if (
-        acquiredIdentity === undefined
-        || published === undefined
-        || published.metadata?.token !== token
-        || published.fingerprint.contentHash !== contentHash(JSON.stringify(metadata))
-        || !sameIdentity(published.fingerprint, acquiredIdentity)
-      ) {
+      if (canonical === undefined || canonical.metadata?.token !== token || !sameObservation(canonical, published)) {
         throw new WorkspaceLockedError("Workspace lock ownership was lost before operation");
       }
 
@@ -362,6 +358,7 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
 
 const nodeRuntime: WorkspaceLockRuntime = {
   copyFile,
+  link,
   mkdir,
   open,
   readFile,
