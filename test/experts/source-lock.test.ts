@@ -924,7 +924,7 @@ describe("source lock file", () => {
     expect(await readFile(original, "utf8")).toBe(serializeSourceLock(lock));
   });
 
-  it("retains staging but leaves no target when link publication fails", async () => {
+  it("marks an invoked link failure unknown even when no target is observable", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
     const failure = Object.assign(new Error("simulated link failure"), { code: "EIO" });
@@ -936,11 +936,37 @@ describe("source lock file", () => {
     await expect(writeSourceLockFile(target, lock, runtime))
       .rejects.toMatchObject({
         code: "LOCK_PUBLISH_FAILED",
-        publicationState: "not-published",
+        publicationState: "unknown",
         cause: failure,
+        temporaryState: "retained",
       });
     await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(root)).filter((name) => name.includes("ezagent-source-lock"))).toHaveLength(1);
+  });
+
+  it("preserves a target when link creates it and then reports EIO", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "sources.lock.json");
+    const failure = Object.assign(new Error("post-link EIO"), { code: "EIO" });
+    const remove = vi.fn(nodeSourceLockPublishRuntime.remove);
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      remove,
+      link: async (temporary, destination) => {
+        await nodeSourceLockPublishRuntime.link(temporary, destination);
+        throw failure;
+      },
+    };
+
+    await expect(writeSourceLockFile(target, lock, runtime)).rejects.toMatchObject({
+      code: "LOCK_PUBLISH_FAILED",
+      publicationState: "unknown",
+      temporaryState: "retained",
+      cause: failure,
+      message: expect.stringContaining("do not rerun or overwrite blindly"),
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(await readFile(target, "utf8")).toBe(serializeSourceLock(lock));
   });
 
   it("does not follow or replace an existing symbolic-link target", async (context) => {

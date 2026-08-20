@@ -1310,7 +1310,7 @@ export async function writeSourceLockFile(
     }
     throw new SourceLockWriteError(
       "LOCK_PUBLISH_FAILED",
-      linkSucceeded ? "unknown" : "not-published",
+      targetLinkAttempted || linkSucceeded ? "unknown" : "not-published",
       { cause: error, temporaryState },
     );
   }
