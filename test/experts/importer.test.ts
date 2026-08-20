@@ -61,6 +61,16 @@ function blobOid(bytes: Buffer): string {
   return createHash("sha1").update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest("hex");
 }
 
+function fixtureLicenseFile() {
+  const bytes = Buffer.from("MIT fixture license\n", "utf8");
+  return {
+    path: "LICENSE" as const,
+    oid: blobOid(bytes),
+    size: bytes.length,
+    sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+  };
+}
+
 function normalizedMarkdownBytes(bytes: Buffer): Buffer {
   let text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   if (text.startsWith("\uFEFF")) text = text.slice(1);
@@ -100,6 +110,7 @@ async function lockedSource(root: string, kind: keyof typeof COMMITS): Promise<S
     license: "MIT",
     tree: (kind === "english" ? "a" : "b").repeat(40),
     objectFormat: "sha1",
+    licenseFile: fixtureLicenseFile(),
     markdown: await markdownManifest(root),
   };
 }
@@ -383,6 +394,7 @@ describe("explicit taxonomy and attested source inventory", () => {
       license: "MIT",
       tree: "b".repeat(40),
       objectFormat: "sha1",
+      licenseFile: fixtureLicenseFile(),
       markdown: [{
         path: "engineering/expert.md",
         oid: blobOid(committed),
@@ -413,6 +425,7 @@ describe("explicit taxonomy and attested source inventory", () => {
       license: "MIT",
       tree: "b".repeat(40),
       objectFormat: "sha1",
+      licenseFile: fixtureLicenseFile(),
       markdown: [{
         path: "engineering/large.md",
         oid: blobOid(committed),
@@ -541,6 +554,7 @@ describe("filesystem and publication boundaries", () => {
       license: "MIT",
       tree: "b".repeat(40),
       objectFormat: "sha1",
+      licenseFile: fixtureLicenseFile(),
       markdown: [],
     };
     const gitUpper = join(root, ".GIT");
@@ -570,6 +584,7 @@ describe("filesystem and publication boundaries", () => {
       license: "MIT",
       tree: "b".repeat(40),
       objectFormat: "sha1",
+      licenseFile: fixtureLicenseFile(),
       markdown: [{
         path: "engineering/linked.md",
         oid: blobOid(bytes),
@@ -615,6 +630,7 @@ describe("filesystem and publication boundaries", () => {
       license: "MIT",
       tree: "b".repeat(40),
       objectFormat: "sha1",
+      licenseFile: fixtureLicenseFile(),
       markdown: [{
         path: "engineering/invalid.md",
         oid: blobOid(invalid),

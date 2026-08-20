@@ -11,6 +11,7 @@ export const MAX_ATTESTED_MARKDOWN_FILES = 4_096;
 export const MAX_ATTESTED_TOTAL_BYTES = 64 * 1_048_576;
 export const MAX_ATTESTED_SOURCE_LOCK_BYTES = 2 * 1_048_576;
 export const MAX_ATTESTED_PATH_BYTES = 1_024;
+export const MAX_ATTESTED_LICENSE_BYTES = 256 * 1_024;
 
 export const REVIEWED_CATALOG_SOURCES = Object.freeze({
   "agency-agents": "https://github.com/msitarzewski/agency-agents",
@@ -25,8 +26,9 @@ const MANIFEST_KEYS = [
   "normalizedSize",
   "normalizedSha256",
 ] as const;
-const SOURCE_KEYS = ["id", "repository", "license", "commit", "tree", "objectFormat", "markdown"] as const;
-const SOURCE_BASE_KEYS = ["repository", "license", "commit", "tree", "objectFormat", "markdown"] as const;
+const LICENSE_FILE_KEYS = ["path", "oid", "size", "sha256"] as const;
+const SOURCE_KEYS = ["id", "repository", "license", "commit", "tree", "objectFormat", "licenseFile", "markdown"] as const;
+const SOURCE_BASE_KEYS = ["repository", "license", "commit", "tree", "objectFormat", "licenseFile", "markdown"] as const;
 const LOCK_KEYS = ["schemaVersion", "sources"] as const;
 const FULL_SHA1 = /^[0-9a-f]{40}$/u;
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
@@ -44,6 +46,13 @@ export interface AttestedMarkdownEntry {
   readonly normalizedSha256: string;
 }
 
+export interface AttestedLicenseEntry {
+  readonly path: "LICENSE";
+  readonly oid: string;
+  readonly size: number;
+  readonly sha256: string;
+}
+
 export interface AttestedCatalogSource {
   readonly id: ReviewedCatalogSourceId;
   readonly repository: (typeof REVIEWED_CATALOG_SOURCES)[ReviewedCatalogSourceId];
@@ -51,6 +60,7 @@ export interface AttestedCatalogSource {
   readonly commit: string;
   readonly tree: string;
   readonly objectFormat: "sha1";
+  readonly licenseFile: AttestedLicenseEntry;
   readonly markdown: readonly AttestedMarkdownEntry[];
 }
 
@@ -60,6 +70,7 @@ export interface AttestedSourceBase {
   readonly commit: string;
   readonly tree: string;
   readonly objectFormat: "sha1";
+  readonly licenseFile: AttestedLicenseEntry;
   readonly markdown: readonly AttestedMarkdownEntry[];
 }
 
@@ -199,6 +210,52 @@ export function createAttestedMarkdownEntry(path: string, oid: string, raw: Uint
   });
 }
 
+export function createAttestedLicenseEntry(
+  path: unknown,
+  oid: unknown,
+  raw: Uint8Array,
+): AttestedLicenseEntry {
+  if (path !== "LICENSE") contractFail("licenseFile.path must be exactly LICENSE");
+  if (typeof oid !== "string" || !FULL_SHA1.test(oid)) {
+    contractFail("licenseFile.oid must be a full lowercase SHA-1");
+  }
+  if (!(raw instanceof Uint8Array)
+    || raw.byteLength < 1
+    || raw.byteLength > MAX_ATTESTED_LICENSE_BYTES) {
+    contractFail("LICENSE blob is empty or too large");
+  }
+  const bytes = Buffer.from(raw);
+  const calculatedOid = createHash("sha1")
+    .update(Buffer.from(`blob ${bytes.length}\0`, "utf8"))
+    .update(bytes)
+    .digest("hex");
+  if (calculatedOid !== oid) contractFail("licenseFile.oid does not authenticate the raw Git blob bytes");
+  return Object.freeze({
+    path: "LICENSE",
+    oid,
+    size: bytes.length,
+    sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+  });
+}
+
+function snapshotAttestedLicense(value: unknown, path: string): AttestedLicenseEntry {
+  const object = ownDataObject(value, path, LICENSE_FILE_KEYS);
+  if (object.path !== "LICENSE") contractFail(`${path}.path must be exactly LICENSE`);
+  if (typeof object.oid !== "string" || !FULL_SHA1.test(object.oid)) contractFail(`${path}.oid is invalid`);
+  if (!Number.isSafeInteger(object.size)
+    || (object.size as number) < 1
+    || (object.size as number) > MAX_ATTESTED_LICENSE_BYTES) {
+    contractFail(`${path}.size is invalid`);
+  }
+  if (typeof object.sha256 !== "string" || !SHA256.test(object.sha256)) contractFail(`${path}.sha256 is invalid`);
+  return Object.freeze({
+    path: "LICENSE",
+    oid: object.oid,
+    size: object.size as number,
+    sha256: object.sha256,
+  });
+}
+
 export function snapshotAttestedManifest(value: unknown, path: string): readonly AttestedMarkdownEntry[] {
   const entries = denseArray(value, path, MAX_ATTESTED_MARKDOWN_FILES);
   const result: AttestedMarkdownEntry[] = [];
@@ -261,6 +318,7 @@ function snapshotAttestedSource(value: unknown, path: string): AttestedCatalogSo
     commit: object.commit,
     tree: object.tree,
     objectFormat: "sha1",
+    licenseFile: snapshotAttestedLicense(object.licenseFile, `${path}.licenseFile`),
     markdown: snapshotAttestedManifest(object.markdown, `${path}.markdown`),
   });
 }
@@ -281,6 +339,7 @@ export function snapshotAttestedSourceBase(value: unknown, path = "attested sour
     commit: object.commit,
     tree: object.tree,
     objectFormat: "sha1",
+    licenseFile: snapshotAttestedLicense(object.licenseFile, `${path}.licenseFile`),
     markdown: snapshotAttestedManifest(object.markdown, `${path}.markdown`),
   });
 }

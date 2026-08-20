@@ -664,6 +664,7 @@ export function parseSourceLockJson(text: string): ParsedSourceLock {
       license: english.license,
       tree: english.tree,
       objectFormat: english.objectFormat,
+      licenseFile: english.licenseFile,
       markdown: english.markdown,
     }, "source lock agency-agents"),
     "agency-agents-zh": lockedSourceBase({
@@ -672,6 +673,7 @@ export function parseSourceLockJson(text: string): ParsedSourceLock {
       license: chinese.license,
       tree: chinese.tree,
       objectFormat: chinese.objectFormat,
+      licenseFile: chinese.licenseFile,
       markdown: chinese.markdown,
     }, "source lock agency-agents-zh"),
   });

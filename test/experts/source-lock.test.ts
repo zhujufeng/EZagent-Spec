@@ -31,13 +31,17 @@ import {
   writeSourceLockFile,
   type GitBinaryRunner,
   type GitRunner,
+  type AttestedSourceLock,
   type SourceConfigReadRuntime,
   type SourceLockPublishRuntime,
   type SourceCandidate,
   type SourceLock,
 } from "../../src/experts/source-lock.js";
 import { parseSourceLockJson } from "../../src/experts/importer.js";
-import { createAttestedMarkdownEntry } from "../../src/experts/attested-source-contract.js";
+import {
+  createAttestedLicenseEntry,
+  createAttestedMarkdownEntry,
+} from "../../src/experts/attested-source-contract.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryRoots: string[] = [];
@@ -77,7 +81,8 @@ async function createLocalSource(
   await runGit(checkout, ["config", "user.name", "EZagent Test"]);
   await runGit(checkout, ["config", "user.email", "ezagent@example.invalid"]);
   await writeFile(join(checkout, "README.md"), "offline fixture\n", "utf8");
-  await runGit(checkout, ["add", "README.md"]);
+  await writeFile(join(checkout, "LICENSE"), "MIT fixture license\n", "utf8");
+  await runGit(checkout, ["add", "README.md", "LICENSE"]);
   await runGit(checkout, ["commit", "-m", "fixture"]);
   await runGit(checkout, [
     "remote",
@@ -104,6 +109,12 @@ function reviewedSourcesYaml(): string {
     "    license: MIT",
     "",
   ].join("\n");
+}
+
+function fixtureLicenseFile() {
+  const bytes = Buffer.from("MIT fixture license\n", "utf8");
+  const oid = createHash("sha1").update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest("hex");
+  return createAttestedLicenseEntry("LICENSE", oid, bytes);
 }
 
 async function symlinkOrSkip(
@@ -732,22 +743,22 @@ describe("source lock file", () => {
       normalizedSize: bytes.length,
       normalizedSha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
     };
-    const reviewed: SourceLock = {
+    const reviewed: AttestedSourceLock = {
       schemaVersion: 2,
       sources: [
-        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", markdown: [entry] },
-        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", markdown: [entry] },
+        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", licenseFile: fixtureLicenseFile(), markdown: [entry] },
+        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", licenseFile: fixtureLicenseFile(), markdown: [entry] },
       ],
     };
     const serialized = serializeSourceLock(reviewed);
     expect(parseSourceLockJson(serialized).sourcesById["agency-agents"].markdown[0]).toEqual(entry);
 
     for (const invalidPath of ["bad:name.md", "bad\u0001name.md", "folder/CON.md", "folder/file.MD", "folder/cafe\u0301.md"]) {
-      const invalid = structuredClone(reviewed) as SourceLock;
-      (invalid.sources[0]!.markdown![0] as { path: string }).path = invalidPath;
+      const invalid = structuredClone(reviewed) as AttestedSourceLock;
+      (invalid.sources[0]!.markdown[0] as { path: string }).path = invalidPath;
       expect(() => serializeSourceLock(invalid)).toThrow(/path|manifest/iu);
     }
-    const collision = structuredClone(reviewed) as SourceLock;
+    const collision = structuredClone(reviewed) as AttestedSourceLock;
     (collision.sources[0] as { markdown: unknown }).markdown = [
       { ...entry, path: "folder/Straße.md" },
       { ...entry, path: "folder/STRAẞE.md" },
@@ -768,6 +779,19 @@ describe("source lock file", () => {
       normalizedSize: normalized.length,
       normalizedSha256: `sha256:${createHash("sha256").update(normalized).digest("hex")}`,
     });
+  });
+
+  it("attests exact bounded LICENSE Git blob bytes", () => {
+    const raw = Buffer.from("MIT fixture license\n", "utf8");
+    const oid = createHash("sha1").update(Buffer.from(`blob ${raw.length}\0`)).update(raw).digest("hex");
+    expect(createAttestedLicenseEntry("LICENSE", oid, raw)).toEqual({
+      path: "LICENSE",
+      oid,
+      size: raw.length,
+      sha256: `sha256:${createHash("sha256").update(raw).digest("hex")}`,
+    });
+    expect(() => createAttestedLicenseEntry("LICENSE.md", oid, raw)).toThrow(/LICENSE/u);
+    expect(() => createAttestedLicenseEntry("LICENSE", "a".repeat(40), raw)).toThrow(/blob|oid/iu);
   });
 
   it.each([
@@ -795,8 +819,8 @@ describe("source lock file", () => {
     const oversized: SourceLock = {
       schemaVersion: 2,
       sources: [
-        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", markdown },
-        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", markdown: [] },
+        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", licenseFile: fixtureLicenseFile(), markdown },
+        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", licenseFile: fixtureLicenseFile(), markdown: [] },
       ],
     };
     const raw = `${JSON.stringify(oversized)}\n`;
@@ -818,8 +842,8 @@ describe("source lock file", () => {
     const lock = {
       schemaVersion: 2,
       sources: [
-        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", markdown },
-        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", markdown: [] },
+        { id: "agency-agents", repository: "https://github.com/msitarzewski/agency-agents", license: "MIT", commit: "a".repeat(40), tree: "b".repeat(40), objectFormat: "sha1", licenseFile: fixtureLicenseFile(), markdown },
+        { id: "agency-agents-zh", repository: "https://github.com/jnMetaCode/agency-agents-zh", license: "MIT", commit: "c".repeat(40), tree: "d".repeat(40), objectFormat: "sha1", licenseFile: fixtureLicenseFile(), markdown: [] },
       ],
     } as SourceLock;
     expect(() => serializeSourceLock(lock)).toThrow(/entry|manifest|budget/iu);
@@ -1185,6 +1209,12 @@ describe("lockCatalogSources", () => {
     expect(result.sources[0]).toMatchObject({
       objectFormat: "sha1",
       tree: await runGit(source.checkout, ["rev-parse", `${source.head}^{tree}`]).then((value) => value.trim()),
+      licenseFile: {
+        path: "LICENSE",
+        oid: await runGit(source.checkout, ["rev-parse", `${source.head}:LICENSE`]).then((value) => value.trim()),
+        size: Buffer.byteLength("MIT fixture license\n"),
+        sha256: `sha256:${createHash("sha256").update("MIT fixture license\n").digest("hex")}`,
+      },
       markdown: [{
         path: "README.md",
         oid: await runGit(source.checkout, ["rev-parse", `${source.head}:README.md`]).then((value) => value.trim()),
@@ -1197,6 +1227,10 @@ describe("lockCatalogSources", () => {
     const target = join(root, "catalog", "sources.lock.json");
     expect(JSON.parse(await readFile(target, "utf8"))).toEqual(result);
     await expect(lockCatalogSources(root)).rejects.toThrow("already exists");
+    await writeFile(join(source.checkout, "LICENSE"), "modified working tree license\n", "utf8");
+    expect(result.sources[0]?.licenseFile?.sha256).toBe(
+      `sha256:${createHash("sha256").update("MIT fixture license\n").digest("hex")}`,
+    );
   });
 
   it("labels the executable command as a local, release-only, no-network operation", async () => {

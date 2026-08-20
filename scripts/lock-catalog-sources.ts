@@ -27,7 +27,7 @@ export async function main(): Promise<number> {
       onPublishWarning: (warning) => warnings.push(warning),
     });
     process.stdout.write(
-      `release-only: locked ${lock.sources.length} catalog sources with commit-bound Markdown manifests from clean local checkouts; no network commands were run\n`,
+      `release-only: locked ${lock.sources.length} catalog sources with commit-bound Markdown manifests and LICENSE blobs from clean local checkouts; no network commands were run\n`,
     );
     for (const warning of warnings) {
       process.stderr.write(`catalog source lock warning [${warning.code}]: ${warning.message}\n`);

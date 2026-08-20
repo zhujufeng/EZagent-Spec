@@ -18,7 +18,9 @@ import { parseDocument } from "yaml";
 import {
   assertAttestedSourceLockTextBudget,
   attestedPathCollisionKey,
+  createAttestedLicenseEntry,
   createAttestedMarkdownEntry,
+  MAX_ATTESTED_LICENSE_BYTES,
   MAX_ATTESTED_MARKDOWN_BYTES,
   MAX_ATTESTED_MARKDOWN_FILES,
   MAX_ATTESTED_SOURCE_LOCK_BYTES,
@@ -27,6 +29,7 @@ import {
   snapshotReviewedSourceLockV2,
   validateAttestedMarkdownPath,
   type AttestedMarkdownEntry,
+  type AttestedLicenseEntry,
 } from "./attested-source-contract.js";
 
 const CONFIG_KEYS = ["schemaVersion", "sources"] as const;
@@ -78,17 +81,28 @@ export interface LockedSource {
   readonly repository: string;
   readonly license: "MIT";
   readonly commit: string;
-  readonly tree?: string;
-  readonly objectFormat?: "sha1";
-  readonly markdown?: readonly MarkdownAttestation[];
 }
 
 export type MarkdownAttestation = AttestedMarkdownEntry;
 
-export interface SourceLock {
-  readonly schemaVersion: 1 | 2;
+export interface LegacySourceLock {
+  readonly schemaVersion: 1;
   readonly sources: readonly LockedSource[];
 }
+
+export interface AttestedLockedSource extends LockedSource {
+  readonly tree: string;
+  readonly objectFormat: "sha1";
+  readonly licenseFile: AttestedLicenseEntry;
+  readonly markdown: readonly MarkdownAttestation[];
+}
+
+export interface AttestedSourceLock {
+  readonly schemaVersion: 2;
+  readonly sources: readonly AttestedLockedSource[];
+}
+
+export type SourceLock = LegacySourceLock | AttestedSourceLock;
 
 export type SourceCommitResolver = (
   checkout: string,
@@ -1135,7 +1149,7 @@ async function attestCommittedMarkdown(
   commit: string,
   runner: GitRunner,
   binaryRunner: GitBinaryRunner,
-): Promise<Pick<LockedSource, "tree" | "objectFormat" | "markdown">> {
+): Promise<Pick<AttestedLockedSource, "tree" | "objectFormat" | "licenseFile" | "markdown">> {
   const objectFormat = singleGitOutputLine(await runCheckoutGit(
     runner,
     checkoutPath,
@@ -1160,6 +1174,7 @@ async function attestCommittedMarkdown(
     MAX_ATTESTED_SOURCE_LOCK_BYTES,
   );
   const manifest: MarkdownAttestation[] = [];
+  let licenseFile: AttestedLicenseEntry | undefined;
   let totalBytes = 0;
   const seen = new Set<string>();
   if (listing.length > 0 && listing.at(-1) !== 0) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
@@ -1177,6 +1192,25 @@ async function attestCommittedMarkdown(
     const match = /^(100644|100755) blob ([0-9a-f]{40})\t([^\r\n\0]+)$/u.exec(record);
     if (match === null) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
     const path = match[3]!;
+    if (path === "LICENSE") {
+      if (match[1] !== "100644" || licenseFile !== undefined) {
+        throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
+      }
+      const oid = match[2]!;
+      const bytes = await runCheckoutGitBytes(
+        binaryRunner,
+        checkoutPath,
+        ["cat-file", "blob", oid],
+        candidate.id,
+        MAX_ATTESTED_LICENSE_BYTES,
+      );
+      try {
+        licenseFile = createAttestedLicenseEntry(path, oid, bytes);
+      } catch (error: unknown) {
+        throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id, { cause: error });
+      }
+      continue;
+    }
     if (/\.md$/iu.test(path) && !path.endsWith(".md")) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
     if (!path.endsWith(".md")) continue;
     safeManifestPath(path, candidate.id);
@@ -1199,8 +1233,14 @@ async function attestCommittedMarkdown(
       throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id, { cause: error });
     }
   }
+  if (licenseFile === undefined) throw new LocalCheckoutError("GIT_OUTPUT_INVALID", candidate.id);
   manifest.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-  return Object.freeze({ tree, objectFormat: "sha1", markdown: Object.freeze(manifest) });
+  return Object.freeze({
+    tree,
+    objectFormat: "sha1",
+    licenseFile,
+    markdown: Object.freeze(manifest),
+  });
 }
 
 export async function resolveLocalCheckoutAttestation(
@@ -1208,7 +1248,7 @@ export async function resolveLocalCheckoutAttestation(
   untrustedCandidate: SourceCandidate,
   runner: GitRunner = nodeGitRunner,
   binaryRunner: GitBinaryRunner = nodeGitBinaryRunner,
-): Promise<LockedSource> {
+): Promise<AttestedLockedSource> {
   const candidate = parseSourceCandidatesConfig({ schemaVersion: 1, sources: [untrustedCandidate] }).sources[0]!;
   const root = await realpath(projectRoot).catch((error: unknown) => {
     throw new LocalCheckoutError("PROJECT_ROOT_UNREADABLE", candidate.id, { cause: error });
@@ -1618,7 +1658,7 @@ async function readStableSourceConfig(
 export async function lockCatalogSources(
   projectRoot: string = process.cwd(),
   options: LockCatalogSourcesOptions = {},
-): Promise<SourceLock> {
+): Promise<AttestedSourceLock> {
   const configPath = resolve(projectRoot, "catalog", "sources.yaml");
   const configText = await readStableSourceConfig(
     configPath,
@@ -1633,7 +1673,7 @@ export async function lockCatalogSources(
       configFail("catalog lock requires exactly the two reviewed source ids, repositories, and checkouts");
     }
   }
-  const lockedSources: LockedSource[] = [];
+  const lockedSources: AttestedLockedSource[] = [];
   for (const candidate of [...config.sources].sort(compareAsciiIds)) {
     lockedSources.push(await resolveLocalCheckoutAttestation(
       projectRoot,
