@@ -6,6 +6,7 @@
   "files": [
     "dist/src/**/*.js",
     "!dist/src/experts/source-lock.js",
+    "!dist/src/experts/importer.js",
     "README.md",
     "LICENSE*",
     "licenses/**"

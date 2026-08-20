@@ -1,0 +1,25 @@
+# EZagent original release-time metadata. It is curated per Chinese source file and is
+# never a runtime dependency. Task 7 expands this fixture-sized mapping to the full snapshot.
+schemaVersion: 1
+divisions:
+  engineering:
+    defaultDomains: [engineering]
+  design:
+    defaultDomains: [design]
+experts:
+  engineering/frontend-architect.md:
+    domains: [engineering, frontend]
+    capabilities: [frontend-architecture, state-design]
+    projectSignals: [react, vue, web-ui]
+    activationConditions: [跨组件行为变化]
+    exclusionConditions: [纯后端数据迁移]
+    preferredTasks: [design, review]
+    qualityGates: [引用实际文件, 覆盖错误状态]
+  design/product-designer.md:
+    domains: [design, product]
+    capabilities: [user-journey, interaction-design]
+    projectSignals: [product-ui, user-flow]
+    activationConditions: [需要设计用户体验]
+    exclusionConditions: [纯基础设施维护]
+    preferredTasks: [clarify, design, review]
+    qualityGates: [覆盖关键用户旅程, 定义可验证验收标准]
