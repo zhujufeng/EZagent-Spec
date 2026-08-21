@@ -25,13 +25,18 @@ async function temporaryProject(label = "EZagent CLI project with spaces "): Pro
   return root;
 }
 
-async function runCli(args: readonly string[], cwd = PROJECT_ROOT) {
+async function runCli(
+  args: readonly string[],
+  cwd = PROJECT_ROOT,
+  options: { readonly input?: string } = {},
+) {
   const command = process.platform === "win32" ? process.execPath : CLI_PATH;
   const commandArgs = process.platform === "win32" ? [CLI_PATH, ...args] : args;
   return execa(command, commandArgs, {
     cwd,
     reject: false,
     stripFinalNewline: false,
+    ...options,
   });
 }
 
@@ -226,7 +231,82 @@ describe.sequential("ezagent CLI", () => {
       project: { schemaVersion: 1, name: "Demo", gitTracking: "none" },
       state: { schemaVersion: 1, revision: 0, activeWorkItem: null, safeMode: false },
       recovered: false,
+      requirement: null,
+      spec: null,
+      task: null,
+      team: null,
+      blockers: [],
+      recoveryStatus: "ready",
+      platformSyncStatus: "none",
     });
+  });
+
+  test("previews and applies an approved expert team through JSON stdin", async () => {
+    const root = await temporaryProject();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "CLI Team"]));
+    const draft = {
+      schemaVersion: 1,
+      requirement: { title: "用户资料输入校验", summary: "拒绝非法资料更新" },
+      spec: {
+        goal: "校验用户资料输入",
+        scope: ["用户资料更新"],
+        nonGoals: ["不改变登录"],
+        acceptance: ["非法输入返回错误"],
+        verification: ["运行单元测试"],
+      },
+      task: {
+        title: "实现资料校验",
+        risk: "high",
+        allowedPaths: ["src/users/**", "test/users/**"],
+        deliverables: ["实现与测试"],
+        qualityGates: ["测试通过", "独立审查"],
+      },
+      selection: {
+        capabilities: ["production-implementation"],
+        domains: ["engineering"],
+        projectSignals: ["api"],
+        reviewAfter: 6,
+      },
+    };
+    const selection = expectJsonSuccess(await runCli(
+      ["team-select-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    )) as { readonly members: readonly { readonly expertId: string; readonly mode: string }[]; readonly selectionFingerprint: string };
+    const input = {
+      draft,
+      selectionFingerprint: selection.selectionFingerprint,
+      assignments: selection.members.map((member) => ({
+        expertId: member.expertId,
+        scope: [member.mode === "review" ? "独立只读审查" : "实现资料校验"],
+        deliverables: [member.mode === "review" ? "审查结论" : "实现与测试"],
+        qualityGates: [member.mode === "review" ? "不得自审" : "测试通过"],
+      })),
+    };
+    const preview = expectJsonSuccess(await runCli(
+      ["plan-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(input)}\n` },
+    )) as { readonly approvalToken: string };
+    const applied = expectJsonSuccess(await runCli(
+      ["plan-apply", "--root", root, "--approval-token", preview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(input)}\n` },
+    ));
+    expect(applied).toMatchObject({ task: { status: "planned" }, platformSyncStatus: "ready" });
+    const transitioned = expectJsonSuccess(await runCli([
+      "transition", "--root", root,
+      "--to", "implementing",
+      "--revision", "0",
+      "--high-risk-authorization", "  AUTH-20260821-001  ",
+    ]));
+    expect(transitioned).toMatchObject({
+      activeWorkItem: { status: "implementing", revision: 1 },
+    });
+    await expect(readAuditEvents(workspacePaths(root).audit)).resolves.toMatchObject([
+      { type: "plan-approved" },
+      { type: "work-item-transitioned", metadata: { highRiskAuthorizationId: "AUTH-20260821-001" } },
+    ]);
   });
 
   test("previews Codex integration as one-line JSON without creating project state", async () => {
@@ -322,7 +402,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 
@@ -345,7 +425,7 @@ describe.sequential("ezagent CLI", () => {
     },
   );
 
-  test("transitions the active work item and records a normalized authorization ID", async () => {
+  test("blocks Task implementation when no approved materialized expert team exists", async () => {
     const active: WorkItemState = {
       id: "TASK-20260820-001",
       kind: "task",
@@ -355,28 +435,16 @@ describe.sequential("ezagent CLI", () => {
     };
     const { root, repository } = await initializedWorkspace(active);
 
-    const output = expectJsonSuccess(await runCli([
+    const result = await runCli([
       "transition", "--root", root,
       "--to", "implementing",
       "--revision", "0",
       "--high-risk-authorization", "  AUTH-20260820-001  ",
-    ]));
-
-    expect(output).toEqual({
-      schemaVersion: 1,
-      revision: 2,
-      activeWorkItem: { ...active, status: "implementing", revision: 1 },
-      safeMode: false,
-    });
-    await expect(repository.readState()).resolves.toEqual(output);
-    await expect(readAuditEvents(workspacePaths(root).audit)).resolves.toMatchObject([
-      { sequence: 1, type: "work-item-captured" },
-      {
-        sequence: 2,
-        type: "work-item-transitioned",
-        metadata: { highRiskAuthorizationId: "AUTH-20260820-001" },
-      },
     ]);
+
+    expectSingleLineFailure(result, "inspection-required");
+    await expect(repository.readState()).resolves.toMatchObject({ revision: 1, activeWorkItem: active });
+    await expect(readAuditEvents(workspacePaths(root).audit)).resolves.toHaveLength(1);
   });
 
   test.each([

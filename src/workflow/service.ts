@@ -14,6 +14,8 @@ import {
   type RuntimeCatalog,
 } from "../experts/runtime-catalog.js";
 import { createWorkItemId } from "../domain/id.js";
+import { transitionWorkItem } from "../domain/state-machine.js";
+import type { WorkItemStatus } from "../domain/work-item.js";
 import { workspacePaths } from "../workspace/layout.js";
 import { WorkspaceRepository } from "../workspace/repository.js";
 import type { WorkspaceState } from "../workspace/schema.js";
@@ -133,7 +135,7 @@ function portableCompare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-async function defaultCatalog(): Promise<RuntimeCatalog> {
+export async function loadDefaultRuntimeCatalog(): Promise<RuntimeCatalog> {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
     join(here, "..", "catalog", "experts.json"),
@@ -154,7 +156,7 @@ async function defaultCatalog(): Promise<RuntimeCatalog> {
 const defaultRuntime: TeamWorkflowRuntime = {
   now: () => new Date(),
   canonicalRoot: realpath,
-  readCatalog: defaultCatalog,
+  readCatalog: loadDefaultRuntimeCatalog,
   createRepository: (root) => new WorkspaceRepository(root),
   readActiveExperts: async (root) => new ActiveExpertRepository(root).read(),
 };
@@ -384,7 +386,7 @@ async function readActiveRecords(
     || spec.requirementId !== requirement.id
     || team.requirementId !== requirement.id
     || team.specId !== spec.id
-    || team.taskRevision !== task.revision) {
+    || team.taskRevision > task.revision) {
     throw new Error("active Plan artifact identities do not match workspace state");
   }
   const projected = new Map(activeExperts.experts.map((expert) => [expert.id, expert]));
@@ -793,6 +795,43 @@ export class ExpertTeamWorkflowService {
         teamFingerprint: records.team.teamFingerprint,
       },
     );
+  }
+
+  async transitionActiveTask(
+    to: WorkItemStatus,
+    expectedTaskRevision: number,
+    highRiskAuthorizationId?: string,
+  ): Promise<WorkspaceState> {
+    if (to === "cancelled" || to === "completed") {
+      throw new Error("terminal Task transitions must use the lifecycle retirement gate");
+    }
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
+    const records = await readActiveRecords(canonicalRoot, context.state, activeExperts);
+    const activeWorkItem = transitionWorkItem(context.state.activeWorkItem!, {
+      to,
+      expectedRevision: expectedTaskRevision,
+      ...(highRiskAuthorizationId === undefined ? {} : { highRiskAuthorizationId }),
+    });
+    const task: TaskArtifact = {
+      ...records.task,
+      status: activeWorkItem.status,
+      revision: activeWorkItem.revision,
+    };
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+      activeWorkItem,
+    };
+    await this.runtime.createRepository(canonicalRoot).commitMutation(
+      nextState,
+      context.state.revision,
+      "work-item-transitioned",
+      [{ relativePath: `tasks/${task.id}.yaml`, content: serializeTaskArtifact(task) }],
+      highRiskAuthorizationId === undefined ? {} : { highRiskAuthorizationId },
+    );
+    return nextState;
   }
 
   async activeTeamRecord(): Promise<ExpertTeamPlan | null> {

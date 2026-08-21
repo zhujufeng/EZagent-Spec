@@ -43,8 +43,12 @@ export async function inspectCodexExpertTeam(
   catalog: RuntimeCatalog,
   runtime: ProjectAgentRuntime = nodeProjectAgentRuntime,
 ): Promise<CodexExpertTeamReadiness> {
-  const rendered = await renderedApprovedTeam(projectRoot, catalog);
-  return rendered === null ? { status: "none" } : inspectProjectAgents(projectRoot, rendered, runtime);
+  try {
+    const rendered = await renderedApprovedTeam(projectRoot, catalog);
+    return rendered === null ? { status: "none" } : inspectProjectAgents(projectRoot, rendered, runtime);
+  } catch {
+    return { status: "inspection-required", reason: "approved expert team requires inspection" };
+  }
 }
 
 export async function reconcileCodexExpertTeam(
@@ -52,9 +56,9 @@ export async function reconcileCodexExpertTeam(
   catalog: RuntimeCatalog,
   runtime: ProjectAgentRuntime = nodeProjectAgentRuntime,
 ): Promise<{ readonly synced: true; readonly files: readonly string[] }> {
-  const rendered = await renderedApprovedTeam(projectRoot, catalog);
-  if (rendered === null) return { synced: true, files: Object.freeze([]) };
   try {
+    const rendered = await renderedApprovedTeam(projectRoot, catalog);
+    if (rendered === null) return { synced: true, files: Object.freeze([]) };
     return await syncProjectAgents(projectRoot, rendered, runtime);
   } catch (error: unknown) {
     if (error instanceof ProjectAgentInspectionRequiredError) throw error;

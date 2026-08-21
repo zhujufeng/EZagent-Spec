@@ -11,11 +11,23 @@ import {
   previewCodexIntegration,
   type CodexIntegrationRuntime,
 } from "../adapters/codex/integration.js";
+import {
+  inspectCodexExpertTeam,
+  reconcileCodexExpertTeam,
+  type CodexExpertTeamReadiness,
+} from "../adapters/codex/expert-team.js";
+import type { ProjectAgentRuntime } from "../adapters/codex/project-agent.js";
+import type { RuntimeCatalog } from "../experts/runtime-catalog.js";
 import type { WorkItemStatus } from "../domain/work-item.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 import { WorkspaceRepository } from "../workspace/repository.js";
+import {
+  ExpertTeamWorkflowService,
+  loadDefaultRuntimeCatalog,
+} from "../workflow/service.js";
+import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const AUTHORIZATION_ID = /^AUTH-(\d{4})(\d{2})(\d{2})-(\d{3})$/u;
@@ -37,7 +49,13 @@ type Command =
   | "context"
   | "transition"
   | "integration-preview"
-  | "integration-init";
+  | "integration-init"
+  | "team-select-preview"
+  | "plan-preview"
+  | "plan-apply"
+  | "replan-preview"
+  | "replan-apply"
+  | "experts-reconcile";
 
 interface CommandSpec {
   readonly valueOptions: readonly string[];
@@ -76,6 +94,36 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     booleanOptions: [],
     requiredOptions: ["--root", "--name", "--agents-token"],
   },
+  "team-select-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "plan-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "plan-apply": {
+    valueOptions: ["--root", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-token"],
+  },
+  "replan-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "replan-apply": {
+    valueOptions: ["--root", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-token"],
+  },
+  "experts-reconcile": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
 };
 
 interface ParsedCommand {
@@ -94,6 +142,15 @@ export interface CliRuntime {
   readonly access: (path: string, mode: number) => Promise<void>;
   readonly createRepository: (root: string) => WorkspaceRepository;
   readonly codexIntegrationRuntime: CodexIntegrationRuntime;
+  readonly stdin: JsonInputSource;
+  readonly createWorkflowService: (root: string) => ExpertTeamWorkflowService;
+  readonly readRuntimeCatalog: () => Promise<RuntimeCatalog>;
+  readonly inspectCodexTeam: (
+    root: string,
+    catalog: RuntimeCatalog,
+    runtime?: ProjectAgentRuntime,
+  ) => Promise<CodexExpertTeamReadiness>;
+  readonly reconcileCodexTeam: typeof reconcileCodexExpertTeam;
 }
 
 const defaultRuntime: CliRuntime = {
@@ -103,6 +160,11 @@ const defaultRuntime: CliRuntime = {
   access,
   createRepository: (root) => new WorkspaceRepository(root),
   codexIntegrationRuntime: nodeCodexIntegrationRuntime,
+  stdin: { chunks: process.stdin },
+  createWorkflowService: (root) => new ExpertTeamWorkflowService(root),
+  readRuntimeCatalog: loadDefaultRuntimeCatalog,
+  inspectCodexTeam: inspectCodexExpertTeam,
+  reconcileCodexTeam: reconcileCodexExpertTeam,
 };
 
 function isCommand(value: string | undefined): value is Command {
@@ -226,6 +288,13 @@ function writeJson(io: CliIo, value: unknown): void {
   io.stdout.write(`${json}\n`);
 }
 
+function jsonRecord(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("JSON stdin root must be an object");
+  }
+  return value as Record<string, unknown>;
+}
+
 async function assertDoctorRoot(runtime: CliRuntime, root: string): Promise<void> {
   let observed: Awaited<ReturnType<CliRuntime["lstat"]>>;
   try {
@@ -283,8 +352,69 @@ export async function runCli(
     return;
   }
 
+  const workflow = runtime.createWorkflowService(root);
+
+  if (parsed.command === "team-select-preview") {
+    writeJson(io, await workflow.selectPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "plan-preview") {
+    writeJson(io, await workflow.planPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "plan-apply") {
+    const input = jsonRecord(await readBoundedJsonInput(runtime.stdin));
+    const applied = await workflow.planApply({
+      ...input,
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    });
+    const catalog = await runtime.readRuntimeCatalog();
+    const synchronized = await runtime.reconcileCodexTeam(root, catalog);
+    writeJson(io, { ...applied, platformSyncStatus: "ready", files: synchronized.files });
+    return;
+  }
+
+  if (parsed.command === "replan-preview") {
+    writeJson(io, await workflow.replanPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "replan-apply") {
+    const input = jsonRecord(await readBoundedJsonInput(runtime.stdin));
+    const applied = await workflow.replanApply({
+      ...input,
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    });
+    const catalog = await runtime.readRuntimeCatalog();
+    const synchronized = await runtime.reconcileCodexTeam(root, catalog);
+    writeJson(io, { ...applied, platformSyncStatus: "ready", files: synchronized.files });
+    return;
+  }
+
+  if (parsed.command === "experts-reconcile") {
+    const catalog = await runtime.readRuntimeCatalog();
+    const synchronized = await runtime.reconcileCodexTeam(root, catalog);
+    writeJson(io, { ...synchronized, platformSyncStatus: "ready" });
+    return;
+  }
+
   if (parsed.command === "context") {
-    writeJson(io, await repository.readContext());
+    const [base, resumed] = await Promise.all([repository.readContext(), workflow.resumeContext()]);
+    const platform = resumed.team === null
+      ? { status: "none" as const }
+      : await runtime.inspectCodexTeam(root, await runtime.readRuntimeCatalog());
+    writeJson(io, {
+      ...base,
+      requirement: resumed.requirement,
+      spec: resumed.spec,
+      task: resumed.task,
+      team: resumed.team,
+      blockers: resumed.blockers,
+      recoveryStatus: resumed.recoveryStatus,
+      platformSyncStatus: platform.status,
+    });
     return;
   }
 
@@ -308,6 +438,25 @@ export async function runCli(
     throw new Error(
       "--high-risk-authorization is only valid for a high-risk planned -> implementing transition",
     );
+  }
+
+  if (context.state.activeWorkItem.kind === "task") {
+    if (to === "completed") {
+      throw new Error("completed is blocked until Knowledge capture is implemented");
+    }
+    if (to === "cancelled") {
+      await workflow.retireTeam(context.state.activeWorkItem.id, revision, "cancelled");
+      writeJson(io, await repository.readState());
+      return;
+    }
+    if (to === "implementing") {
+      const readiness = await runtime.inspectCodexTeam(root, await runtime.readRuntimeCatalog());
+      if (readiness.status !== "ready") {
+        throw new Error(`approved Codex expert team is not ready: ${readiness.status}; run experts-reconcile`);
+      }
+    }
+    writeJson(io, await workflow.transitionActiveTask(to, revision, normalizedAuthorization));
+    return;
   }
 
   const activeWorkItem = transitionWorkItem(context.state.activeWorkItem, {
