@@ -1,5 +1,7 @@
 # EZagent Codex Plugin and Automatic Activation Implementation Plan
 
+> **Distribution note (2026-08-21):** The internal-only marketplace decision in this historical document is superseded by `2026-08-21-ezagent-open-source-release-design.md`. Runtime Local-only and third-party license boundaries remain unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Package the existing local core and selected experts as a valid Codex plugin that is initialized once and then automatically routes project development requests without requiring a user command.
@@ -29,7 +31,7 @@
 - `plugins/ezagent-spec/skills/ezagent-spec/SKILL.md`: Requirement and Spec policy.
 - `plugins/ezagent-spec/skills/ezagent-implement/SKILL.md`: approved Task execution policy.
 - `plugins/ezagent-spec/skills/ezagent-review/SKILL.md`: verification and completion policy.
-- `.agents/plugins/marketplace.json`: repo-local company marketplace entry.
+- `.agents/plugins/marketplace.json`: repo-local marketplace entry.
 - `src/adapters/codex/agents-md.ts`: deterministic managed `AGENTS.md` block.
 - `src/adapters/codex/integration.ts`: initialization preview and managed-file coordination.
 - `src/adapters/codex/safe-fs.ts`: shared read-only identity and bounded no-follow filesystem primitives.
@@ -89,7 +91,7 @@ Expected: FAIL with `ENOENT` for `plugins/ezagent-spec/.codex-plugin/plugin.json
 Run the official scaffold only in disposable storage so it cannot overwrite repository work:
 
 ```bash
-python3 /Users/mediastorm/.codex/skills/.system/plugin-creator/scripts/create_basic_plugin.py ezagent-spec \
+python3 $HOME/.codex/skills/.system/plugin-creator/scripts/create_basic_plugin.py ezagent-spec \
   --path /private/tmp/ezagent-plugin-scaffold \
   --with-skills
 ```
@@ -144,7 +146,7 @@ description: 在已初始化 EZagent Spec 的项目中，自动处理开发、�
 Run:
 
 ```bash
-python3 /Users/mediastorm/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/ezagent-spec
+python3 $HOME/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/ezagent-spec
 npm test -- test/codex/plugin-manifest.test.ts
 ```
 
@@ -585,7 +587,7 @@ Router 在已初始化项目中先读取上下文，再选择上述 Skill；在�
 Run:
 
 ```bash
-python3 /Users/mediastorm/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/ezagent-spec
+python3 $HOME/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/ezagent-spec
 npm test -- test/codex/skill-contract.test.ts test/codex/activation-contract.test.ts
 ```
 
@@ -771,8 +773,8 @@ Expected:
 Run the official plugin validator again and read the repo marketplace name:
 
 ```bash
-python3 /Users/mediastorm/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/ezagent-spec
-python3 /Users/mediastorm/.codex/skills/.system/plugin-creator/scripts/read_marketplace_name.py --marketplace-path .agents/plugins/marketplace.json
+python3 $HOME/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/ezagent-spec
+python3 $HOME/.codex/skills/.system/plugin-creator/scripts/read_marketplace_name.py --marketplace-path .agents/plugins/marketplace.json
 ```
 
 Expected: `Plugin validation passed` and `ezagent-spec-internal`.

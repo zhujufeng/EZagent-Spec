@@ -1,19 +1,19 @@
 # EZagent Spec MVP Roadmap
 
-**Goal:** 在 macOS 与 Windows 上交付公司内部使用、项目本地存储、初始化一次后自动路由的中文 Spec Coding Codex 插件；后续在同一 core 上增加 Claude Code adapter。
+**Goal:** 通过公开 GitHub marketplace 在 macOS 与 Windows 上交付项目本地存储、初始化一次后自动路由的中文 Spec Coding Codex 插件；后续在同一 core 上增加 Claude Code adapter。
 
 **Architecture:** 一个 Node.js 22 / TypeScript 本地 core 负责工作区、恢复、状态机和质量权限；Codex 层采用 **Skills + managed AGENTS.md + bundled CLI**。`AGENTS.md` 负责让相关自然语言请求进入 Router，Router 每次通过打包 CLI 读取可信状态，core 对所有状态转换实行关闭失败。当前不依赖 Codex lifecycle Hook，也不运行 daemon、数据库、Web 服务或 MCP server。
 
-**Status truth (2026-08-21):** core 与专家目录已完成本地验证；Codex 插件里程碑已完成 macOS 本地 validator、离线 smoke 和仓库测试。Windows：pending first CI run，在本分支 push 并由真实 Windows runner 通过前不得称为已验证。完整 workflow/release 仍是下一里程碑。
+**Status truth (2026-08-21):** core、专家目录和 Codex 插件已通过本地 validator、离线 smoke、仓库测试，以及 macOS 与 Windows GitHub Actions。插件通过公开 marketplace 分发；完整 workflow/release 仍是下一里程碑。
 
 ## Milestones
 
 | Order | Detailed plan | Current outcome | Status |
 |---|---|---|---|
-| 1 | `2026-08-20-ezagent-core-workspace-implementation.md` | 跨平台本地工作区、审计、恢复、状态机和内部 CLI | macOS locally verified |
-| 2 | `2026-08-20-ezagent-expert-catalog-implementation.md` | 可复现的 265 位离线中文专家目录与无总数硬上限的自适应选择 | macOS locally verified |
-| 3 | `2026-08-20-ezagent-codex-plugin-implementation.md` | 可验证的 Codex plugin、一次性初始化、自动 Router、项目专家文件和自足 CLI | macOS locally verified; Windows pending CI |
-| 4 | `2026-08-20-ezagent-workflow-release-implementation.md` | 完整工作流命令、高风险授权、知识沉淀、三条 E2E 与内部发布包 | next milestone |
+| 1 | `2026-08-20-ezagent-core-workspace-implementation.md` | 跨平台本地工作区、审计、恢复、状态机和内部 CLI | macOS + Windows CI verified |
+| 2 | `2026-08-20-ezagent-expert-catalog-implementation.md` | 可复现的 265 位离线中文专家目录与无总数硬上限的自适应选择 | macOS + Windows CI verified |
+| 3 | `2026-08-20-ezagent-codex-plugin-implementation.md` | 可验证的 Codex plugin、一次性初始化、自动 Router、项目专家文件和自足 CLI | macOS + Windows CI verified; public marketplace |
+| 4 | `2026-08-20-ezagent-workflow-release-implementation.md` | 完整工作流命令、高风险授权、知识沉淀、三条 E2E 与公开发布包 | next milestone |
 
 ## Target repository map
 
@@ -49,7 +49,7 @@ EZagent-Spec/
 - 不复制 Trellis 的代码、模板、提示或脚本，也不调用 Trellis runtime；只独立实现结构化 Spec Coding 原则。
 - 不读取、迁移或复用旧 EZagent 桌面仓库。
 - runtime 默认 Local-only：无 telemetry、自动网络、自动安装、Git 写操作、发布或上传。
-- 普通同事不运行 `npm install`；插件携带自足 CLI、目录和许可证，运行前置只有 Node.js 22+。
+- 普通用户不运行 `npm install`；插件携带自足 CLI、目录和许可证，运行前置只有 Node.js 22+。
 - 所有测试项目状态只写入登记的临时目录，不得在仓库根创建 `.ezagent/`。
 - 初始化必须先预览精确写入范围并取得确认；预览到确认期间若 `AGENTS.md` token 变化则拒绝写入。
 - Router 和其他 Skills 只能通过 argv 数组调用打包 CLI，不能拼接 shell，也不能直接编辑 `.ezagent/**`。
@@ -60,7 +60,7 @@ EZagent-Spec/
 
 Codex 层必须同时通过 **官方插件 validator + offline activation smoke**：
 
-- manifest 与 internal marketplace 能被当前官方 validator 读取，且不声明未验证的 Hooks、MCP 或 Apps。
+- manifest 与公开 marketplace 能被当前官方 validator 读取，且不声明未验证的 Hooks、MCP 或 Apps。
 - smoke 只复制 `plugins/ezagent-spec/` 到临时目录，在剥离 proxy/npm/git/network 环境变量的子进程中运行打包 CLI。
 - `doctor`、三路径 `integration-preview`、token 绑定 `integration-init`、fresh-process `context` 与重复初始化均通过，且第二次运行 byte-identical。
 - 激活链闭合：managed `AGENTS.md` → `$ezagent-router` → `.ezagent/project.yaml` → argv-safe packaged `context`，并在分类前读取状态。
@@ -85,9 +85,9 @@ Requirement capture → Spec approval → Task plan → Implement → Verify →
 - 范围、风险或依赖变化必须 replan，不能静默扩写 Task 或非法反向 transition。
 - Review 全部 gate 通过后，必须先持久化并读回 Knowledge，才允许 completed。
 - 用新的临时项目执行三条获批 E2E 场景，并验证跨会话恢复。
-- 推送后取得真实 macOS/Windows GitHub Actions 结果；当前 Windows：pending first CI run。
-- 生成本地内部安装包并核对 provenance、licenses、无 Trellis material、无 telemetry/network client；未经用户明确请求不 publish。
+- 推送后取得真实 macOS/Windows GitHub Actions 结果。
+- 生成公开仓库插件包并核对 provenance、licenses、无 Trellis material、无 telemetry/network client；未经用户明确请求不发布到 npm 或通用插件目录。
 
 ## MVP definition of done
 
-MVP 只有在四个里程碑全部通过、设计验收项可追溯到自动化测试，并且同事能在新 Codex 任务中初始化一次后仅用自然语言完成一条 standard 需求时才算完成。当前 Codex 插件里程碑不是这个最终完成声明：缺少 workflow verbs、Knowledge 或授权签发时必须诚实报告并关闭失败。
+MVP 只有在四个里程碑全部通过、设计验收项可追溯到自动化测试，并且用户能在新 Codex 任务中初始化一次后仅用自然语言完成一条 standard 需求时才算完成。当前 Codex 插件里程碑不是这个最终完成声明：缺少 workflow verbs、Knowledge 或授权签发时必须诚实报告并关闭失败。

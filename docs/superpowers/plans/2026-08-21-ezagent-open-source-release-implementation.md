@@ -534,19 +534,15 @@ git commit -m "docs: publish GitHub installation guide"
 - Modify: `docs/superpowers/plans/2026-08-20-ezagent-spec-mvp-roadmap.md`
 - Modify: `docs/superpowers/specs/2026-08-20-ezagent-spec-product-design.md`
 
-- [ ] **Step 1: Remove the machine-specific skill paths**
+- [ ] **Step 1: Use portable skill paths**
 
-Replace every occurrence of:
-
-```text
-/Users/mediastorm/.codex/skills/.system/plugin-creator/
-```
-
-with:
+Use this path everywhere in the repository:
 
 ```text
 $HOME/.codex/skills/.system/plugin-creator/
 ```
+
+Do not include a machine-specific absolute home directory.
 
 - [ ] **Step 2: Mark the earlier distribution decision as historical**
 
@@ -571,7 +567,7 @@ Keep `capture/plan/replan/Knowledge` explicitly incomplete.
 Run:
 
 ```bash
-rg -n "/Users/mediastorm|C:\\\\Users\\\\mediastorm" -g '!node_modules/**' -g '!.git/**' .
+rg -n '/Users/[^/]+|C:\\Users\\[^\\]+' -g '!node_modules/**' -g '!.git/**' .
 ```
 
 Expected: exit 1 with no output.

@@ -24,6 +24,7 @@ const CHECKOUT_ACTION = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af6
 const SETUP_NODE_ACTION = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
 const EXPECTED_PLUGIN_FILES = [
   ".codex-plugin/plugin.json",
+  "LICENSE",
   "RUNTIME_DEPENDENCIES.md",
   "THIRD_PARTY_NOTICES.md",
   "catalog/catalog.lock.json",
@@ -426,10 +427,11 @@ describe.sequential("Codex plugin offline release smoke", () => {
     ]);
   });
 
-  test("documents the current plugin boundary without claiming an unrun Windows gate", async () => {
+  test("documents the public plugin boundary and verified platforms", async () => {
     const readme = await readFile(join(REPOSITORY_ROOT, "README.md"), "utf8");
-    expect(readme).toContain("codex plugin marketplace add <repo-root>");
-    expect(readme).toContain("codex plugin add ezagent-spec@ezagent-spec-internal");
+    expect(readme).toContain("codex plugin marketplace add zhujufeng/EZagent-Spec --ref main");
+    expect(readme).toContain("codex plugin add ezagent-spec@ezagent");
+    expect(readme).toContain("请帮我安装这个 Codex 插件");
     expect(readme).toContain("Node.js 22+");
     expect(readme).toContain("Router Skill + 项目内受管 `AGENTS.md`");
     expect(readme).toContain("不是 Codex lifecycle Hook");
@@ -441,8 +443,10 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(readme).toContain("capture/plan/replan/Knowledge");
     expect(readme).toContain("高风险授权签发");
     expect(readme).toContain("关闭失败");
-    expect(readme).toContain("macOS 已完成本地验证");
-    expect(readme).toContain("Windows：pending first CI run");
+    expect(readme).toContain("MIT License");
+    expect(readme).toContain("Windows 与 macOS GitHub Actions 已通过");
+    expect(readme).not.toContain("ezagent-spec-internal");
+    expect(readme).not.toContain("Windows：pending first CI run");
 
     const roadmap = await readFile(
       join(REPOSITORY_ROOT, "docs", "superpowers", "plans", "2026-08-20-ezagent-spec-mvp-roadmap.md"),
@@ -452,7 +456,9 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(roadmap).toContain("Skills + managed AGENTS.md + bundled CLI");
     expect(roadmap).toContain("官方插件 validator + offline activation smoke");
     expect(roadmap).toContain("capture/plan/replan/Knowledge/高风险授权签发");
-    expect(roadmap).toContain("Windows：pending first CI run");
+    expect(roadmap).toContain("macOS 与 Windows GitHub Actions");
+    expect(roadmap).toContain("公开 marketplace");
+    expect(roadmap).not.toContain("Windows：pending first CI run");
     expect(roadmap).not.toContain("hooks/hooks.json");
     expect(roadmap).not.toContain("automatic hooks");
   });
