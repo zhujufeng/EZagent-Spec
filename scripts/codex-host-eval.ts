@@ -161,6 +161,7 @@ export function hostEvalProcessOptions(cwd: string): {
   readonly cwd: string;
   readonly reject: false;
   readonly shell: false;
+  readonly stdin: "ignore";
   readonly timeout: 240_000;
   readonly forceKillAfterDelay: 10_000;
 } {
@@ -168,6 +169,7 @@ export function hostEvalProcessOptions(cwd: string): {
     cwd,
     reject: false,
     shell: false,
+    stdin: "ignore",
     timeout: 240_000,
     forceKillAfterDelay: 10_000,
   };

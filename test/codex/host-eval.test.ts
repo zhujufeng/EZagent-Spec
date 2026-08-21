@@ -126,6 +126,7 @@ describe("Codex host evaluation safety", () => {
       cwd: "/tmp/host-case",
       reject: false,
       shell: false,
+      stdin: "ignore",
       timeout: 240_000,
       forceKillAfterDelay: 10_000,
     });
