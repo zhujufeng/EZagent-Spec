@@ -92,6 +92,7 @@ const hostEvalEvidenceCaseSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/u),
   expectedPolicy: policySchema,
   exitCode: z.number().int(),
+  timedOut: z.boolean(),
   workspaceChanged: z.boolean(),
   workspaceBeforeSha256: sha256Schema,
   workspaceAfterSha256: sha256Schema,
@@ -156,6 +157,22 @@ export function buildCodexResumeArgv(
   ];
 }
 
+export function hostEvalProcessOptions(cwd: string): {
+  readonly cwd: string;
+  readonly reject: false;
+  readonly shell: false;
+  readonly timeout: 240_000;
+  readonly forceKillAfterDelay: 10_000;
+} {
+  return {
+    cwd,
+    reject: false,
+    shell: false,
+    timeout: 240_000,
+    forceKillAfterDelay: 10_000,
+  };
+}
+
 export function installedPlugin(value: unknown): {
   readonly pluginId: "ezagent-spec@ezagent";
   readonly version: string;
@@ -217,6 +234,9 @@ export function verifyHostEvalEvidence(
     );
   }
   for (const result of evidence.cases) {
+    if (result.timedOut) {
+      throw new Error(`host evaluation case ${result.id} timed out`);
+    }
     if (result.exitCode !== 0) {
       throw new Error(`host evaluation case ${result.id} exited ${result.exitCode}`);
     }
@@ -237,6 +257,7 @@ interface CommandResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
+  readonly timedOut: boolean;
 }
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -255,15 +276,12 @@ async function runCommand(
   args: readonly string[],
   cwd: string,
 ): Promise<CommandResult> {
-  const result = await execa(command, [...args], {
-    cwd,
-    reject: false,
-    shell: false,
-  });
+  const result = await execa(command, [...args], hostEvalProcessOptions(cwd));
   return {
     stdout: result.stdout,
     stderr: result.stderr,
     exitCode: result.exitCode ?? -1,
+    timedOut: result.timedOut,
   };
 }
 
@@ -401,6 +419,7 @@ async function runHostEvaluation(): Promise<string> {
 
     let combinedTranscript = `${initial.stdout}\n${initial.stderr}`;
     let exitCode = initial.exitCode;
+    let timedOut = initial.timedOut;
     if (fixture.followUpPrompt !== undefined) {
       const threadId = threadIdFromJsonl(initial.stdout);
       const followUpOutput = join(caseRoot, "follow-up-final.txt");
@@ -413,6 +432,7 @@ async function runHostEvaluation(): Promise<string> {
       await writeFile(join(caseRoot, "follow-up.stderr.txt"), followUp.stderr, "utf8");
       combinedTranscript += `\n${followUp.stdout}\n${followUp.stderr}`;
       if (followUp.exitCode !== 0) exitCode = followUp.exitCode;
+      timedOut ||= followUp.timedOut;
     }
 
     const after = await workspaceTreeDigest(workspaceRoot);
@@ -420,6 +440,7 @@ async function runHostEvaluation(): Promise<string> {
       id: fixture.id,
       expectedPolicy: fixture.expectedPolicy,
       exitCode,
+      timedOut,
       workspaceChanged: before !== after,
       workspaceBeforeSha256: before,
       workspaceAfterSha256: after,

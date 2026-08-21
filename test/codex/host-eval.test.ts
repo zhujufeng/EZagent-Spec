@@ -9,6 +9,7 @@ import {
   buildCodexExecArgv,
   buildCodexResumeArgv,
   createArtifactRunRoot,
+  hostEvalProcessOptions,
   installedPlugin,
   loadHostEvalSuite,
   threadIdFromJsonl,
@@ -45,6 +46,7 @@ function passingEvidence(): unknown {
       id: "explicit-init",
       expectedPolicy: "initialize",
       exitCode: 0,
+      timedOut: false,
       workspaceChanged: false,
       workspaceBeforeSha256: TRANSCRIPT_HASH,
       workspaceAfterSha256: TRANSCRIPT_HASH,
@@ -120,6 +122,13 @@ describe("Codex host evaluation safety", () => {
       "019c0000-0000-7000-8000-000000000000",
       "继续",
     ]);
+    expect(hostEvalProcessOptions("/tmp/host-case")).toEqual({
+      cwd: "/tmp/host-case",
+      reject: false,
+      shell: false,
+      timeout: 240_000,
+      forceKillAfterDelay: 10_000,
+    });
   });
 
   test("requires the exact installed and enabled plugin", () => {
@@ -190,6 +199,10 @@ describe("Codex host evaluation safety", () => {
     ["non-zero exit", { cases: [{
       ...(passingEvidence() as { cases: Array<Record<string, unknown>> }).cases[0],
       exitCode: 1,
+    }] }],
+    ["timeout", { cases: [{
+      ...(passingEvidence() as { cases: Array<Record<string, unknown>> }).cases[0],
+      timedOut: true,
     }] }],
     ["changed workspace", { cases: [{
       ...(passingEvidence() as { cases: Array<Record<string, unknown>> }).cases[0],
