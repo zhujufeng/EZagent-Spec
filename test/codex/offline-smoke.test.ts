@@ -530,6 +530,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(setupNode?.with).toEqual({ "node-version": 22, cache: "npm" });
     expect(job.steps.map(({ run }) => run).filter(Boolean)).toEqual([
       "npm ci",
+      "npm audit --audit-level=high",
       "npm run plugin:check",
       "npm run verify",
     ]);
