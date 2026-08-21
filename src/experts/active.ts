@@ -382,6 +382,14 @@ function serializeActiveState(value: ActiveExperts): string {
   return `${lines.join("\n")}\n`;
 }
 
+export function parseActiveExperts(value: unknown): ActiveExperts {
+  return normalizeActiveState(value, "ACTIVE_EXPERT_INVALID_INPUT");
+}
+
+export function serializeActiveExperts(value: ActiveExperts): string {
+  return serializeActiveState(parseActiveExperts(value));
+}
+
 interface OpenFlagConstants {
   readonly O_RDONLY: number;
   readonly O_CLOEXEC?: number | undefined;
@@ -600,8 +608,8 @@ export class ActiveExpertRepository {
   }
 
   async write(next: ActiveExperts, expectedRevision: number): Promise<void> {
-    const normalized = normalizeActiveState(next, "ACTIVE_EXPERT_INVALID_INPUT");
-    const contents = serializeActiveState(normalized);
+    const normalized = parseActiveExperts(next);
+    const contents = serializeActiveExperts(normalized);
     if (!Number.isSafeInteger(expectedRevision)
       || expectedRevision < 0
       || expectedRevision === Number.MAX_SAFE_INTEGER) {

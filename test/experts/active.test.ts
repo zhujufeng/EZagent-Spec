@@ -22,6 +22,7 @@ import {
   ActiveExpertRepository,
   ActiveExpertValidationError,
   activeExpertOpenFlags,
+  serializeActiveExperts,
   type ActiveExperts,
 } from "../../src/experts/active.js";
 import { WorkspaceCorruptError, WorkspaceLockedError } from "../../src/workspace/errors.js";
@@ -223,6 +224,7 @@ describe("ActiveExpertRepository", () => {
       "",
     ].join("\n"));
     expect(bytes).not.toContain("\r");
+    expect(serializeActiveExperts(await repository.read())).toBe(bytes);
     expect((await readdir(dirname(await activePath(root))))
       .filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
