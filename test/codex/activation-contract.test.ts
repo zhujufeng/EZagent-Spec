@@ -5,9 +5,13 @@ import { parse } from "yaml";
 import { describe, expect, test } from "vitest";
 
 import { mergeEzagentAgentsBlock } from "../../src/adapters/codex/agents-md.js";
+import { loadHostEvalSuite } from "../../scripts/codex-host-eval.js";
 
 const SKILLS_ROOT = fileURLToPath(
   new URL("../../plugins/ezagent-spec/skills/", import.meta.url),
+);
+const HOST_EVAL_SUITE = fileURLToPath(
+  new URL("../fixtures/codex-host-eval.json", import.meta.url),
 );
 
 interface SkillDocument {
@@ -31,60 +35,9 @@ type RuleAnchor =
   | "explicit-initialize"
   | "high-risk";
 
-const FORWARD_TEST_CASES = [
-  {
-    name: "initialized Excel export is a behavior change",
-    prompt: "给订单列表增加 Excel 导出",
-    initialized: true,
-    expectedPolicy: "router-standard",
-    ruleAnchor: "standard-new-capability",
-  },
-  {
-    name: "initialized cosmetic button change stays light",
-    prompt: "把保存按钮换成品牌蓝，不改变交互",
-    initialized: true,
-    expectedPolicy: "router-light",
-    ruleAnchor: "light-cosmetic",
-  },
-  {
-    name: "architecture explanation stays consultative",
-    prompt: "只解释一下当前架构为什么这样分层，不要修改代码",
-    initialized: true,
-    expectedPolicy: "consult-no-work",
-    ruleAnchor: "consult-no-work",
-  },
-  {
-    name: "ordinary development does not initialize a project",
-    prompt: "帮我实现登录页",
-    initialized: false,
-    expectedPolicy: "no-workflow",
-    ruleAnchor: "uninitialized-no-workflow",
-  },
-  {
-    name: "unrelated initialization does not enable EZagent",
-    prompt: "请初始化数据库连接池",
-    initialized: false,
-    expectedPolicy: "no-workflow",
-    ruleAnchor: "uninitialized-no-workflow",
-  },
-  {
-    name: "explicit EZagent enablement enters initialization",
-    prompt: "请在当前项目启用 EZagent Spec",
-    initialized: false,
-    expectedPolicy: "initialize",
-    ruleAnchor: "explicit-initialize",
-  },
-  {
-    name: "production data migration is high risk",
-    prompt: "迁移生产数据库并删除旧表，要求不可回滚",
-    initialized: true,
-    expectedPolicy: "router-high",
-    ruleAnchor: "high-risk",
-  },
-] as const;
-
 describe("Codex activation policy contract", () => {
-  test("declares realistic cases for later independent forward evaluation", () => {
+  test("declares realistic cases for later independent forward evaluation", async () => {
+    const suite = await loadHostEvalSuite(HOST_EVAL_SUITE);
     const policies = new Set([
       "consult-no-work",
       "no-workflow",
@@ -94,20 +47,21 @@ describe("Codex activation policy contract", () => {
       "router-high",
     ]);
 
-    expect(new Set(FORWARD_TEST_CASES.map(({ name }) => name)).size).toBe(
-      FORWARD_TEST_CASES.length,
+    expect(new Set(suite.cases.map(({ name }) => name)).size).toBe(
+      suite.cases.length,
     );
-    for (const fixture of FORWARD_TEST_CASES) {
+    for (const fixture of suite.cases) {
       expect(fixture.prompt.trim(), fixture.name).not.toBe("");
       expect(fixture.initialized, fixture.name).toBeTypeOf("boolean");
       expect(policies.has(fixture.expectedPolicy), fixture.name).toBe(true);
     }
-    expect(new Set(FORWARD_TEST_CASES.map(({ expectedPolicy }) => expectedPolicy))).toEqual(
+    expect(new Set(suite.cases.map(({ expectedPolicy }) => expectedPolicy))).toEqual(
       policies,
     );
   });
 
   test("declares static activation policy anchors without simulating model discovery", async () => {
+    const suite = await loadHostEvalSuite(HOST_EVAL_SUITE);
     const router = await readSkill("ezagent-router");
     const initialize = await readSkill("ezagent-initialize");
     const spec = await readSkill("ezagent-spec");
@@ -140,7 +94,7 @@ describe("Codex activation policy contract", () => {
     };
 
     expect(router.description).toMatch(/开发|修改|修复|重构|实现|审查|验证/u);
-    for (const fixture of FORWARD_TEST_CASES) {
+    for (const fixture of suite.cases) {
       const anchor = anchoredBodies[fixture.ruleAnchor];
       expect(anchor.body, fixture.name).toMatch(anchor.pattern);
     }

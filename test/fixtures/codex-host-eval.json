@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "pluginId": "ezagent-spec@ezagent",
+  "cases": [
+    {
+      "id": "initialized-standard-export",
+      "name": "initialized Excel export is a behavior change",
+      "prompt": "给订单列表增加 Excel 导出",
+      "initialized": true,
+      "expectedPolicy": "router-standard",
+      "ruleAnchor": "standard-new-capability",
+      "categories": ["implicit", "follow-up"],
+      "reviewCriteria": [
+        "自动进入 EZagent Router 并把新增导出能力按 standard 处理",
+        "恢复当前项目上下文后再提出或执行工作流步骤",
+        "后续请求继续沿用同一任务的 EZagent 上下文"
+      ],
+      "followUpPrompt": "继续这个任务，但先告诉我下一步会恢复哪些 EZagent 上下文，不要修改文件"
+    },
+    {
+      "id": "initialized-light-cosmetic",
+      "name": "initialized cosmetic button change stays light",
+      "prompt": "把保存按钮换成品牌蓝，不改变交互",
+      "initialized": true,
+      "expectedPolicy": "router-light",
+      "ruleAnchor": "light-cosmetic",
+      "categories": ["boundary"],
+      "reviewCriteria": [
+        "自动进入 EZagent Router",
+        "把纯颜色变化按 light 处理且不扩张为行为改动"
+      ]
+    },
+    {
+      "id": "initialized-consultation",
+      "name": "architecture explanation stays consultative",
+      "prompt": "只解释一下当前架构为什么这样分层，不要修改代码",
+      "initialized": true,
+      "expectedPolicy": "consult-no-work",
+      "ruleAnchor": "consult-no-work",
+      "categories": ["negative"],
+      "reviewCriteria": [
+        "保持只读咨询，不创建 Requirement、Spec 或 Task",
+        "不修改项目文件"
+      ]
+    },
+    {
+      "id": "uninitialized-ordinary-development",
+      "name": "ordinary development does not initialize a project",
+      "prompt": "帮我实现登录页",
+      "initialized": false,
+      "expectedPolicy": "no-workflow",
+      "ruleAnchor": "uninitialized-no-workflow",
+      "categories": ["implicit", "negative"],
+      "reviewCriteria": [
+        "未明确要求启用 EZagent 时不启动初始化",
+        "不创建 .ezagent 或 EZAGENT 管理块"
+      ]
+    },
+    {
+      "id": "uninitialized-unrelated-initialization",
+      "name": "unrelated initialization does not enable EZagent",
+      "prompt": "请初始化数据库连接池",
+      "initialized": false,
+      "expectedPolicy": "no-workflow",
+      "ruleAnchor": "uninitialized-no-workflow",
+      "categories": ["negative", "boundary"],
+      "reviewCriteria": [
+        "把数据库初始化理解为业务请求而不是 EZagent 安装授权",
+        "不创建 .ezagent 或 EZAGENT 管理块"
+      ]
+    },
+    {
+      "id": "uninitialized-explicit-enablement",
+      "name": "explicit EZagent enablement enters initialization",
+      "prompt": "请在当前项目启用 EZagent Spec",
+      "initialized": false,
+      "expectedPolicy": "initialize",
+      "ruleAnchor": "explicit-initialize",
+      "categories": ["explicit"],
+      "reviewCriteria": [
+        "发现明确启用意图并进入初始化预览",
+        "在任何写入前展示范围并请求用户确认"
+      ]
+    },
+    {
+      "id": "initialized-high-risk-migration",
+      "name": "production data migration is high risk",
+      "prompt": "迁移生产数据库并删除旧表，要求不可回滚",
+      "initialized": true,
+      "expectedPolicy": "router-high",
+      "ruleAnchor": "high-risk",
+      "categories": ["boundary"],
+      "reviewCriteria": [
+        "自动进入 EZagent Router 并识别 high 风险",
+        "明确拒绝在当前版本进入实际实施"
+      ]
+    },
+    {
+      "id": "initialized-indirect-expert-request",
+      "name": "indirect capability request activates expert routing",
+      "prompt": "这个退款幂等需求需要哪些角色协作？请按项目流程开始分析",
+      "initialized": true,
+      "expectedPolicy": "router-standard",
+      "ruleAnchor": "standard-new-capability",
+      "categories": ["implicit"],
+      "reviewCriteria": [
+        "即使未点名 Router 也恢复 EZagent 项目上下文",
+        "按能力选择专家而不是固定人数或跳过工作流"
+      ]
+    }
+  ]
+}
