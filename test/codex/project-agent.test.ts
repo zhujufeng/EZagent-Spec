@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   nodeProjectAgentRuntime,
+  inspectProjectAgents,
   renderProjectAgent,
   syncProjectAgents,
   type ProjectAgentRuntime,
@@ -83,6 +84,16 @@ function backendRendered(): RenderedProjectAgent {
     scope: ["只实现后端接口边界"],
   });
 }
+
+describe("inspectProjectAgents", () => {
+  it("reports pending before synchronization and ready afterward", async () => {
+    const root = await initializedRoot();
+    const desired = [rendered()];
+    await expect(inspectProjectAgents(root, desired)).resolves.toMatchObject({ status: "pending" });
+    await syncProjectAgents(root, desired);
+    await expect(inspectProjectAgents(root, desired)).resolves.toMatchObject({ status: "ready" });
+  });
+});
 
 function namedRendered(slug: "a" | "z"): RenderedProjectAgent {
   return renderProjectAgent({
@@ -237,6 +248,7 @@ describe("Codex project expert rendering", () => {
   it("keeps the public rendering and synchronization API surface stable", () => {
     expect(Object.keys(projectAgentApi).sort()).toEqual([
       "ProjectAgentInspectionRequiredError",
+      "inspectProjectAgents",
       "nodeProjectAgentRuntime",
       "renderProjectAgent",
       "syncProjectAgents",

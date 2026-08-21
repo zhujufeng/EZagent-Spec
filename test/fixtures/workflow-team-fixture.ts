@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -185,6 +185,18 @@ export async function createAppliedWorkflowTeamFixture() {
     teamHistoryRevisions: async () => (
       (await readdir(join(fixture.root, ".ezagent", "experts", "teams", applied.task.id))).sort()
     ),
+    writeUserAgent: async (name: string, contents: string) => {
+      const directory = join(fixture.root, ".codex", "agents");
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, name), contents, "utf8");
+    },
+    readUserAgent: async (name: string) => readFile(join(fixture.root, ".codex", "agents", name), "utf8"),
+    modifyFirstManagedAgent: async () => {
+      const directory = join(fixture.root, ".codex", "agents");
+      const name = (await readdir(directory)).filter((entry) => entry.startsWith("ezagent-")).sort()[0]!;
+      const original = await readFile(join(directory, name), "utf8");
+      await writeFile(join(directory, name), `${original}# user modification\n`, "utf8");
+    },
   };
 }
 

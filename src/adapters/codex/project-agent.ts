@@ -188,6 +188,11 @@ export class ProjectAgentInspectionRequiredError extends Error {
   }
 }
 
+export type ProjectAgentReadiness =
+  | { readonly status: "ready"; readonly files: readonly string[] }
+  | { readonly status: "pending"; readonly reason: string }
+  | { readonly status: "inspection-required"; readonly reason: string };
+
 function boundedReadPolicy(label: string): BoundedReadPolicy {
   const invalidMessage = `${label} must be a bounded, uniquely linked regular file`;
   return {
@@ -1022,4 +1027,59 @@ export async function syncProjectAgents(
     await assertWorkspaceBinding(runtime, binding);
     return synchronizeLocked(runtime, paths, rendered, binding);
   });
+}
+
+export async function inspectProjectAgents(
+  projectRoot: string,
+  renderedValue: readonly RenderedProjectAgent[],
+  runtime: ProjectAgentRuntime = nodeProjectAgentRuntime,
+): Promise<ProjectAgentReadiness> {
+  const rendered = snapshotRendered(renderedValue);
+  const paths = pathsFor(projectRoot);
+  try {
+    const binding = await captureWorkspaceBinding(runtime, paths);
+    await assertWorkspaceBinding(runtime, binding);
+    const desiredManifest = canonicalManifest(rendered);
+    const evidenceIndex = await scanRecoveryEvidence({
+      backupsPath: paths.backups,
+      recoveryRoot: paths.recoveryRoot,
+      readdir: runtime.readdir,
+      lstat: runtime.lstat,
+      assertWorkspaceBinding: async () => assertWorkspaceBinding(runtime, binding),
+      requireDirectory: async (path, label) => requireDirectory(runtime, path, label),
+      optionalDirectory: async (path, label) => optionalDirectory(runtime, path, label),
+      assertDirectoryIdentity: async (directory) => assertDirectoryIdentity(runtime, directory),
+      readOptionalFile: async (path, label, preflight) => (
+        readOptionalFile(runtime, path, label, preflight)
+      ),
+    });
+    await assertWorkspaceBinding(runtime, binding);
+    const inspected = await inspectBoundaries(
+      runtime,
+      paths,
+      rendered,
+      desiredManifest.bytes,
+      evidenceIndex,
+    );
+    await assertWorkspaceBinding(runtime, binding);
+    verifyActive(await runtime.readActiveExperts(paths.root), rendered);
+    await assertWorkspaceBinding(runtime, binding);
+    const plans = await planFiles(
+      runtime,
+      paths,
+      inspected.manifest,
+      rendered,
+      binding,
+      evidenceIndex,
+    );
+    await assertWorkspaceBinding(runtime, binding);
+    if (inspected.observation === undefined
+      || !inspected.observation.bytes.equals(desiredManifest.bytes)
+      || plans.some((plan) => plan.move || plan.publish)) {
+      return { status: "pending", reason: "approved project Agents require reconciliation" };
+    }
+    return { status: "ready", files: Object.freeze(rendered.map((agent) => agent.fileName)) };
+  } catch {
+    return { status: "inspection-required", reason: "managed project Agent state requires inspection" };
+  }
 }
