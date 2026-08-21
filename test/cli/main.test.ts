@@ -125,7 +125,7 @@ describe.sequential("ezagent CLI", () => {
     const expertsEntry = files.find(({ path }) => path === "catalog/normalized/experts.json");
     const catalogLockEntry = files.find(({ path }) => path === "catalog/normalized/catalog.lock.json");
 
-    expect(cliEntry?.mode).toBe(0o755);
+    expect(cliEntry?.mode).toBe(process.platform === "win32" ? 0o644 : 0o755);
     expect(expertsEntry?.mode).toBe(0o644);
     expect(catalogLockEntry?.mode).toBe(0o644);
     expect(paths).toContain("dist/src/workspace/repository.js");

@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -51,7 +51,7 @@ async function treeEntries(root: string): Promise<{ directories: string[]; files
   async function visit(current: string): Promise<void> {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const path = join(current, entry.name);
-      const name = relative(root, path);
+      const name = relative(root, path).split(sep).join("/");
       if (entry.isDirectory()) {
         directories.push(name);
         await visit(path);
