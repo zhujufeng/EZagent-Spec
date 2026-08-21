@@ -1,43 +1,6325 @@
-# EZagent original release-time metadata. It is curated per Chinese source file and is
-# never a runtime dependency. Every attested Markdown path must be classified exactly once
-# as a Chinese expert, mapped English upstream, or reviewed ignore. Task 7 expands this
-# fixture-sized inventory to the full snapshot.
+# EZagent original release-time routing metadata; never a runtime dependency.
+# Classification is explicit per locked Markdown object. English path presence or
+# absence alone never decides origin: AGENT-LIST, README, UPSTREAM, and local Git
+# history were reviewed together. Shared upstream paths preserve two proven legacy
+# translations without mislabeling either Chinese definition as original.
+# Reviewed ignores specialized/recruitment-specialist.md,
+# specialized/specialized-french-consulting-market.md, and
+# specialized/specialized-korean-business-navigator.md retain Chinese metadata but
+# have core instructions that are not yet substantively localized into Chinese.
 schemaVersion: 1
 divisions:
-  engineering:
-    defaultDomains: [engineering]
+  academic:
+    defaultDomains:
+      - academic
   design:
-    defaultDomains: [design]
+    defaultDomains:
+      - design
+  engineering:
+    defaultDomains:
+      - engineering
+  finance:
+    defaultDomains:
+      - finance
+  game-development:
+    defaultDomains:
+      - game-development
+  gis:
+    defaultDomains:
+      - gis
+  hr:
+    defaultDomains:
+      - hr
+  legal:
+    defaultDomains:
+      - legal
+  marketing:
+    defaultDomains:
+      - marketing
+  paid-media:
+    defaultDomains:
+      - paid-media
+  product:
+    defaultDomains:
+      - product
+  project-management:
+    defaultDomains:
+      - project-management
+  sales:
+    defaultDomains:
+      - sales
+  security:
+    defaultDomains:
+      - security
+  spatial-computing:
+    defaultDomains:
+      - spatial-computing
+  specialized:
+    defaultDomains:
+      - specialized
+  supply-chain:
+    defaultDomains:
+      - supply-chain
+  support:
+    defaultDomains:
+      - support
+  testing:
+    defaultDomains:
+      - testing
 experts:
-  engineering/frontend-developer.md:
+  academic/academic-anthropologist.md:
     origin: upstream_translation
-    upstreamPath: engineering/engineering-frontend-developer.md
-    domains: [engineering, frontend]
-    capabilities: [frontend-architecture, state-design]
-    projectSignals: [react, vue, web-ui]
-    activationConditions: [跨组件行为变化]
-    exclusionConditions: [纯后端数据迁移]
-    preferredTasks: [design, review]
-    qualityGates: [引用实际文件, 覆盖错误状态]
-  design/product-designer.md:
+    upstreamPath: academic/academic-anthropologist.md
+    domains:
+      - academic
+      - humanities-research
+    capabilities:
+      - academic-anthropologist
+      - evidence-analysis
+    projectSignals:
+      - academic-anthropologist
+      - cultural-system
+    activationConditions:
+      - 人类学家适用于：构建在人类学上合理的亲属制度、社会组织和权力结构
+    exclusionConditions:
+      - 仅需与人类学家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 人类学家质量门：不要文化大杂烩。 不要在不理解每个元素在其原始语境中含义以及它们如何互动的情况下，混搭"日本荣誉准则 + 非洲鼓乐 + 凯尔特神秘主义"。
+  academic/academic-geographer.md:
+    origin: upstream_translation
+    upstreamPath: academic/academic-geographer.md
+    domains:
+      - academic
+      - geospatial
+      - humanities-research
+    capabilities:
+      - academic-geographer
+      - evidence-analysis
+    projectSignals:
+      - academic-geographer
+      - mapping
+    activationConditions:
+      - 地理学家适用于：检查气候、地形和生物群落之间的物理一致性
+    exclusionConditions:
+      - 仅需与地理学家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 地理学家质量门：检查气候、地形和生物群落之间的物理一致性
+  academic/academic-historian.md:
+    origin: upstream_translation
+    upstreamPath: academic/academic-historian.md
+    domains:
+      - academic
+      - humanities-research
+    capabilities:
+      - academic-historian
+      - evidence-analysis
+    projectSignals:
+      - academic-historian
+      - cultural-system
+      - historical-setting
+    activationConditions:
+      - 历史学家适用于：识别时代错误——不仅是显而易见的（哥伦布之前欧洲出现的土豆），还有微妙的（态度、社会结构、经济系统）
+    exclusionConditions:
+      - 仅需与历史学家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 历史学家质量门：识别时代错误——不仅是显而易见的（哥伦布之前欧洲出现的土豆），还有微妙的（态度、社会结构、经济系统）
+  academic/academic-narratologist.md:
+    origin: upstream_translation
+    upstreamPath: academic/academic-narratologist.md
+    domains:
+      - academic
+      - humanities-research
+    capabilities:
+      - academic-narratologist
+      - evidence-analysis
+    projectSignals:
+      - academic-narratologist
+      - narrative-system
+    activationConditions:
+      - 叙事学家适用于：识别核心理念（麦基）或前提（埃格里）——在情节之下故事真正要表达的是什么
+    exclusionConditions:
+      - 仅需与叙事学家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 叙事学家质量门：永远不要给出泛泛的建议，比如"让角色更有亲和力"。要具体：*什么*需要改变，在叙事学上*为什么*有效，以及*哪个框架*支持这一点。
+  academic/academic-psychologist.md:
+    origin: upstream_translation
+    upstreamPath: academic/academic-psychologist.md
+    domains:
+      - academic
+      - humanities-research
+    capabilities:
+      - academic-psychologist
+      - evidence-analysis
+    projectSignals:
+      - academic-psychologist
+      - behavioral-psychology
+    activationConditions:
+      - 心理学家适用于：通过成熟的人格框架分析角色行为（大五人格、依恋理论）
+    exclusionConditions:
+      - 仅需与心理学家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 心理学家质量门：永远不要将角色简化为诊断标签。一个角色可以表现出自恋*特质*而不必被定性为"自恋者"。人不等于他们的 DSM 编码。
+  academic/academic-study-planner.md:
     origin: china_original
-    domains: [design, product]
-    capabilities: [user-journey, interaction-design]
-    projectSignals: [product-ui, user-flow]
-    activationConditions: [需要设计用户体验]
-    exclusionConditions: [纯基础设施维护]
-    preferredTasks: [clarify, design, review]
-    qualityGates: [覆盖关键用户旅程, 定义可验证验收标准]
-  design/ux-researcher.md:
+    domains:
+      - academic
+      - humanities-research
+    capabilities:
+      - academic-study-planner
+      - decision-support
+    projectSignals:
+      - academic-study-planner
+      - learning-plan
+    activationConditions:
+      - 学习规划师适用于：面向中国考生和终身学习者的个性化学习规划专家，精通考研、考公、司法考试、CPA 等重大考试的备考策略，擅长运用费曼学习法、艾宾浩斯遗忘曲线、番茄钟等科学方法，帮助学习者制定高效的学习计划并持续优化
+    exclusionConditions:
+      - 仅需与学习规划师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 学习规划师质量门：不存在放之四海而皆准的学习计划——必须基于学习者的具体情况定制
+  design/design-brand-guardian.md:
+    origin: upstream_translation
+    upstreamPath: design/design-brand-guardian.md
+    domains:
+      - design
+      - digital-experience
+    capabilities:
+      - design-brand-guardian
+      - experience-design
+    projectSignals:
+      - design-brand-guardian
+      - brand-system
+    activationConditions:
+      - 品牌守护者适用于：开发品牌战略，包括目的、愿景、使命、价值观和个性
+    exclusionConditions:
+      - 仅需与品牌守护者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 品牌守护者质量门：在战术执行之前建立全面的品牌基础
+  design/design-image-prompt-engineer.md:
+    origin: upstream_translation
+    upstreamPath: design/design-image-prompt-engineer.md
+    domains:
+      - design
+      - artificial-intelligence
+    capabilities:
+      - design-image-prompt-engineer
+      - production-implementation
+    projectSignals:
+      - design-image-prompt-engineer
+      - ai-system
+    activationConditions:
+      - 图像提示词工程师适用于：写出结构清晰、细节到位的提示词，生成专业级 AI 摄影作品
+    exclusionConditions:
+      - 仅需与图像提示词工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 图像提示词工程师质量门：每条提示词都要包含：主体、环境、光线、风格、技术参数
+  design/design-inclusive-visuals-specialist.md:
+    origin: upstream_translation
+    upstreamPath: design/design-inclusive-visuals-specialist.md
+    domains:
+      - design
+      - digital-experience
+    capabilities:
+      - design-inclusive-visuals-specialist
+    projectSignals:
+      - design-inclusive-visuals-specialist
+      - ai-system
+      - cultural-system
+    activationConditions:
+      - 包容性视觉专家适用于：对抗默认偏见：确保生成的媒体素材中，每个人物都有尊严、有主体性、有真实的生活场景，而不是 AI 默认的刻板模板（比如"穿连帽衫的黑客""白人精英 CEO"）。
+    exclusionConditions:
+      - 仅需与包容性视觉专家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 包容性视觉专家质量门：禁止"克隆脸"：在生成多元化群像时，必须强制要求不同的面部结构、年龄和体型，防止 AI 把同一张边缘群体的脸复制粘贴多份。
+  design/design-persona-walkthrough.md:
+    origin: upstream_translation
+    upstreamPath: design/design-persona-walkthrough.md
+    domains:
+      - design
+    capabilities:
+      - design-persona-walkthrough
+    projectSignals:
+      - design-persona-walkthrough
+      - user-research
+      - behavioral-psychology
+    activationConditions:
+      - Persona 走查专家适用于：采用心理深度完整的 persona 画像（依恋理论、决策风格、文化背景）
+    exclusionConditions:
+      - 仅需与Persona 走查专家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - Persona 走查专家质量门：对照 LIFT 模型评估每一屏（Value Proposition 价值主张、Relevance 相关性、Clarity 清晰度、Urgency 紧迫感、Anxiety 焦虑、Distraction 干扰）
+  design/design-ui-designer.md:
+    origin: upstream_translation
+    upstreamPath: design/design-ui-designer.md
+    domains:
+      - design
+      - digital-experience
+    capabilities:
+      - design-ui-designer
+      - experience-design
+    projectSignals:
+      - design-ui-designer
+      - accessibility
+      - brand-system
+    activationConditions:
+      - UI 设计师适用于：开发具有一致视觉语言和交互模式的组件库
+    exclusionConditions:
+      - 仅需与UI 设计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - UI 设计师质量门：在创建单独页面之前先建立组件基础
+  design/design-ux-architect.md:
+    origin: upstream_translation
+    upstreamPath: design/design-ux-architect.md
+    domains:
+      - design
+      - digital-experience
+    capabilities:
+      - design-ux-architect
+      - architecture-design
+    projectSignals:
+      - design-ux-architect
+    activationConditions:
+      - UX 架构师适用于：提供完整的 CSS 设计系统：变量、间距阶梯、字体层级
+    exclusionConditions:
+      - 仅需与UX 架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - UX 架构师质量门：开发动手之前，先把 CSS 架构搭好
+  design/design-ux-researcher.md:
     origin: upstream_translation
     upstreamPath: design/design-ux-researcher.md
-    domains: [design, research]
-    capabilities: [user-research, evidence-synthesis]
-    projectSignals: [usability, user-feedback]
-    activationConditions: [需要研究用户行为]
-    exclusionConditions: [已有充分研究证据]
-    preferredTasks: [clarify, design, review]
-    qualityGates: [引用研究证据, 定义可验证研究结论]
+    domains:
+      - design
+      - digital-experience
+    capabilities:
+      - design-ux-researcher
+      - evidence-analysis
+    projectSignals:
+      - design-ux-researcher
+      - quality-assurance
+      - user-research
+      - behavioral-psychology
+    activationConditions:
+      - UX 研究员适用于：使用定性和定量方法进行全面的用户研究
+    exclusionConditions:
+      - 仅需与UX 研究员职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - UX 研究员质量门：通过用户访谈和行为数据测试产品市场契合度
+  design/design-visual-storyteller.md:
+    origin: upstream_translation
+    upstreamPath: design/design-visual-storyteller.md
+    domains:
+      - design
+      - digital-experience
+    capabilities:
+      - design-visual-storyteller
+      - experience-design
+    projectSignals:
+      - design-visual-storyteller
+      - brand-system
+      - narrative-system
+    activationConditions:
+      - 视觉叙事师适用于：策划有吸引力的视觉故事线和品牌叙事
+    exclusionConditions:
+      - 仅需与视觉叙事师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 视觉叙事师质量门：每个视觉故事都要有清晰的叙事结构（开头、发展、结尾）
+  design/design-whimsy-injector.md:
+    origin: upstream_translation
+    upstreamPath: design/design-whimsy-injector.md
+    domains:
+      - design
+    capabilities:
+      - design-whimsy-injector
+      - experience-design
+    projectSignals:
+      - design-whimsy-injector
+      - brand-system
+    activationConditions:
+      - 趣味注入师适用于：加的趣味元素要给功能加分，不能添乱
+    exclusionConditions:
+      - 仅需与趣味注入师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 趣味注入师质量门：每个趣味元素都要有功能上或情感上的理由
+  engineering/engineering-ai-data-remediation-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-ai-data-remediation-engineer.md
+    domains:
+      - engineering
+      - artificial-intelligence
+      - data-platform
+    capabilities:
+      - engineering-ai-data-remediation-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-ai-data-remediation-engineer
+      - ai-system
+    activationConditions:
+      - AI 数据修复工程师适用于：使用本地 sentence-transformers 嵌入异常行（无需 API）
+    exclusionConditions:
+      - 仅需与AI 数据修复工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - AI 数据修复工程师质量门：每项自动修复必须保留原始值、确定性修复规则和零数据丢失核对结果
+  engineering/engineering-ai-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-ai-engineer.md
+    domains:
+      - engineering
+      - artificial-intelligence
+    capabilities:
+      - engineering-ai-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-ai-engineer
+      - ai-system
+    activationConditions:
+      - AI 工程师适用于：数据管线搭建：清洗、特征工程、数据版本管理（DVC）
+    exclusionConditions:
+      - 仅需与AI 工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - AI 工程师质量门：训练代码必须可复现——随机种子、环境依赖、数据版本全部锁定
+  engineering/engineering-autonomous-optimization-architect.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-autonomous-optimization-architect.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-autonomous-optimization-architect
+      - architecture-design
+      - performance-optimization
+    projectSignals:
+      - engineering-autonomous-optimization-architect
+      - api
+      - security-review
+      - performance
+      - quality-assurance
+    activationConditions:
+      - 自主优化架构师适用于：持续 A/B 优化：在后台用真实用户数据跑实验模型，自动对比当前生产模型的效果。
+    exclusionConditions:
+      - 仅需与自主优化架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 自主优化架构师质量门：禁止主观评分：在影子测试新模型之前，必须明确建立数学化的评估标准（例如：JSON 格式 5 分、延迟 3 分、出现幻觉扣 10 分）。
+  engineering/engineering-backend-architect.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-backend-architect.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-backend-architect
+      - architecture-design
+    projectSignals:
+      - engineering-backend-architect
+      - api
+      - database
+      - security-review
+      - performance
+    activationConditions:
+      - 后端架构师适用于：定义和维护数据 schema 和索引规范
+    exclusionConditions:
+      - 仅需与后端架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 后端架构师质量门：在所有系统层实施纵深防御策略
+  engineering/engineering-cms-developer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-cms-developer.md
+    domains:
+      - engineering
+      - digital-experience
+    capabilities:
+      - engineering-cms-developer
+      - production-implementation
+    projectSignals:
+      - engineering-cms-developer
+      - drupal
+      - wordpress
+    activationConditions:
+      - CMS 开发者适用于：架构：内容建模、站点结构、Field API 设计
+    exclusionConditions:
+      - 仅需与CMS 开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - CMS 开发者质量门：内容模型、权限、迁移和缓存策略必须在目标 Drupal 或 WordPress 版本中验证
+  engineering/engineering-code-reviewer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-code-reviewer.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-code-reviewer
+      - quality-review
+    projectSignals:
+      - engineering-code-reviewer
+      - security-review
+      - performance
+    activationConditions:
+      - 代码审查员适用于：专业代码审查专家，提供建设性、可操作的反馈，聚焦正确性、可维护性、安全性和性能，而非代码风格偏好
+    exclusionConditions:
+      - 仅需与代码审查员职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 代码审查员质量门：每条阻塞意见必须定位具体代码，并说明其对正确性、安全性、性能或可维护性的影响
+  engineering/engineering-codebase-onboarding-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-codebase-onboarding-engineer.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-codebase-onboarding-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-codebase-onboarding-engineer
+    activationConditions:
+      - 代码库入职引导工程师适用于：盘点代码库结构，识别有意义的目录、配置清单和运行时入口点
+    exclusionConditions:
+      - 仅需与代码库入职引导工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 代码库入职引导工程师质量门：除非能指出实现或路由该行为的文件，否则不要说某个模块负责某项行为
+  engineering/engineering-data-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-data-engineer.md
+    domains:
+      - engineering
+      - data-platform
+    capabilities:
+      - engineering-data-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-data-engineer
+    activationConditions:
+      - 数据工程师适用于：设计和构建幂等、可观测、自愈的 ETL/ELT 管线
+    exclusionConditions:
+      - 仅需与数据工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 数据工程师质量门：定义和执行生产者与消费者之间的数据契约
+  engineering/engineering-database-optimizer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-database-optimizer.md
+    domains:
+      - engineering
+      - data-platform
+    capabilities:
+      - engineering-database-optimizer
+      - performance-optimization
+    projectSignals:
+      - engineering-database-optimizer
+      - database
+      - performance
+    activationConditions:
+      - 数据库优化师适用于：数据库性能专家，专注于 Schema 设计、查询优化、索引策略和性能调优，精通 PostgreSQL、MySQL 及 Supabase、PlanetScale 等现代数据库
+    exclusionConditions:
+      - 仅需与数据库优化师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 数据库优化师质量门：必须用执行计划和同条件基准数据证明优化收益，并检查结果正确性与回归风险
+  engineering/engineering-devops-automator.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-devops-automator.md
+    domains:
+      - engineering
+      - platform-reliability
+    capabilities:
+      - engineering-devops-automator
+      - production-implementation
+    projectSignals:
+      - engineering-devops-automator
+      - ci-cd
+    activationConditions:
+      - DevOps 自动化师适用于：使用 Terraform、CloudFormation 或 CDK 设计并实现基础设施即代码
+    exclusionConditions:
+      - 仅需与DevOps 自动化师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - DevOps 自动化师质量门：通过全面自动化消除手动流程
+  engineering/engineering-dingtalk-integration-developer.md:
+    origin: china_original
+    domains:
+      - engineering
+    capabilities:
+      - engineering-dingtalk-integration-developer
+      - production-implementation
+      - systems-integration
+    projectSignals:
+      - engineering-dingtalk-integration-developer
+      - dingtalk
+    activationConditions:
+      - 钉钉集成开发工程师适用于：应用类型选择：
+    exclusionConditions:
+      - 仅需与钉钉集成开发工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 钉钉集成开发工程师质量门：区分 access_token 的获取方式：企业内部应用使用 AppKey + AppSecret，ISV 应用需要 SuiteKey + SuiteSecret + CorpId
+  engineering/engineering-drupal-shopping-cart.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-drupal-shopping-cart.md
+    domains:
+      - engineering
+      - digital-experience
+    capabilities:
+      - engineering-drupal-shopping-cart
+    projectSignals:
+      - engineering-drupal-shopping-cart
+      - drupal
+    activationConditions:
+      - Drupal 购物车工程师适用于：商品架构：product type、product variation、属性、SKU、store，以及多店铺目录
+    exclusionConditions:
+      - 仅需与Drupal 购物车工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Drupal 购物车工程师质量门：商品变体、支付、税费、优惠和结账流程必须在目标 Drupal Commerce 版本中端到端验证
+  engineering/engineering-email-intelligence-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-email-intelligence-engineer.md
+    domains:
+      - engineering
+      - data-platform
+    capabilities:
+      - engineering-email-intelligence-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-email-intelligence-engineer
+      - ai-system
+    activationConditions:
+      - 邮件智能工程师适用于：构建健壮的管线，从原始邮件（MIME、Gmail API、Microsoft Graph）中生成结构化、可推理的输出
+    exclusionConditions:
+      - 仅需与邮件智能工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 邮件智能工程师质量门：绝不将扁平化的邮件线程当作单一文档处理。线程拓扑至关重要。
+  engineering/engineering-embedded-firmware-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-embedded-firmware-engineer.md
+    domains:
+      - engineering
+      - hardware-systems
+    capabilities:
+      - engineering-embedded-firmware-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-embedded-firmware-engineer
+      - embedded-system
+    activationConditions:
+      - 嵌入式固件工程师适用于：编写正确、确定性的固件，尊重硬件约束（RAM、Flash、时序）
+    exclusionConditions:
+      - 仅需与嵌入式固件工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 嵌入式固件工程师质量门：初始化之后，RTOS 任务中绝不使用动态分配（malloc/new）——使用静态分配或内存池
+  engineering/engineering-embedded-linux-driver-engineer.md:
+    origin: china_original
+    domains:
+      - engineering
+      - hardware-systems
+    capabilities:
+      - engineering-embedded-linux-driver-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-embedded-linux-driver-engineer
+      - embedded-system
+    activationConditions:
+      - 嵌入式 Linux 驱动工程师适用于：编写符合 Linux 内核编码规范的字符设备/平台设备/总线驱动
+    exclusionConditions:
+      - 仅需与嵌入式 Linux 驱动工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 嵌入式 Linux 驱动工程师质量门：严格遵循 Documentation/process/coding-style.rst——Tab 缩进、80 列软限制、内核命名风格
+  engineering/engineering-feishu-integration-developer.md:
+    origin: china_original
+    domains:
+      - engineering
+    capabilities:
+      - engineering-feishu-integration-developer
+      - production-implementation
+      - systems-integration
+    projectSignals:
+      - engineering-feishu-integration-developer
+      - feishu
+    activationConditions:
+      - 飞书集成开发工程师适用于：自定义机器人：基于 Webhook 的消息推送机器人
+    exclusionConditions:
+      - 仅需与飞书集成开发工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 飞书集成开发工程师质量门：区分 tenant_access_token 和 user_access_token 的使用场景
+  engineering/engineering-filament-optimization-specialist.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-filament-optimization-specialist.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-filament-optimization-specialist
+      - performance-optimization
+    projectSignals:
+      - engineering-filament-optimization-specialist
+      - user-research
+    activationConditions:
+      - Filament 优化专家适用于：专精于重构和优化 Filament PHP 后台管理界面的专家，专注高影响力的结构性改造，而非表面调整，打造极致可用性与效率
+    exclusionConditions:
+      - 仅需与Filament 优化专家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Filament 优化专家质量门：1–10 评分行 → 原生范围滑块（<input type="range">），通过 TextInput::make()->extraInputAttributes(['type' => 'range', 'min' => 1, 'max' => 10, 'step' => 1]) 实现
+  engineering/engineering-fpga-digital-design-engineer.md:
+    origin: china_original
+    domains:
+      - engineering
+      - hardware-systems
+    capabilities:
+      - engineering-fpga-digital-design-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-fpga-digital-design-engineer
+      - digital-hardware
+    activationConditions:
+      - FPGA/ASIC 数字设计工程师适用于：编写可综合、可维护的 RTL 代码，满足面积/时序/功耗约束
+    exclusionConditions:
+      - 仅需与FPGA/ASIC 数字设计工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - FPGA/ASIC 数字设计工程师质量门：时序逻辑统一使用非阻塞赋值（<=），组合逻辑统一使用阻塞赋值（=）
+  engineering/engineering-frontend-developer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-frontend-developer.md
+    domains:
+      - engineering
+      - digital-experience
+    capabilities:
+      - engineering-frontend-developer
+      - production-implementation
+    projectSignals:
+      - engineering-frontend-developer
+      - web-frontend
+      - performance
+    activationConditions:
+      - 前端开发者适用于：构建带有导航命令（openAt、reveal、peek）的编辑器扩展
+    exclusionConditions:
+      - 仅需与前端开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 前端开发者质量门：编写高覆盖率的全面单元测试和集成测试
+  engineering/engineering-git-workflow-master.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-git-workflow-master.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-git-workflow-master
+      - workflow-governance
+    projectSignals:
+      - engineering-git-workflow-master
+    activationConditions:
+      - Git 工作流大师适用于：Git 工作流专家，精通分支策略、版本控制最佳实践，包括约定式提交、变基、工作树和 CI 友好的分支管理
+    exclusionConditions:
+      - 仅需与Git 工作流大师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Git 工作流大师质量门：分支或变基方案必须给出可恢复步骤，并通过目标仓库的 CI 与历史一致性检查
+  engineering/engineering-incident-response-commander.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-incident-response-commander.md
+    domains:
+      - engineering
+      - platform-reliability
+    capabilities:
+      - engineering-incident-response-commander
+      - incident-response
+      - decision-support
+    projectSignals:
+      - engineering-incident-response-commander
+      - production-reliability
+    activationConditions:
+      - 故障响应指挥官适用于：建立并执行严重等级分类框架（SEV1-SEV4），配套明确的升级触发条件
+    exclusionConditions:
+      - 仅需与故障响应指挥官职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+      - review
+    qualityGates:
+      - 故障响应指挥官质量门：绝不跳过严重等级分类——它决定了升级路径、沟通频率和资源调配
+  engineering/engineering-iot-solution-architect.md:
+    origin: china_original
+    domains:
+      - engineering
+      - hardware-systems
+    capabilities:
+      - engineering-iot-solution-architect
+      - architecture-design
+    projectSignals:
+      - engineering-iot-solution-architect
+      - iot
+      - security-review
+      - cloud
+    activationConditions:
+      - IoT 方案架构师适用于：设计可扩展的 IoT 系统架构，覆盖设备层、边缘层、平台层和应用层
+    exclusionConditions:
+      - 仅需与IoT 方案架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - IoT 方案架构师质量门：MQTT：适合持久连接、双向通信、QoS 可选的场景；Broker 推荐 EMQX/Mosquitto/云托管
+  engineering/engineering-it-service-manager.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-it-service-manager.md
+    domains:
+      - engineering
+      - platform-reliability
+    capabilities:
+      - engineering-it-service-manager
+      - decision-support
+    projectSignals:
+      - engineering-it-service-manager
+    activationConditions:
+      - IT 服务经理适用于：服务目录：服务定义、归属、服务项设计、请求履行
+    exclusionConditions:
+      - 仅需与IT 服务经理职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - IT 服务经理质量门：每项服务流程必须明确负责人、SLA、升级条件、记录证据和持续改进指标
+  engineering/engineering-mechanical-design-engineer.md:
+    origin: china_original
+    domains:
+      - engineering
+      - hardware-systems
+    capabilities:
+      - engineering-mechanical-design-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-mechanical-design-engineer
+      - mechanical-product
+    activationConditions:
+      - 机械设计工程师适用于：输出算得出、画得对、做得了、装得上、用得久的机械设计：每一个关键尺寸都有计算依据，每一个公差都有功能理由
+    exclusionConditions:
+      - 仅需与机械设计工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 机械设计工程师质量门：方案不止一个：传动方案至少给 2–3 套（如齿轮 vs 同步带 vs 行星减速器），按效率/精度/噪声/成本/寿命列对比表，让客户基于数据决策
+  engineering/engineering-minimal-change-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-minimal-change-engineer.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-minimal-change-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-minimal-change-engineer
+      - performance
+    activationConditions:
+      - 最小变更工程师适用于：补丁应该是使失败用例通过的*最小行数集合*
+    exclusionConditions:
+      - 仅需与最小变更工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 最小变更工程师质量门：差异必须只覆盖失败用例所需范围，通过定向测试且不得夹带无关重构
+  engineering/engineering-mobile-app-builder.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-mobile-app-builder.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-mobile-app-builder
+      - production-implementation
+    projectSignals:
+      - engineering-mobile-app-builder
+      - performance
+    activationConditions:
+      - 移动应用开发者适用于：用 Swift、SwiftUI 和 iOS 框架开发原生 iOS 应用
+    exclusionConditions:
+      - 仅需与移动应用开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 移动应用开发者质量门：遵循各平台设计规范（Material Design、Human Interface Guidelines）
+  engineering/engineering-multi-agent-systems-architect.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-multi-agent-systems-architect.md
+    domains:
+      - engineering
+      - artificial-intelligence
+    capabilities:
+      - engineering-multi-agent-systems-architect
+      - architecture-design
+    projectSignals:
+      - engineering-multi-agent-systems-architect
+      - ai-system
+      - production-reliability
+    activationConditions:
+      - 多智能体系统架构师适用于：系统架构师，专精于 multi-agent（多智能体）AI 流水线的设计、协调与治理——涵盖拓扑选型、上下文管理、智能体间信任、故障恢复、human-in-the-loop（人在环中）门控，以及面向生产级智能体系统的可观测性
+    exclusionConditions:
+      - 仅需与多智能体系统架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 多智能体系统架构师质量门：Demo 会撒谎；生产才讲真话。 绝不为一个尚未把故障模式连同显式恢复路径逐一列清的流水线签字放行。"我跑的时候是好的"不算设计。
+  engineering/engineering-network-engineer-china.md:
+    origin: china_original
+    domains:
+      - engineering
+      - platform-reliability
+    capabilities:
+      - engineering-network-engineer-china
+      - production-implementation
+    projectSignals:
+      - engineering-network-engineer-china
+    activationConditions:
+      - 国内网络工程师适用于：设计可靠、可扩展、易维护的国产设备组网方案（园区/数据中心/广域）
+    exclusionConditions:
+      - 仅需与国内网络工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 国内网络工程师质量门：任何生产配置变更前，必须先 display current-configuration 备份现网配置
+  engineering/engineering-orgscript-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-orgscript-engineer.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-orgscript-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-orgscript-engineer
+    activationConditions:
+      - OrgScript 工程师适用于：维护并增强 OrgScript 解析器、linter、格式化工具和 CLI 工具链
+    exclusionConditions:
+      - 仅需与OrgScript 工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - OrgScript 工程师质量门：OrgScript 不是图灵完备语言；别把它当通用编程语言对待。它是一种描述语言
+  engineering/engineering-pc-host-engineer.md:
+    origin: china_original
+    domains:
+      - engineering
+      - hardware-systems
+    capabilities:
+      - engineering-pc-host-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-pc-host-engineer
+      - embedded-system
+      - qt-desktop
+    activationConditions:
+      - 上位机工程师适用于：设计稳定、可维护的 Qt 桌面应用，UI 线程绝不阻塞、串口/网口断连可恢复
+    exclusionConditions:
+      - 仅需与上位机工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 上位机工程师质量门：UI 线程禁忌：UI 线程绝不直接做串口读写、文件 I/O、网络请求、Modbus 事务——一律丢到 worker QThread 或 QtConcurrent::run
+  engineering/engineering-prompt-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-prompt-engineer.md
+    domains:
+      - engineering
+      - artificial-intelligence
+    capabilities:
+      - engineering-prompt-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-prompt-engineer
+      - ai-system
+      - quality-assurance
+      - behavioral-psychology
+    activationConditions:
+      - Prompt 工程师适用于：设计 system prompt、few-shot 示例和 chain-of-thought（思维链）指令，产出可预测、高质量的输出
+    exclusionConditions:
+      - 仅需与Prompt 工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Prompt 工程师质量门：在没有先定义好期望输出格式和成功标准之前，绝不动笔写 prompt
+  engineering/engineering-rapid-prototyper.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-rapid-prototyper.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-rapid-prototyper
+    projectSignals:
+      - engineering-rapid-prototyper
+      - api
+    activationConditions:
+      - 快速原型师适用于：使用快速开发工具在 3 天内创建可工作的原型
+    exclusionConditions:
+      - 仅需与快速原型师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 快速原型师质量门：聚焦核心用户流程和主要价值主张
+  engineering/engineering-security-engineer.md:
+    origin: upstream_translation
+    upstreamPath: security/security-appsec-engineer.md
+    domains:
+      - engineering
+      - cybersecurity
+    capabilities:
+      - engineering-security-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-security-engineer
+      - web-frontend
+      - api
+      - security-review
+      - cloud
+    activationConditions:
+      - 安全工程师适用于：在每个阶段集成安全——设计、实现、测试、部署和运维
+    exclusionConditions:
+      - 仅需与安全工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 安全工程师质量门：必须给出威胁模型、可利用性判断、修复证据和残余风险，不得仅罗列扫描告警
+  engineering/engineering-senior-developer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-senior-developer.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-senior-developer
+      - production-implementation
+    projectSignals:
+      - engineering-senior-developer
+    activationConditions:
+      - 高级开发者适用于：精通 Laravel/Livewire/FluxUI 的高级全栈开发者，擅长高端 CSS 效果、Three.js 集成，专注打造有质感的 Web 体验
+    exclusionConditions:
+      - 仅需与高级开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 高级开发者质量门：所有 FluxUI 组件都可用——以官方文档为准
+  engineering/engineering-software-architect.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-software-architect.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-software-architect
+      - architecture-design
+    projectSignals:
+      - engineering-software-architect
+    activationConditions:
+      - 软件架构师适用于：软件架构专家，精通系统设计、领域驱动设计、架构模式和技术决策，构建可扩展、可维护的系统
+    exclusionConditions:
+      - 仅需与软件架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 软件架构师质量门：架构决策记录必须覆盖边界、权衡、故障恢复、演进路径和可验证约束
+  engineering/engineering-solidity-smart-contract-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-solidity-smart-contract-engineer.md
+    domains:
+      - engineering
+      - cybersecurity
+    capabilities:
+      - engineering-solidity-smart-contract-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-solidity-smart-contract-engineer
+      - security-review
+      - blockchain
+    activationConditions:
+      - Solidity 智能合约工程师适用于：默认遵循 checks-effects-interactions 模式和 pull-over-push 模式
+    exclusionConditions:
+      - 仅需与Solidity 智能合约工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Solidity 智能合约工程师质量门：永远不用 tx.origin 做鉴权——必须用 msg.sender
+  engineering/engineering-sre.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-sre.md
+    domains:
+      - engineering
+      - platform-reliability
+    capabilities:
+      - engineering-sre
+    projectSignals:
+      - engineering-sre
+      - production-reliability
+    activationConditions:
+      - SRE (站点可靠性工程师)适用于：站点可靠性工程专家，精通 SLO、错误预算、可观测性、混沌工程和减少重复劳动，守护大规模生产系统的稳定性
+    exclusionConditions:
+      - 仅需与SRE (站点可靠性工程师)职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - SRE (站点可靠性工程师)质量门：SLO、错误预算、告警和运行手册必须可度量，并用演练或生产证据验证
+  engineering/engineering-technical-writer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-technical-writer.md
+    domains:
+      - engineering
+    capabilities:
+      - engineering-technical-writer
+      - technical-writing
+    projectSignals:
+      - engineering-technical-writer
+      - api
+    activationConditions:
+      - 技术文档工程师适用于：写出让开发者 30 秒内就想用这个项目的 README
+    exclusionConditions:
+      - 仅需与技术文档工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 技术文档工程师质量门：审计现有文档的准确性、缺口和过时内容
+  engineering/engineering-threat-detection-engineer.md:
+    origin: upstream_translation
+    upstreamPath: security/security-threat-detection-engineer.md
+    domains:
+      - engineering
+      - cybersecurity
+    capabilities:
+      - engineering-threat-detection-engineer
+      - production-implementation
+    projectSignals:
+      - engineering-threat-detection-engineer
+      - security-review
+    activationConditions:
+      - 威胁检测工程师（工程侧）适用于：用 Sigma（厂商无关）编写检测规则，然后编译到目标 SIEM（Splunk SPL、Microsoft Sentinel KQL、Elastic EQL、Chronicle YARA-L）
+    exclusionConditions:
+      - 仅需与威胁检测工程师（工程侧）职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 威胁检测工程师（工程侧）质量门：绝不在没有用真实日志数据测试的情况下部署检测规则——未测试的规则要么疯狂告警要么完全沉默
+  engineering/engineering-voice-ai-integration-engineer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-voice-ai-integration-engineer.md
+    domains:
+      - engineering
+      - artificial-intelligence
+    capabilities:
+      - engineering-voice-ai-integration-engineer
+      - production-implementation
+      - systems-integration
+    projectSignals:
+      - engineering-voice-ai-integration-engineer
+      - api
+      - ai-system
+      - interactive-audio
+    activationConditions:
+      - 语音 AI 集成工程师适用于：设计和构建从音频上传到结构化可用输出的完整流水线
+    exclusionConditions:
+      - 仅需与语音 AI 集成工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 语音 AI 集成工程师质量门：永远不要在未验证格式、采样率和声道配置的情况下，将原始未处理的音频直接送入转录模型。劣质输入是精度无声下降的首要原因。
+  engineering/engineering-wechat-mini-program-developer.md:
+    origin: china_original
+    domains:
+      - engineering
+    capabilities:
+      - engineering-wechat-mini-program-developer
+      - production-implementation
+    projectSignals:
+      - engineering-wechat-mini-program-developer
+      - api
+      - wechat
+      - performance
+    activationConditions:
+      - 微信小程序开发者适用于：项目架构设计：页面结构、组件拆分、数据流管理
+    exclusionConditions:
+      - 仅需与微信小程序开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 微信小程序开发者质量门：页面文件不超过 500KB，总包不超过 2MB，分包后单包不超过 2MB
+  engineering/engineering-wordpress-shopping-cart.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-wordpress-shopping-cart.md
+    domains:
+      - engineering
+      - digital-experience
+    capabilities:
+      - engineering-wordpress-shopping-cart
+    projectSignals:
+      - engineering-wordpress-shopping-cart
+      - wordpress
+    activationConditions:
+      - WordPress 购物车工程师适用于：商品架构：simple/variable/grouped/external 商品、变体、属性和商品数据
+    exclusionConditions:
+      - 仅需与WordPress 购物车工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - WordPress 购物车工程师质量门：商品类型、支付、税费、优惠券和结账流程必须在目标 WooCommerce 版本中端到端验证
+  finance/finance-bookkeeper-controller.md:
+    origin: upstream_translation
+    upstreamPath: finance/finance-bookkeeper-controller.md
+    domains:
+      - finance
+    capabilities:
+      - finance-bookkeeper-controller
+      - financial-analysis
+      - financial-control
+    projectSignals:
+      - finance-bookkeeper-controller
+      - financial-model
+      - management-reporting
+    activationConditions:
+      - 项目需要簿记与财务总监参与，具体涉及专业簿记与财务总监，精通日常会计操作、财务对账、月末结账流程和内部控制。确保财务记录的准确性、完整性和时效性，始终保持 GAAP 合规…时启用
+    exclusionConditions:
+      - 任务不涉及簿记与财务总监负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由簿记与财务总监核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“日常会计操作”并提供可复核结果
+  finance/finance-financial-analyst.md:
+    origin: upstream_translation
+    upstreamPath: finance/finance-financial-analyst.md
+    domains:
+      - finance
+    capabilities:
+      - finance-financial-analyst
+      - financial-analysis
+      - financial-control
+    projectSignals:
+      - finance-financial-analyst
+      - financial-model
+      - management-reporting
+    activationConditions:
+      - 项目需要财务分析师参与，具体涉及专业财务分析师，精通财务建模、预测、场景分析和数据驱动的决策支持。将原始财务数据转化为可行动的商业智能，驱动战略规划、投资决策和运营优化时启用
+    exclusionConditions:
+      - 任务不涉及财务分析师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由财务分析师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“财务建模与估值”并提供可复核结果
+  finance/finance-financial-forecaster.md:
+    origin: china_original
+    domains:
+      - finance
+    capabilities:
+      - finance-financial-forecaster
+      - financial-forecasting
+      - financial-control
+    projectSignals:
+      - finance-financial-forecaster
+      - cash-flow
+      - scenario-modeling
+    activationConditions:
+      - 项目需要财务预测分析师参与，具体涉及专注企业财务预测与场景建模的分析专家，精通收入预测、现金流管理、烧钱率分析和融资对接，帮助创业公司和成长型企业在不确定环境中做出有数据…时启用
+    exclusionConditions:
+      - 任务不涉及财务预测分析师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由财务预测分析师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“收入预测与建模”并提供可复核结果
+  finance/finance-fpa-analyst.md:
+    origin: upstream_translation
+    upstreamPath: finance/finance-fpa-analyst.md
+    domains:
+      - finance
+    capabilities:
+      - finance-fpa-analyst
+      - financial-analysis
+      - financial-control
+    projectSignals:
+      - finance-fpa-analyst
+      - financial-model
+      - management-reporting
+    activationConditions:
+      - 项目需要FP&A 分析师参与，具体涉及专业财务规划与分析（FP&A）专家，精通预算编制、差异分析、财务规划、滚动预测和战略决策支持。在数字与业务叙事之间架起桥梁，驱动运营绩…时启用
+    exclusionConditions:
+      - 任务不涉及FP&A 分析师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由FP&A 分析师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“预算编制与规划”并提供可复核结果
+  finance/finance-fraud-detector.md:
+    origin: china_original
+    domains:
+      - finance
+    capabilities:
+      - finance-fraud-detector
+      - fraud-risk
+      - financial-control
+    projectSignals:
+      - finance-fraud-detector
+      - fraud-detection
+      - aml
+    activationConditions:
+      - 项目需要金融风控分析师参与，具体涉及专注交易欺诈检测与金融风险防控的分析专家，精通支付宝/微信支付/银联渠道的风控策略、反洗钱合规、电信诈骗识别、央行征信应用和互联网金融…时启用
+    exclusionConditions:
+      - 任务不涉及金融风控分析师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由金融风控分析师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“交易欺诈检测”并提供可复核结果
+  finance/finance-hk-stock-compliance-reviewer.md:
+    origin: china_original
+    domains:
+      - finance
+      - legal-compliance
+    capabilities:
+      - finance-hk-stock-compliance-reviewer
+      - securities-compliance
+      - evidence-based-review
+    projectSignals:
+      - finance-hk-stock-compliance-reviewer
+      - hkex
+      - sfc-compliance
+    activationConditions:
+      - 项目需要香港股市合规审查专家参与，具体涉及资深香港股市合规审查专家，精通HKEX上市规则、SFC监管条例、公司条例及证券及期货条例。提供上市申请合规审查、持续责任监督、关联交易…时启用
+    exclusionConditions:
+      - 任务不涉及香港股市合规审查专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由香港股市合规审查专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“专业知识体系”并提供可复核结果
+  finance/finance-investment-researcher.md:
+    origin: upstream_translation
+    upstreamPath: finance/finance-investment-researcher.md
+    domains:
+      - finance
+    capabilities:
+      - finance-investment-researcher
+      - investment-research
+      - financial-control
+    projectSignals:
+      - finance-investment-researcher
+      - due-diligence
+      - valuation
+    activationConditions:
+      - 项目需要投资研究员参与，具体涉及专业投资研究员，精通市场研究、尽职调查、投资组合分析和资产估值。通过严谨的基本面和量化分析识别投资机会、评估风险，支持数据驱动的投资组…时启用
+    exclusionConditions:
+      - 任务不涉及投资研究员负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由投资研究员核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“基本面分析”并提供可复核结果
+  finance/finance-invoice-manager.md:
+    origin: china_original
+    domains:
+      - finance
+    capabilities:
+      - finance-invoice-manager
+      - invoice-management
+      - financial-control
+    projectSignals:
+      - finance-invoice-manager
+      - vat-invoice
+      - tax-system
+    activationConditions:
+      - 项目需要发票管理专家参与，具体涉及专注中国企业发票全生命周期管理的财税专家，精通增值税专用发票与普通发票管理、金税系统操作、电子发票推广、三单匹配、报销审批和税务合规，…时启用
+    exclusionConditions:
+      - 任务不涉及发票管理专家负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由发票管理专家核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“发票开具管理”并提供可复核结果
+  finance/finance-tax-strategist.md:
+    origin: upstream_translation
+    upstreamPath: finance/finance-tax-strategist.md
+    domains:
+      - finance
+    capabilities:
+      - finance-tax-strategist
+      - tax-compliance
+      - financial-control
+    projectSignals:
+      - finance-tax-strategist
+      - tax-planning
+      - tax-compliance
+    activationConditions:
+      - 项目需要税务策略师参与，具体涉及专业税务策略师，精通税务优化、多辖区合规、转让定价和战略税务规划。在确保完全合规的前提下，穿越复杂税法体系以最小化税负，覆盖地方、州、…时启用
+    exclusionConditions:
+      - 任务不涉及税务策略师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由税务策略师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“税务规划与优化”并提供可复核结果
+  game-development/blender/blender-addon-engineer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/blender/blender-addon-engineer.md
+    domains:
+      - game-development
+    capabilities:
+      - blender-addon-engineer
+      - production-implementation
+    projectSignals:
+      - blender-addon-engineer
+      - blender
+    activationConditions:
+      - Blender 插件工程师适用于：构建自动化资源准备、验证和导出的 Blender 插件
+    exclusionConditions:
+      - 仅需与Blender 插件工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Blender 插件工程师质量门：强制要求：尽可能优先使用数据 API 访问（bpy.data、bpy.types、直接属性编辑），而非依赖上下文的脆弱 bpy.ops 调用；仅在 Blender 主要以 Operator 形式暴露功能时（如某些导出流程）才使用 bpy.ops
+  game-development/game-audio-engineer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/game-audio-engineer.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - game-audio-engineer
+      - production-implementation
+    projectSignals:
+      - game-audio-engineer
+      - performance
+      - game-production
+      - interactive-audio
+    activationConditions:
+      - 游戏音频工程师适用于：设计可随内容扩展且不失控的 FMOD/Wwise 工程结构
+    exclusionConditions:
+      - 仅需与游戏音频工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 游戏音频工程师质量门：强制要求：所有游戏音频必须通过中间件事件系统（FMOD/Wwise）——除了原型阶段，不允许在游戏逻辑代码中直接使用 AudioSource/AudioComponent 播放
+  game-development/game-designer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/game-designer.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - game-designer
+      - experience-design
+    projectSignals:
+      - game-designer
+      - game-production
+      - behavioral-psychology
+    activationConditions:
+      - 游戏设计师适用于：编写不留实现歧义的游戏设计文档（GDD）
+    exclusionConditions:
+      - 仅需与游戏设计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 游戏设计师质量门：每个机制必须记录：目的、玩家体验目标、输入、输出、边界情况和失败状态
+  game-development/godot/godot-gameplay-scripter.md:
+    origin: upstream_translation
+    upstreamPath: game-development/godot/godot-gameplay-scripter.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - godot-gameplay-scripter
+    projectSignals:
+      - godot-gameplay-scripter
+      - security-review
+      - game-production
+      - godot
+    activationConditions:
+      - Godot 游戏脚本开发者适用于：通过正确的场景和节点组合贯彻"一切皆节点"的理念
+    exclusionConditions:
+      - 仅需与Godot 游戏脚本开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Godot 游戏脚本开发者质量门：强制 GDScript：信号名必须是 snake_case（如 health_changed、enemy_died、item_collected）
+  game-development/godot/godot-multiplayer-engineer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/godot/godot-multiplayer-engineer.md
+    domains:
+      - game-development
+    capabilities:
+      - godot-multiplayer-engineer
+      - production-implementation
+    projectSignals:
+      - godot-multiplayer-engineer
+      - api
+      - game-production
+      - godot
+    activationConditions:
+      - Godot 多人游戏工程师适用于：正确使用 set_multiplayer_authority() 实现服务端权威游戏逻辑
+    exclusionConditions:
+      - 仅需与Godot 多人游戏工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Godot 多人游戏工程师质量门：强制要求：服务端（peer ID 1）拥有所有游戏关键状态——位置、生命值、分数、物品状态
+  game-development/godot/godot-shader-developer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/godot/godot-shader-developer.md
+    domains:
+      - game-development
+    capabilities:
+      - godot-shader-developer
+      - production-implementation
+    projectSignals:
+      - godot-shader-developer
+      - three-dimensional
+      - performance
+      - graphics-rendering
+      - godot
+    activationConditions:
+      - Godot Shader 开发者适用于：编写 2D CanvasItem shader 用于精灵效果、UI 打磨和 2D 后处理
+    exclusionConditions:
+      - 仅需与Godot Shader 开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Godot Shader 开发者质量门：强制要求：Godot 的着色语言不是原生 GLSL——使用 Godot 内置变量（TEXTURE、UV、COLOR、FRAGCOORD）而非 GLSL 等价物
+  game-development/level-designer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/level-designer.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - level-designer
+      - experience-design
+    projectSignals:
+      - level-designer
+      - game-production
+      - narrative-system
+    activationConditions:
+      - 关卡设计师适用于：创造通过环境提示无文字教学的布局
+    exclusionConditions:
+      - 仅需与关卡设计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 关卡设计师质量门：强制要求：关键路径必须在视觉上清晰可辨——除非迷失方向是有意设计的，否则玩家永远不应该迷路
+  game-development/narrative-designer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/narrative-designer.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - narrative-designer
+      - experience-design
+    projectSignals:
+      - narrative-designer
+      - game-production
+      - narrative-system
+    activationConditions:
+      - 叙事设计师适用于：写出听起来像角色而不是编剧的对话
+    exclusionConditions:
+      - 仅需与叙事设计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 叙事设计师质量门：强制要求：每句台词必须通过"真人会这样说话吗？"的测试——不允许把说明文伪装成对话
+  game-development/roblox-studio/roblox-avatar-creator.md:
+    origin: upstream_translation
+    upstreamPath: game-development/roblox-studio/roblox-avatar-creator.md
+    domains:
+      - game-development
+    capabilities:
+      - roblox-avatar-creator
+    projectSignals:
+      - roblox-avatar-creator
+      - roblox
+    activationConditions:
+      - Roblox 虚拟形象创作者适用于：创建在 R15 体型和虚拟形象缩放间正确挂载的虚拟形象配件
+    exclusionConditions:
+      - 仅需与Roblox 虚拟形象创作者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Roblox 虚拟形象创作者质量门：强制要求：所有 UGC 配件网格必须低于 4,000 三角面——超出会被自动拒绝
+  game-development/roblox-studio/roblox-experience-designer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/roblox-studio/roblox-experience-designer.md
+    domains:
+      - game-development
+    capabilities:
+      - roblox-experience-designer
+      - experience-design
+    projectSignals:
+      - roblox-experience-designer
+      - game-production
+      - roblox
+    activationConditions:
+      - Roblox 体验设计师适用于：设计针对 Roblox 受众（主要年龄 9–17 岁）调优的核心参与循环
+    exclusionConditions:
+      - 仅需与Roblox 体验设计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - Roblox 体验设计师质量门：强制要求：所有付费内容必须符合 Roblox 政策——不允许让免费游戏体验变得糟糕或不可能的 pay-to-win 机制；免费体验必须是完整的
+  game-development/roblox-studio/roblox-systems-scripter.md:
+    origin: upstream_translation
+    upstreamPath: game-development/roblox-studio/roblox-systems-scripter.md
+    domains:
+      - game-development
+    capabilities:
+      - roblox-systems-scripter
+    projectSignals:
+      - roblox-systems-scripter
+      - security-review
+      - roblox
+    activationConditions:
+      - Roblox 系统脚本工程师适用于：实现服务端权威游戏逻辑，客户端只接收视觉确认，不接收真相
+    exclusionConditions:
+      - 仅需与Roblox 系统脚本工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Roblox 系统脚本工程师质量门：强制要求：服务端是真相——客户端展示状态，不拥有状态
+  game-development/technical-artist.md:
+    origin: upstream_translation
+    upstreamPath: game-development/technical-artist.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - technical-artist
+      - experience-design
+    projectSignals:
+      - technical-artist
+      - performance
+      - graphics-rendering
+    activationConditions:
+      - 技术美术适用于：为目标平台（PC、主机、移动端）编写和优化 shader
+    exclusionConditions:
+      - 仅需与技术美术职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术美术质量门：强制要求：每种资源类型都有文档化的预算——面数、纹理、Draw Call、粒子数——美术必须在制作前而非制作后被告知限制
+  game-development/unity/unity-architect.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unity/unity-architect.md
+    domains:
+      - game-development
+    capabilities:
+      - unity-architect
+      - architecture-design
+    projectSignals:
+      - unity-architect
+      - unity
+    activationConditions:
+      - Unity 架构师适用于：使用 ScriptableObject 事件通道消除系统间的硬引用
+    exclusionConditions:
+      - 仅需与Unity 架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - Unity 架构师质量门：强制要求：所有共享游戏数据放在 ScriptableObject 中，永远不放在跨场景传递的 MonoBehaviour 字段中
+  game-development/unity/unity-editor-tool-developer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unity/unity-editor-tool-developer.md
+    domains:
+      - game-development
+    capabilities:
+      - unity-editor-tool-developer
+      - production-implementation
+    projectSignals:
+      - unity-editor-tool-developer
+      - unity
+    activationConditions:
+      - Unity 编辑器工具开发者适用于：构建 EditorWindow 工具让团队无需离开 Unity 就能了解项目状态
+    exclusionConditions:
+      - 仅需与Unity 编辑器工具开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - "Unity 编辑器工具开发者质量门：强制要求：所有编辑器脚本必须放在 Editor 文件夹中或使用 #if UNITY_EDITOR 守卫——运行时代码中的编辑器 API 调用会导致构建失败"
+  game-development/unity/unity-multiplayer-engineer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unity/unity-multiplayer-engineer.md
+    domains:
+      - game-development
+    capabilities:
+      - unity-multiplayer-engineer
+      - production-implementation
+    projectSignals:
+      - unity-multiplayer-engineer
+      - game-production
+      - unity
+    activationConditions:
+      - Unity 多人游戏工程师适用于：使用 Netcode for GameObjects 实现服务端权威游戏逻辑
+    exclusionConditions:
+      - 仅需与Unity 多人游戏工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Unity 多人游戏工程师质量门：强制要求：服务端拥有所有游戏状态真相——位置、生命值、分数、道具所有权
+  game-development/unity/unity-shader-graph-artist.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unity/unity-shader-graph-artist.md
+    domains:
+      - game-development
+    capabilities:
+      - unity-shader-graph-artist
+      - experience-design
+    projectSignals:
+      - unity-shader-graph-artist
+      - graphics-rendering
+      - unity
+    activationConditions:
+      - Unity Shader Graph 美术师适用于：编写节点结构清晰、有文档的 Shader Graph 材质，让美术可以扩展
+    exclusionConditions:
+      - 仅需与Unity Shader Graph 美术师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Unity Shader Graph 美术师质量门：强制要求：每个 Shader Graph 必须使用 Sub-Graph 封装重复逻辑——复制粘贴节点簇是维护和一致性灾难
+  game-development/unreal-engine/unreal-multiplayer-architect.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unreal-engine/unreal-multiplayer-architect.md
+    domains:
+      - game-development
+    capabilities:
+      - unreal-multiplayer-architect
+      - architecture-design
+    projectSignals:
+      - unreal-multiplayer-architect
+      - game-production
+      - unreal-engine
+    activationConditions:
+      - Unreal 多人游戏架构师适用于：正确实现 UE5 的权威模型：服务端模拟，客户端预测和校正
+    exclusionConditions:
+      - 仅需与Unreal 多人游戏架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - Unreal 多人游戏架构师质量门：正确实现 UE5 的权威模型：服务端模拟，客户端预测和校正
+  game-development/unreal-engine/unreal-systems-engineer.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unreal-engine/unreal-systems-engineer.md
+    domains:
+      - game-development
+    capabilities:
+      - unreal-systems-engineer
+      - production-implementation
+    projectSignals:
+      - unreal-systems-engineer
+      - performance
+      - unreal-engine
+    activationConditions:
+      - Unreal 系统工程师适用于：以网络就绪的方式实现 Gameplay Ability System（GAS）的技能、属性和标签
+    exclusionConditions:
+      - 仅需与Unreal 系统工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Unreal 系统工程师质量门：以网络就绪的方式实现 Gameplay Ability System（GAS）的技能、属性和标签
+  game-development/unreal-engine/unreal-technical-artist.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unreal-engine/unreal-technical-artist.md
+    domains:
+      - game-development
+      - interactive-entertainment
+    capabilities:
+      - unreal-technical-artist
+      - experience-design
+    projectSignals:
+      - unreal-technical-artist
+      - unreal-engine
+    activationConditions:
+      - Unreal 技术美术适用于：编写项目的 Material Function 库，确保世界材质一致且可维护
+    exclusionConditions:
+      - 仅需与Unreal 技术美术职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Unreal 技术美术质量门：强制要求：可复用逻辑放入 Material Function——永远不要跨多个主材质复制节点簇
+  game-development/unreal-engine/unreal-world-builder.md:
+    origin: upstream_translation
+    upstreamPath: game-development/unreal-engine/unreal-world-builder.md
+    domains:
+      - game-development
+    capabilities:
+      - unreal-world-builder
+      - production-implementation
+    projectSignals:
+      - unreal-world-builder
+      - game-production
+      - unreal-engine
+    activationConditions:
+      - Unreal 世界构建师适用于：配置 World Partition 网格和流式源以实现平滑、无卡顿的加载
+    exclusionConditions:
+      - 仅需与Unreal 世界构建师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Unreal 世界构建师质量门：强制要求：格子大小必须由目标流式预算决定——更小的格子 = 更细粒度的流式但更多开销；密集城区 64m，开阔地形 128m，稀疏沙漠/海洋 256m+
+  gis/gis-3d-scene-developer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-3d-scene-developer.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-3d-scene-developer
+      - production-implementation
+    projectSignals:
+      - gis-3d-scene-developer
+      - gis
+      - three-dimensional
+      - xr
+    activationConditions:
+      - 三维场景开发者适用于：构建带地形、建筑、树木和基础设施的 Web 场景
+    exclusionConditions:
+      - 出现以下情形时不启用三维场景开发者：你需要的是标准二维 Web 地图（请用 Web GIS 开发者）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 三维场景开发者质量门：为 Web 简化几何：CAD 级别的细节会拖垮浏览器性能。使用场景图层优化
+  gis/gis-analyst.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-analyst.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-analyst
+      - evidence-analysis
+    projectSignals:
+      - gis-analyst
+      - gis
+      - mapping
+    activationConditions:
+      - GIS 分析师适用于：为报告、演示和 Web 制作清晰、可直接出版的地图
+    exclusionConditions:
+      - 出现以下情形时不启用GIS 分析师：你需要的是战略架构（请用技术顾问）
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - GIS 分析师质量门：永远先核对坐标系：任何操作前，确认所有图层都在同一坐标系下
+  gis/gis-bim-specialist.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-bim-specialist.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-bim-specialist
+    projectSignals:
+      - gis-bim-specialist
+      - gis
+      - mapping
+      - bim
+    activationConditions:
+      - BIM/GIS 专家适用于：把 Revit / IFC 模型转换成 GIS 要素类
+    exclusionConditions:
+      - 出现以下情形时不启用BIM/GIS 专家：你需要的是标准的二维建筑占地地图（请用 GIS 分析师）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - BIM/GIS 专家质量门：BIM 的细节 ≠ GIS 的细节：别把每颗螺丝螺母都导进来。按使用场景恰当地简化几何
+  gis/gis-cartography-designer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-cartography-designer.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-cartography-designer
+      - experience-design
+    projectSignals:
+      - gis-cartography-designer
+      - gis
+      - mapping
+    activationConditions:
+      - 地图制图设计师适用于：选择恰当的配色方案：顺序型（表示量级）、发散型（表示偏离）、定性型（表示分类）
+    exclusionConditions:
+      - 出现以下情形时不启用地图制图设计师：你需要的是空间分析（请用空间数据科学家）
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 地图制图设计师质量门：了解你的媒介：打印地图比屏幕地图需要更高的对比度。深色地图需要更亮的标注。小屏幕需要更简单的符号化。
+  gis/gis-drone-reality-mapping.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-drone-reality-mapping.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-drone-reality-mapping
+    projectSignals:
+      - gis-drone-reality-mapping
+      - gis
+      - drone-mapping
+    activationConditions:
+      - 无人机实景测绘专家适用于：为测绘设计最优航线：重叠度、飞行高度、速度、相机设置
+    exclusionConditions:
+      - 出现以下情形时不启用无人机实景测绘专家：你需要的是卫星影像分析（请用 GeoAI/ML 工程师）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 无人机实景测绘专家质量门：报告精度：GCP 与检查点的 RMSE
+  gis/gis-geoai-ml-engineer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-geoai-ml-engineer.md
+    domains:
+      - gis
+      - artificial-intelligence
+      - geospatial
+    capabilities:
+      - gis-geoai-ml-engineer
+      - production-implementation
+    projectSignals:
+      - gis-geoai-ml-engineer
+      - ai-system
+      - gis
+    activationConditions:
+      - GeoAI/ML 工程师适用于：从高分辨率正射影像（orthophoto）/ 卫星影像中提取建筑轮廓
+    exclusionConditions:
+      - 出现以下情形时不启用GeoAI/ML 工程师：你只需要简单的缓冲或叠加分析（请用 GIS 分析师）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - GeoAI/ML 工程师质量门：绝不只信一个准确率数字：要看分类别指标、混淆矩阵、误差的空间分布
+  gis/gis-geoprocessing-specialist.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-geoprocessing-specialist.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-geoprocessing-specialist
+    projectSignals:
+      - gis-geoprocessing-specialist
+      - gis
+    activationConditions:
+      - 地理处理专家适用于：设计带校验、错误处理和文档的专业地理处理工具
+    exclusionConditions:
+      - 出现以下情形时不启用地理处理专家：你需要的是在 Pro 里做一次性分析（请用 GIS 分析师）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 地理处理专家质量门：每个工具都要有校验：无效输入应在执行前就被拦截，而不是执行中才报错
+  gis/gis-qa-engineer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-qa-engineer.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-qa-engineer
+      - production-implementation
+      - quality-review
+    projectSignals:
+      - gis-qa-engineer
+      - gis
+      - quality-assurance
+    activationConditions:
+      - GIS 质检工程师适用于：几何检查：自相交、空几何、重复要素、狭长碎片多边形（sliver polygon）
+    exclusionConditions:
+      - 出现以下情形时不启用GIS 质检工程师：你需要的是制作地图（请用 GIS 分析师）
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - GIS 质检工程师质量门：没有例外：数据如果通不过关键检查，就不能交付。就这么定了。
+  gis/gis-solution-engineer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-solution-engineer.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-solution-engineer
+      - production-implementation
+    projectSignals:
+      - gis-solution-engineer
+      - gis
+    activationConditions:
+      - 解决方案工程师适用于：在 1-2 周内把技术顾问的架构变成一个能用的演示
+    exclusionConditions:
+      - 出现以下情形时不启用解决方案工程师：你需要的是战略建议（请用技术顾问）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 解决方案工程师质量门：演示模式 = 加固路径：除非已缓存，否则不做实时 API 调用。把一切都预先加载好
+  gis/gis-spatial-data-engineer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-spatial-data-engineer.md
+    domains:
+      - gis
+      - data-platform
+      - geospatial
+    capabilities:
+      - gis-spatial-data-engineer
+      - production-implementation
+    projectSignals:
+      - gis-spatial-data-engineer
+      - gis
+    activationConditions:
+      - 空间数据工程师适用于：读取任意格式的数据：Shapefile、GeoPackage、GeoJSON、KML、KMZ、GPX、DXF、DWG、CSV、Parquet、File GDB、MDB
+    exclusionConditions:
+      - 出现以下情形时不启用空间数据工程师：你需要的是一次性出图（请用 GIS 分析师）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 空间数据工程师质量门：永远显式重投影：绝不假设源坐标系是对的。用空间参考元数据核实。
+  gis/gis-spatial-data-scientist.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-spatial-data-scientist.md
+    domains:
+      - gis
+      - data-platform
+      - geospatial
+    capabilities:
+      - gis-spatial-data-scientist
+      - evidence-analysis
+    projectSignals:
+      - gis-spatial-data-scientist
+      - gis
+      - mapping
+    activationConditions:
+      - 空间数据科学家适用于：识别统计显著的事件聚类（热点/冷点分析）
+    exclusionConditions:
+      - 出现以下情形时不启用空间数据科学家：你需要的是标准制图出图（请用 GIS 分析师）
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 空间数据科学家质量门：永远检查空间自相关：对空间数据使用非空间模型会产生无效的推断。检验残差是否存在空间依赖。
+  gis/gis-technical-consultant.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-technical-consultant.md
+    domains:
+      - gis
+      - geospatial
+    capabilities:
+      - gis-technical-consultant
+      - decision-support
+    projectSignals:
+      - gis-technical-consultant
+      - gis
+    activationConditions:
+      - 技术顾问适用于：先理解运营问题，其次才是数据，技术放最后
+    exclusionConditions:
+      - 出现以下情形时不启用技术顾问：你需要有人打开 ArcGIS Pro 出一张地图（请用 GIS 分析师）
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 技术顾问质量门：不要过度推销：如果 Esri 对这个问题来说是杀鸡用牛刀，就直说。好感比卖出一个 license 更值钱
+  gis/gis-web-gis-developer.md:
+    origin: upstream_translation
+    upstreamPath: gis/gis-web-gis-developer.md
+    domains:
+      - gis
+      - digital-experience
+      - geospatial
+    capabilities:
+      - gis-web-gis-developer
+      - production-implementation
+    projectSignals:
+      - gis-web-gis-developer
+      - api
+      - gis
+      - mapping
+    activationConditions:
+      - Web GIS 开发工程师适用于：为不同场景选对地图库：MapLibre GL JS、ArcGIS JS API、Leaflet、Deck.gl
+    exclusionConditions:
+      - 出现以下情形时不启用Web GIS 开发工程师：你需要的是桌面 GIS 分析（请用 GIS 分析师）
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - Web GIS 开发工程师质量门：加载状态不是可选项：显示骨架屏、加载转圈或进度指示。用户分不清一张空白地图是在加载还是已经坏了
+  hr/hr-performance-reviewer.md:
+    origin: china_original
+    domains:
+      - people-operations
+    capabilities:
+      - hr-performance-reviewer
+      - performance-management
+      - evidence-based-review
+    projectSignals:
+      - hr-performance-reviewer
+      - okr
+      - performance-review
+    activationConditions:
+      - 项目需要绩效管理专家参与，具体涉及深耕中国企业绩效管理体系的实战专家，精通 OKR/KPI 双轨制、360 度反馈、绩效校准会、PIP 改进计划等全流程绩效管理，帮助企…时启用
+    exclusionConditions:
+      - 任务不涉及绩效管理专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由绩效管理专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“绩效体系设计”并提供可复核结果
+  hr/hr-recruiter.md:
+    origin: china_original
+    domains:
+      - people-operations
+    capabilities:
+      - hr-recruiter
+      - talent-acquisition
+      - people-enablement
+    projectSignals:
+      - hr-recruiter
+      - recruitment
+      - candidate-pipeline
+    activationConditions:
+      - 项目需要招聘专家（HR 全流程）参与，具体涉及深耕中国人才市场的全流程招聘专家，精通 Boss 直聘、猎聘、拉勾等主流招聘渠道运营，擅长简历筛选、面试协调、人才管线管理、校招社招全…时启用
+    exclusionConditions:
+      - 任务不涉及招聘专家（HR 全流程）负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由招聘专家（HR 全流程）给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“需求分析与岗位画像”并提供可复核结果
+  legal/legal-contract-reviewer.md:
+    origin: china_original
+    domains:
+      - legal-compliance
+    capabilities:
+      - legal-contract-reviewer
+      - contract-review
+      - evidence-based-review
+    projectSignals:
+      - legal-contract-reviewer
+      - commercial-contract
+      - clause-risk
+    activationConditions:
+      - 项目需要合同审查专家参与，具体涉及精通中国《民法典》合同编及商业合同实务的法律专家，擅长合同风险识别、条款审查与修改建议，熟悉电子签章、争议解决机制、违约金条款设计，帮…时启用
+    exclusionConditions:
+      - 任务不涉及合同审查专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由合同审查专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“合同类型与审查重点”并提供可复核结果
+  legal/legal-policy-writer.md:
+    origin: china_original
+    domains:
+      - legal-compliance
+    capabilities:
+      - legal-policy-writer
+      - policy-governance
+      - evidence-based-review
+    projectSignals:
+      - legal-policy-writer
+      - policy-writing
+      - regulatory-compliance
+    activationConditions:
+      - 项目需要制度文件撰写专家参与，具体涉及精通中国数据合规法律体系的企业制度文件撰写专家，擅长内部管理制度、隐私政策、用户协议等法律文书起草，深谙《个人信息保护法》《数据安全法…时启用
+    exclusionConditions:
+      - 任务不涉及制度文件撰写专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由制度文件撰写专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“中国数据合规三法体系”并提供可复核结果
+  marketing/marketing-aeo-foundations.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-aeo-foundations.md
+    domains:
+      - marketing
+      - ai-systems
+    capabilities:
+      - marketing-aeo-foundations
+      - search-optimization
+      - workflow-execution
+    projectSignals:
+      - marketing-aeo-foundations
+      - search-visibility
+      - organic-growth
+    activationConditions:
+      - 项目需要AEO 基础架构师参与，具体涉及AI 引擎优化基础设施专家——落地 llms.txt、AI 感知的 robots.txt、token 预算化内容、结构化 Markdo…时启用
+    exclusionConditions:
+      - 不存在AEO 基础架构师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由AEO 基础架构师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“AEO 基础记分卡”并提供可复核结果
+  marketing/marketing-agentic-search-optimizer.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-agentic-search-optimizer.md
+    domains:
+      - marketing
+      - ai-systems
+    capabilities:
+      - marketing-agentic-search-optimizer
+      - search-optimization
+      - workflow-execution
+    projectSignals:
+      - marketing-agentic-search-optimizer
+      - search-visibility
+      - organic-growth
+    activationConditions:
+      - 项目需要智能搜索优化师参与，具体涉及WebMCP 就绪与智能体任务完成专家，审计 AI 智能体能否在你的网站上完成预约、购买、注册等任务，实施 WebMCP 模式并衡量任…时启用
+    exclusionConditions:
+      - 不存在智能搜索优化师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由智能搜索优化师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“WebMCP 就绪评分卡”并提供可复核结果
+  marketing/marketing-ai-citation-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-ai-citation-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-ai-citation-strategist
+      - search-optimization
+      - structured-planning
+    projectSignals:
+      - marketing-ai-citation-strategist
+      - search-visibility
+      - organic-growth
+    activationConditions:
+      - 项目需要AI 引文策略师参与，具体涉及AI 推荐引擎优化（AEO/GEO）专家，审计品牌在 ChatGPT、Claude、Gemini、Perplexity 等平台的可见性…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要AI 引文策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由AI 引文策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“引文审计评分卡”并提供可复核结果
+  marketing/marketing-app-store-optimizer.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-app-store-optimizer.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-app-store-optimizer
+      - app-store-optimization
+      - workflow-execution
+    projectSignals:
+      - marketing-app-store-optimizer
+      - app-store
+      - mobile-growth
+    activationConditions:
+      - 项目需要应用商店优化师参与，具体涉及应用商店营销专家，专注应用商店优化（ASO）、转化率优化和应用可发现性时启用
+    exclusionConditions:
+      - 不存在应用商店优化师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由应用商店优化师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“最大化应用商店可发现性”并提供可复核结果
+  marketing/marketing-baidu-seo-specialist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-baidu-seo-specialist
+      - search-optimization
+      - workflow-execution
+    projectSignals:
+      - marketing-baidu-seo-specialist
+      - search-visibility
+      - organic-growth
+    activationConditions:
+      - 项目需要百度 SEO 专家参与，具体涉及专注百度搜索生态的SEO优化专家，精通百度算法规则、百度生态产品矩阵（百科、知道、贴吧、文库）、中文关键词研究、ICP备案规范、以及移…时启用
+    exclusionConditions:
+      - 不存在百度 SEO 专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由百度 SEO 专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“技术SEO”并提供可复核结果
+  marketing/marketing-bilibili-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-bilibili-content-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-bilibili-strategist
+      - video-marketing
+      - structured-planning
+    projectSignals:
+      - marketing-bilibili-strategist
+      - bilibili
+      - long-form-video
+    activationConditions:
+      - 项目需要B站内容策略师参与，具体涉及专注B站（哔哩哔哩）平台的中长视频内容策略专家，精通UP主运营、弹幕文化、社区生态、品牌合作、推荐算法，以及通过优质内容实现长期粉丝增…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要B站内容策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由B站内容策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“内容策划与选题”并提供可复核结果
+  marketing/marketing-book-co-author.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-book-co-author.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-book-co-author
+      - content-production
+      - workflow-execution
+    projectSignals:
+      - marketing-book-co-author
+      - content-strategy
+      - editorial-content
+    activationConditions:
+      - 项目需要图书联合作者参与，具体涉及为创始人、专家和实操者提供战略性思想领袖力图书协作，将语音笔记、碎片化想法和定位策略转化为结构化的第一人称章节时启用
+    exclusionConditions:
+      - 不存在图书联合作者负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由图书联合作者保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“章节承诺”并提供可复核结果
+  marketing/marketing-carousel-growth-engine.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-carousel-growth-engine.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-carousel-growth-engine
+      - social-media
+      - workflow-execution
+    projectSignals:
+      - marketing-carousel-growth-engine
+      - instagram
+      - visual-content
+    activationConditions:
+      - 项目需要轮播图增长引擎参与，具体涉及自动化短视频轮播图生成专家，分析任意网站URL，通过Gemini生成病毒式6张轮播图，经Upload-Post API自动发布到抖音和…时启用
+    exclusionConditions:
+      - 不存在轮播图增长引擎负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由轮播图增长引擎保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“轮播标准”并提供可复核结果
+  marketing/marketing-china-ecommerce-operator.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-china-ecommerce-operator
+      - ecommerce-operations
+      - workflow-execution
+    projectSignals:
+      - marketing-china-ecommerce-operator
+      - ecommerce
+      - conversion-growth
+    activationConditions:
+      - 项目需要中国电商运营专家参与，具体涉及覆盖淘宝、天猫、拼多多、京东生态的全平台电商运营专家，深耕商品上架优化、直播带货、店铺运营、618/双11大促及跨平台策略时启用
+    exclusionConditions:
+      - 不存在中国电商运营专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由中国电商运营专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“全平台电商运营”并提供可复核结果
+  marketing/marketing-china-market-localization-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-china-market-localization-strategist
+      - market-localization
+      - structured-planning
+    projectSignals:
+      - marketing-china-market-localization-strategist
+      - china-market
+      - localization
+    activationConditions:
+      - 项目需要中国市场本地化策略师参与，具体涉及全栈中国市场本地化专家，将实时趋势信号转化为可执行的上市策略，覆盖抖音、小红书、微信、B站等全平台时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要中国市场本地化策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由中国市场本地化策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“实时趋势情报与信号捕捉”并提供可复核结果
+  marketing/marketing-content-creator.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-content-creator.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-content-creator
+      - content-production
+      - audience-ready-delivery
+    projectSignals:
+      - marketing-content-creator
+      - content-strategy
+      - editorial-content
+    activationConditions:
+      - 项目需要内容创作者参与，具体涉及擅长多平台内容策划与创作的内容专家，能在不同渠道用不同语言讲同一个好故事，让每一篇内容都带来可衡量的价值时启用
+    exclusionConditions:
+      - 任务不需要内容创作者面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由内容创作者核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“多平台创作”并提供可复核结果
+  marketing/marketing-cross-border-ecommerce.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-cross-border-ecommerce
+      - short-video
+      - workflow-execution
+    projectSignals:
+      - marketing-cross-border-ecommerce
+      - tiktok
+      - short-video
+    activationConditions:
+      - 项目需要跨境电商运营专家参与，具体涉及专注跨境电商全链路运营的策略专家，精通Amazon/Shopee/Lazada/AliExpress/Temu/TikTok Shop…时启用
+    exclusionConditions:
+      - 不存在跨境电商运营专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由跨境电商运营专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“跨境电商平台运营”并提供可复核结果
+  marketing/marketing-daily-news-briefing.md:
+    origin: china_original
+    domains:
+      - marketing
+      - ai-systems
+    capabilities:
+      - marketing-daily-news-briefing
+      - news-intelligence
+      - audience-ready-delivery
+    projectSignals:
+      - marketing-daily-news-briefing
+      - news-monitoring
+      - source-verification
+    activationConditions:
+      - 项目需要新闻情报官参与，具体涉及国内外多源新闻实时采集与结构化简报生成，为内容创作团队提供高质量新闻素材。支持按类型（科技/财经/社会/国际等）筛选，交叉验证信源，输…时启用
+    exclusionConditions:
+      - 任务不需要新闻情报官面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由新闻情报官核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“实时新闻采集”并提供可复核结果
+  marketing/marketing-douyin-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-douyin-strategist
+      - short-video
+      - structured-planning
+    projectSignals:
+      - marketing-douyin-strategist
+      - douyin
+      - short-video
+    activationConditions:
+      - 项目需要抖音策略师参与，具体涉及专注抖音平台的短视频营销专家，精通算法推荐机制、爆款视频策划、直播带货流程、以及通过内容矩阵实现品牌在抖音生态的全链路增长时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要抖音策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由抖音策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“短视频内容策划”并提供可复核结果
+  marketing/marketing-ecommerce-operator.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-ecommerce-operator
+      - ecommerce-operations
+      - workflow-execution
+    projectSignals:
+      - marketing-ecommerce-operator
+      - ecommerce
+      - conversion-growth
+    activationConditions:
+      - 项目需要电商运营师参与，具体涉及专注中国电商平台全链路运营的策略专家，精通淘宝/天猫/拼多多/京东的店铺运营、商品优化、直播带货、大促策划（618/双十一），以及跨平…时启用
+    exclusionConditions:
+      - 不存在电商运营师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由电商运营师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“店铺运营”并提供可复核结果
+  marketing/marketing-email-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-email-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-email-strategist
+      - email-marketing
+      - structured-planning
+    projectSignals:
+      - marketing-email-strategist
+      - email-campaign
+      - lifecycle-marketing
+    activationConditions:
+      - 项目需要邮件营销策略师参与，具体涉及资深邮件营销策略师，专注于 CRM 驱动的营销活动、生命周期自动化、分群架构与可送达性。基于 2025-2026 基准数据、AI 驱动…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要邮件营销策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由邮件营销策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“分群优先于群发”并提供可复核结果
+  marketing/marketing-global-podcast-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-global-podcast-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-global-podcast-strategist
+      - audio-content
+      - structured-planning
+    projectSignals:
+      - marketing-global-podcast-strategist
+      - podcast
+      - audio-content
+    activationConditions:
+      - 项目需要全球播客策略师参与，具体涉及资深播客增长专家，专注节目定位、受众培育、内容策略与变现。把粗糙的想法打磨成权威音频品牌，在 Spotify、Apple Podcas…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要全球播客策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由全球播客策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“播客专属规范”并提供可复核结果
+  marketing/marketing-growth-hacker.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-growth-hacker.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-growth-hacker
+      - growth-experimentation
+      - workflow-execution
+    projectSignals:
+      - marketing-growth-hacker
+      - growth-experiment
+      - acquisition
+    activationConditions:
+      - 项目需要增长黑客参与，具体涉及数据驱动的用户增长专家，擅长设计和执行低成本高回报的获客实验，用最小预算撬动最大增长时启用
+    exclusionConditions:
+      - 不存在增长黑客负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由增长黑客保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“获客增长”并提供可复核结果
+  marketing/marketing-instagram-curator.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-instagram-curator.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-instagram-curator
+      - social-media
+      - workflow-execution
+    projectSignals:
+      - marketing-instagram-curator
+      - instagram
+      - visual-content
+    activationConditions:
+      - 项目需要Instagram 策展师参与，具体涉及Instagram 营销专家，适合出海营销场景。擅长视觉叙事、社区运营和多格式内容优化，打造品牌美学体系，驱动真实互动时启用
+    exclusionConditions:
+      - 不存在Instagram 策展师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由Instagram 策展师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“算法生存法则”并提供可复核结果
+  marketing/marketing-knowledge-commerce-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+      - knowledge-management
+    capabilities:
+      - marketing-knowledge-commerce-strategist
+      - structured-planning
+    projectSignals:
+      - marketing-knowledge-commerce-strategist
+    activationConditions:
+      - 项目需要知识付费产品策划师参与，具体涉及专注中国知识付费生态的产品设计与商业化专家，精通得到、知识星球、小报童、小鹅通、千聊等平台运营，擅长知识产品定义、内容定价策略、用户运…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要知识付费产品策划师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由知识付费产品策划师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“知识付费平台生态”并提供可复核结果
+  marketing/marketing-kuaishou-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-kuaishou-strategist
+      - social-commerce
+      - structured-planning
+    projectSignals:
+      - marketing-kuaishou-strategist
+      - kuaishou
+      - livestream-commerce
+    activationConditions:
+      - 项目需要快手策略师参与，具体涉及专注快手平台的短视频与直播电商策略专家，精通下沉市场用户运营、老铁社区文化、直播带货方法论、私域信任构建，以及快手与抖音的差异化打法时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要快手策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由快手策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“社区信任构建”并提供可复核结果
+  marketing/marketing-linkedin-content-creator.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-linkedin-content-creator.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-linkedin-content-creator
+      - professional-content
+      - audience-ready-delivery
+    projectSignals:
+      - marketing-linkedin-content-creator
+      - linkedin
+      - professional-brand
+    activationConditions:
+      - 项目需要LinkedIn 内容创作专家参与，具体涉及专注于 LinkedIn 个人品牌打造和专业内容创作的策略师，深谙 LinkedIn 算法与社区文化，通过高质量内容为创始人、求职者、…时启用
+    exclusionConditions:
+      - 任务不需要LinkedIn 内容创作专家面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由LinkedIn 内容创作专家核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“带 Hook 变体的帖子草稿”并提供可复核结果
+  marketing/marketing-livestream-commerce-coach.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-livestream-commerce-coach
+      - livestream-commerce
+      - people-enablement
+    projectSignals:
+      - marketing-livestream-commerce-coach
+      - livestream
+      - social-commerce
+    activationConditions:
+      - 项目需要直播电商主播教练参与，具体涉及专注直播电商全链路的主播培训与直播间运营专家，精通抖音/快手/淘宝直播/视频号四大平台的直播话术设计、选品排品策略、付费流与自然流的流…时启用
+    exclusionConditions:
+      - 任务不涉及直播电商主播教练负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由直播电商主播教练给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“主播能力培养”并提供可复核结果
+  marketing/marketing-multi-platform-publisher.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-multi-platform-publisher.md
+    domains:
+      - marketing
+      - ai-systems
+    capabilities:
+      - marketing-multi-platform-publisher
+      - private-domain
+      - audience-ready-delivery
+    projectSignals:
+      - marketing-multi-platform-publisher
+      - wechat
+      - private-domain
+    activationConditions:
+      - 项目需要多平台发布编排官参与，具体涉及一键中文博客发布的专家级编排官。把同一篇文章通过 Wechatsync(主通道)路由到 知乎 / 小红书 / CSDN / B站 / …时启用
+    exclusionConditions:
+      - 任务不需要多平台发布编排官面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由多平台发布编排官核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“草稿优先,永远如此”并提供可复核结果
+  marketing/marketing-podcast-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-podcast-strategist
+      - audio-content
+      - structured-planning
+    projectSignals:
+      - marketing-podcast-strategist
+      - podcast
+      - audio-content
+    activationConditions:
+      - 项目需要播客内容策略师参与，具体涉及专注中国播客市场的内容策略与运营专家，精通小宇宙、喜马拉雅等主流平台生态，擅长节目定位、音频制作、听众增长、多平台分发及商业化变现，助…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要播客内容策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由播客内容策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“播客定位与策划”并提供可复核结果
+  marketing/marketing-pr-communications-manager.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-pr-communications-manager.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-pr-communications-manager
+      - public-relations
+      - structured-planning
+    projectSignals:
+      - marketing-pr-communications-manager
+      - public-relations
+      - brand-reputation
+    activationConditions:
+      - 项目需要PR 与传播经理参与，具体涉及战略性公共关系与传播专家，负责 media relations（媒体关系）、press release（新闻稿）、crisis com…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要PR 与传播经理参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由PR 与传播经理明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“Press Release 框架”并提供可复核结果
+  marketing/marketing-private-domain-operator.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-private-domain-operator
+      - workflow-execution
+    projectSignals:
+      - marketing-private-domain-operator
+    activationConditions:
+      - 项目需要私域流量运营师参与，具体涉及专注企业微信私域体系搭建的运营专家，精通企微SCRM、社群精细化运营、小程序商城集成、用户生命周期管理和全链路转化漏斗优化时启用
+    exclusionConditions:
+      - 不存在私域流量运营师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由私域流量运营师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“企业微信生态搭建”并提供可复核结果
+  marketing/marketing-reddit-community-builder.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-reddit-community-builder.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-reddit-community-builder
+      - community-growth
+      - solution-design
+    projectSignals:
+      - marketing-reddit-community-builder
+      - reddit
+      - community-growth
+    activationConditions:
+      - 项目需要Reddit 社区运营参与，具体涉及Reddit 营销专家，适合出海营销场景。深谙 Reddit 社区文化，通过真实参与、价值输出和长期关系建设来塑造品牌口碑时启用
+    exclusionConditions:
+      - 任务不涉及Reddit 社区运营负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由Reddit 社区运营给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“Reddit 生存法则”并提供可复核结果
+  marketing/marketing-seo-specialist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-seo-specialist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-seo-specialist
+      - search-optimization
+      - workflow-execution
+    projectSignals:
+      - marketing-seo-specialist
+      - search-visibility
+      - organic-growth
+    activationConditions:
+      - 项目需要SEO专家参与，具体涉及搜索引擎优化策略师，精通技术SEO、内容优化、外链权重建设和自然搜索增长，通过数据驱动的搜索策略实现可持续的流量增长时启用
+    exclusionConditions:
+      - 不存在SEO专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由SEO专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“搜索质量准则”并提供可复核结果
+  marketing/marketing-short-video-editing-coach.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-short-video-editing-coach
+      - creative-optimization
+      - people-enablement
+    projectSignals:
+      - marketing-short-video-editing-coach
+      - creative-assets
+      - content-performance
+    activationConditions:
+      - 项目需要短视频剪辑指导师参与，具体涉及专注短视频剪辑技术全链路的实战教练，精通剪映/CapCut专业版、Premiere Pro、DaVinci Resolve、Final…时启用
+    exclusionConditions:
+      - 任务不涉及短视频剪辑指导师负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由短视频剪辑指导师给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“剪辑软件精通”并提供可复核结果
+  marketing/marketing-social-media-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-social-media-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-social-media-strategist
+      - social-intelligence
+      - structured-planning
+    projectSignals:
+      - marketing-social-media-strategist
+      - twitter
+      - social-media
+    activationConditions:
+      - 项目需要社交媒体策略师参与，具体涉及跨平台社交媒体策略专家，专注 LinkedIn、Twitter 等职业社交平台的品牌建设、社区运营和整合营销时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要社交媒体策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由社交媒体策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“平台策略框架”并提供可复核结果
+  marketing/marketing-tiktok-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-tiktok-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-tiktok-strategist
+      - short-video
+      - structured-planning
+    projectSignals:
+      - marketing-tiktok-strategist
+      - tiktok
+      - short-video
+    activationConditions:
+      - 项目需要TikTok 策略师参与，具体涉及TikTok 营销专家，适合出海营销场景。擅长病毒式内容创作、算法优化和社区运营，精通 TikTok 独特的文化生态和玩法时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要TikTok 策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由TikTok 策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“TikTok 铁律”并提供可复核结果
+  marketing/marketing-twitter-engager.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-twitter-engager.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-twitter-engager
+      - social-intelligence
+      - workflow-execution
+    projectSignals:
+      - marketing-twitter-engager
+      - twitter
+      - social-media
+    activationConditions:
+      - 项目需要Twitter 互动官参与，具体涉及Twitter 营销专家，适合出海营销场景。擅长实时互动、思想领袖建设和社区驱动增长，通过真实对话建立品牌影响力时启用
+    exclusionConditions:
+      - 不存在Twitter 互动官负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由Twitter 互动官保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“Twitter 铁律”并提供可复核结果
+  marketing/marketing-video-optimization-specialist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-video-optimization-specialist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-video-optimization-specialist
+      - creative-optimization
+      - workflow-execution
+    projectSignals:
+      - marketing-video-optimization-specialist
+      - creative-assets
+      - content-performance
+    activationConditions:
+      - 项目需要视频优化专家参与，具体涉及视频营销策略师，精通 YouTube 算法优化、观众留存、章节设计、封面构思和跨平台视频分发时启用
+    exclusionConditions:
+      - 不存在视频优化专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由视频优化专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“算法优化”并提供可复核结果
+  marketing/marketing-wechat-official-account.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-wechat-official-account.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-wechat-official-account
+      - content-marketing
+      - workflow-execution
+    projectSignals:
+      - marketing-wechat-official-account
+      - wechat-official-account
+      - wechat-content
+    activationConditions:
+      - 项目需要微信公众号管理参与，具体涉及微信公众号运营专家，精通内容营销、用户互动和转化优化，擅长多格式内容和自动化工作流，把公众号做成品牌私域核心阵地时启用
+    exclusionConditions:
+      - 不存在微信公众号管理负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由微信公众号管理保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“内容策略文档”并提供可复核结果
+  marketing/marketing-wechat-operator.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-wechat-operator
+      - private-domain
+      - workflow-execution
+    projectSignals:
+      - marketing-wechat-operator
+      - wechat
+      - private-domain
+    activationConditions:
+      - 项目需要微信公众号运营参与，具体涉及专注微信生态的内容运营专家，精通公众号内容策略、社群运营、裂变增长、私域流量搭建和微信小程序运营时启用
+    exclusionConditions:
+      - 不存在微信公众号运营负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由微信公众号运营保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“公众号内容运营”并提供可复核结果
+  marketing/marketing-weibo-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-weibo-strategist
+      - social-media
+      - structured-planning
+    projectSignals:
+      - marketing-weibo-strategist
+      - weibo
+      - social-media
+    activationConditions:
+      - 项目需要微博运营策略师参与，具体涉及专注新浪微博平台的全域运营专家，精通热搜机制、超话运营、舆情管理、粉丝经济与微博广告投放，助力品牌在微博生态实现声量爆发与长效增长时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要微博运营策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由微博运营策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“微博账号定位与人设搭建”并提供可复核结果
+  marketing/marketing-weixin-channels-strategist.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-weixin-channels-strategist
+      - video-marketing
+      - structured-planning
+    projectSignals:
+      - marketing-weixin-channels-strategist
+      - wechat-channels
+      - short-video
+    activationConditions:
+      - 项目需要微信视频号运营策略师参与，具体涉及专注微信视频号生态的内容策略与增长运营专家，精通社交推荐机制、公众号/朋友圈/小程序/企微生态联动、视频号直播带货、短视频内容策划、私…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要微信视频号运营策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由微信视频号运营策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“社交推荐机制深度运营”并提供可复核结果
+  marketing/marketing-x-twitter-intelligence-analyst.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-x-twitter-intelligence-analyst.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-x-twitter-intelligence-analyst
+      - social-intelligence
+      - evidence-analysis
+    projectSignals:
+      - marketing-x-twitter-intelligence-analyst
+      - twitter
+      - social-media
+    activationConditions:
+      - 项目需要X/Twitter 情报分析师参与，具体涉及社交情报专家，负责 X/Twitter 调研、趋势识别、账号监测，并基于公开信号与结构化数据流程产出有证据支撑的受众洞察时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要X/Twitter 情报分析师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由X/Twitter 情报分析师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“调研诚信标准”并提供可复核结果
+  marketing/marketing-xiaohongshu-operator.md:
+    origin: china_original
+    domains:
+      - marketing
+    capabilities:
+      - marketing-xiaohongshu-operator
+      - social-commerce
+      - workflow-execution
+    projectSignals:
+      - marketing-xiaohongshu-operator
+      - xiaohongshu
+      - lifestyle-content
+    activationConditions:
+      - 项目需要小红书运营专家参与，具体涉及专注小红书平台的内容运营专家，擅长种草笔记创作、达人合作策略、爆款内容公式、以及通过数据驱动实现品牌在小红书的高效获客和口碑建设时启用
+    exclusionConditions:
+      - 不存在小红书运营专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由小红书运营专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“内容策略制定”并提供可复核结果
+  marketing/marketing-xiaohongshu-specialist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-xiaohongshu-specialist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-xiaohongshu-specialist
+      - social-commerce
+      - workflow-execution
+    projectSignals:
+      - marketing-xiaohongshu-specialist
+      - xiaohongshu
+      - lifestyle-content
+    activationConditions:
+      - 项目需要小红书专家参与，具体涉及小红书营销专家，精通生活方式内容创作、趋势驱动策略和真实社区互动，擅长用审美叙事制造病毒式增长时启用
+    exclusionConditions:
+      - 不存在小红书专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由小红书专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“内容策略文档”并提供可复核结果
+  marketing/marketing-zhihu-strategist.md:
+    origin: upstream_translation
+    upstreamPath: marketing/marketing-zhihu-strategist.md
+    domains:
+      - marketing
+    capabilities:
+      - marketing-zhihu-strategist
+      - content-marketing
+      - structured-planning
+    projectSignals:
+      - marketing-zhihu-strategist
+      - zhihu
+      - knowledge-content
+    activationConditions:
+      - 项目需要知乎策略师参与，具体涉及知乎营销专家，擅长思想领袖建设、社区公信力打造和知识驱动型互动，通过高质量问答和专栏建立品牌权威时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要知乎策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由知乎策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“策略与内容文档”并提供可复核结果
+  paid-media/paid-media-auditor.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-auditor.md
+    domains:
+      - advertising
+    capabilities:
+      - paid-media-auditor
+      - account-audit
+      - evidence-based-review
+    projectSignals:
+      - paid-media-auditor
+      - account-audit
+      - optimization-backlog
+    activationConditions:
+      - 项目需要付费媒体审计师参与，具体涉及系统化评估 Google Ads、Microsoft Ads 和 Meta 广告账户的全方位审计专家，覆盖账户结构、追踪、出价、创意、…时启用
+    exclusionConditions:
+      - 任务不涉及付费媒体审计师负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由付费媒体审计师逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“账户结构审计”并提供可复核结果
+  paid-media/paid-media-creative-strategist.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-creative-strategist.md
+    domains:
+      - advertising
+    capabilities:
+      - paid-media-creative-strategist
+      - ad-creative
+      - structured-planning
+    projectSignals:
+      - paid-media-creative-strategist
+      - ad-creative
+      - creative-testing
+    activationConditions:
+      - 项目需要广告创意策略师参与，具体涉及专注广告文案、RSA 优化、素材组设计和创意测试的付费媒体创意专家，横跨 Google、Meta、Microsoft 和程序化平台，用…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要广告创意策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由广告创意策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“搜索广告文案”并提供可复核结果
+  paid-media/paid-media-paid-social-strategist.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-paid-social-strategist.md
+    domains:
+      - advertising
+      - marketing
+    capabilities:
+      - paid-media-paid-social-strategist
+      - short-video
+      - structured-planning
+    projectSignals:
+      - paid-media-paid-social-strategist
+      - tiktok
+      - short-video
+    activationConditions:
+      - 项目需要社交广告策略师参与，具体涉及跨平台社交广告专家，覆盖 Meta（Facebook/Instagram）、LinkedIn、TikTok（抖音海外版）、Pinter…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要社交广告策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由社交广告策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“Meta 广告”并提供可复核结果
+  paid-media/paid-media-ppc-strategist.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-ppc-strategist.md
+    domains:
+      - advertising
+    capabilities:
+      - paid-media-ppc-strategist
+      - paid-search
+      - structured-planning
+    projectSignals:
+      - paid-media-ppc-strategist
+      - google-ads
+      - paid-search
+    activationConditions:
+      - 项目需要PPC 竞价策略师参与，具体涉及资深付费搜索策略专家，擅长 Google Ads、Microsoft Advertising 和 Amazon Ads 的大规模账户架…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要PPC 竞价策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由PPC 竞价策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“账户架构”并提供可复核结果
+  paid-media/paid-media-programmatic-buyer.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-programmatic-buyer.md
+    domains:
+      - advertising
+    capabilities:
+      - paid-media-programmatic-buyer
+      - programmatic-buying
+      - workflow-execution
+    projectSignals:
+      - paid-media-programmatic-buyer
+      - programmatic-ads
+      - media-buying
+    activationConditions:
+      - 项目需要程序化广告采买专家参与，具体涉及展示广告与程序化媒介采买专家，覆盖 Google Display Network、DV360、The Trade Desk 等 DSP…时启用
+    exclusionConditions:
+      - 不存在程序化广告采买专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由程序化广告采买专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“程序化采买”并提供可复核结果
+  paid-media/paid-media-search-query-analyst.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-search-query-analyst.md
+    domains:
+      - advertising
+    capabilities:
+      - paid-media-search-query-analyst
+      - query-analysis
+      - evidence-analysis
+    projectSignals:
+      - paid-media-search-query-analyst
+      - search-terms
+      - negative-keywords
+    activationConditions:
+      - 项目需要搜索词分析师参与，具体涉及搜索词分析、否定关键词架构和查询意图映射专家，从海量搜索词报告中挖掘优化方向，消灭浪费、放大高意向流量时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要搜索词分析师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由搜索词分析师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“搜索词分析”并提供可复核结果
+  paid-media/paid-media-tracking-specialist.md:
+    origin: upstream_translation
+    upstreamPath: paid-media/paid-media-tracking-specialist.md
+    domains:
+      - advertising
+    capabilities:
+      - paid-media-tracking-specialist
+      - professional-content
+      - workflow-execution
+    projectSignals:
+      - paid-media-tracking-specialist
+      - linkedin
+      - professional-brand
+    activationConditions:
+      - 项目需要追踪与归因专家参与，具体涉及转化追踪架构、代码管理和归因模型专家，精通 GTM、GA4、Google Ads、Meta CAPI、LinkedIn Insight…时启用
+    exclusionConditions:
+      - 不存在追踪与归因专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由追踪与归因专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“代码管理”并提供可复核结果
+  product/product-behavioral-nudge-engine.md:
+    origin: upstream_translation
+    upstreamPath: product/product-behavioral-nudge-engine.md
+    domains:
+      - product
+    capabilities:
+      - product-behavioral-nudge-engine
+      - behavioral-design
+      - workflow-execution
+    projectSignals:
+      - product-behavioral-nudge-engine
+      - behavioral-science
+      - user-motivation
+    activationConditions:
+      - 项目需要行为助推引擎参与，具体涉及行为心理学专家，通过调整软件交互节奏和风格，最大化用户动力和成功率时启用
+    exclusionConditions:
+      - 不存在行为助推引擎负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由行为助推引擎保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“行为心理学工具箱”并提供可复核结果
+  product/product-feedback-synthesizer.md:
+    origin: upstream_translation
+    upstreamPath: product/product-feedback-synthesizer.md
+    domains:
+      - product
+    capabilities:
+      - product-feedback-synthesizer
+      - feedback-synthesis
+      - workflow-execution
+    projectSignals:
+      - product-feedback-synthesizer
+      - user-feedback
+      - product-insight
+    activationConditions:
+      - 项目需要反馈分析师参与，具体涉及专注用户反馈收集、分类和洞察提炼的产品分析专家，把碎片化的用户声音变成可执行的产品改进建议时启用
+    exclusionConditions:
+      - 不存在反馈分析师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由反馈分析师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“反馈收集”并提供可复核结果
+  product/product-manager.md:
+    origin: upstream_translation
+    upstreamPath: product/product-manager.md
+    domains:
+      - product
+    capabilities:
+      - product-manager
+      - product-management
+      - structured-planning
+    projectSignals:
+      - product-manager
+      - product-roadmap
+      - product-discovery
+    activationConditions:
+      - 项目需要产品经理参与，具体涉及全局型产品负责人，掌控产品全生命周期——从需求发现、战略规划到路线图制定、干系人对齐、GTM 落地与结果度量。在商业目标、用户需求与技…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要产品经理参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由产品经理明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“产品需求文档（PRD）”并提供可复核结果
+  product/product-sprint-prioritizer.md:
+    origin: upstream_translation
+    upstreamPath: product/product-sprint-prioritizer.md
+    domains:
+      - product
+    capabilities:
+      - product-sprint-prioritizer
+      - product-prioritization
+      - structured-planning
+    projectSignals:
+      - product-sprint-prioritizer
+      - sprint-planning
+      - prioritization
+    activationConditions:
+      - 项目需要Sprint 排序师参与，具体涉及精通需求优先级排序和 Sprint 规划的产品专家，用框架和数据替代拍脑袋，确保团队永远在做最有价值的事时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要Sprint 排序师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由Sprint 排序师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“需求评估”并提供可复核结果
+  product/product-trend-researcher.md:
+    origin: upstream_translation
+    upstreamPath: product/product-trend-researcher.md
+    domains:
+      - product
+    capabilities:
+      - product-trend-researcher
+      - trend-research
+      - evidence-analysis
+    projectSignals:
+      - product-trend-researcher
+      - market-trend
+      - technology-scouting
+    activationConditions:
+      - 项目需要趋势研究员参与，具体涉及专注行业趋势分析和技术前瞻的研究专家，帮团队看清未来 6-18 个月的方向，在正确的时间做正确的事时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要趋势研究员补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由趋势研究员标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“趋势追踪”并提供可复核结果
+  project-management/project-management-experiment-tracker.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-management-experiment-tracker.md
+    domains:
+      - delivery-management
+    capabilities:
+      - project-management-experiment-tracker
+      - experiment-management
+      - workflow-execution
+    projectSignals:
+      - project-management-experiment-tracker
+      - ab-testing
+      - hypothesis-validation
+    activationConditions:
+      - 项目需要实验追踪员参与，具体涉及专注实验设计、执行追踪和数据驱动决策的项目管理专家，用科学方法管理 A/B 测试、功能实验和假设验证，拿数据说话而不是拍脑袋时启用
+    exclusionConditions:
+      - 不存在实验追踪员负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由实验追踪员保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“设计和执行科学实验”并提供可复核结果
+  project-management/project-management-jira-workflow-steward.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-management-jira-workflow-steward.md
+    domains:
+      - delivery-management
+      - ai-systems
+    capabilities:
+      - project-management-jira-workflow-steward
+      - jira-governance
+      - workflow-execution
+    projectSignals:
+      - project-management-jira-workflow-steward
+      - jira
+      - git-traceability
+    activationConditions:
+      - 项目需要Jira工作流管家参与，具体涉及交付运营专家，执行Jira关联的Git工作流，确保提交可追溯、PR结构规范、分支策略安全可控时启用
+    exclusionConditions:
+      - 不存在Jira工作流管家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由Jira工作流管家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“把工作变成可追溯的交付单元”并提供可复核结果
+  project-management/project-management-meeting-notes-specialist.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-management-meeting-notes-specialist.md
+    domains:
+      - delivery-management
+    capabilities:
+      - project-management-meeting-notes-specialist
+      - meeting-documentation
+      - audience-ready-delivery
+    projectSignals:
+      - project-management-meeting-notes-specialist
+      - meeting-transcript
+      - action-items
+    activationConditions:
+      - 项目需要会议纪要专家参与，具体涉及从会议 transcript（逐字记录）或零散笔记中提取结构化的决议、action item 和待解决问题，整理成清晰的四段式 sum…时启用
+    exclusionConditions:
+      - 任务不需要会议纪要专家面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由会议纪要专家核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“成功指标”并提供可复核结果
+  project-management/project-management-project-shepherd.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-management-project-shepherd.md
+    domains:
+      - delivery-management
+    capabilities:
+      - project-management-project-shepherd
+      - project-coordination
+      - structured-planning
+    projectSignals:
+      - project-management-project-shepherd
+      - cross-functional
+      - stakeholder-alignment
+    activationConditions:
+      - 项目需要项目牧羊人参与，具体涉及专注跨部门项目协调、时间线管理和利益方对齐的项目管理专家，把项目从立项一路护送到交付，管好资源、风险和各方沟通时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要项目牧羊人参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由项目牧羊人明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“统筹复杂跨部门项目”并提供可复核结果
+  project-management/project-management-studio-operations.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-management-studio-operations.md
+    domains:
+      - delivery-management
+    capabilities:
+      - project-management-studio-operations
+      - studio-operations
+      - workflow-execution
+    projectSignals:
+      - project-management-studio-operations
+      - resource-coordination
+      - process-improvement
+    activationConditions:
+      - 项目需要工作室运营参与，具体涉及专注工作室日常效率、流程优化和资源协调的运营管理专家，让所有团队都有好用的工具和顺畅的流程，保证事情稳定推进时启用
+    exclusionConditions:
+      - 不存在工作室运营负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由工作室运营保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“优化日常运营和工作效率”并提供可复核结果
+  project-management/project-management-studio-producer.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-management-studio-producer.md
+    domains:
+      - delivery-management
+    capabilities:
+      - project-management-studio-producer
+      - portfolio-production
+      - structured-planning
+    projectSignals:
+      - project-management-studio-producer
+      - creative-production
+      - portfolio-management
+    activationConditions:
+      - 项目需要工作室制片人参与，具体涉及高级战略领导者，擅长创意与技术项目的统筹协调、资源分配和多项目组合管理，让创意方向和商业目标对齐，管好复杂的跨部门项目时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要工作室制片人参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由工作室制片人明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“战略组合管理与创意方向把控”并提供可复核结果
+  project-management/project-manager-senior.md:
+    origin: upstream_translation
+    upstreamPath: project-management/project-manager-senior.md
+    domains:
+      - delivery-management
+    capabilities:
+      - project-manager-senior
+      - spec-task-planning
+      - structured-planning
+    projectSignals:
+      - project-manager-senior
+      - specification
+      - task-breakdown
+    activationConditions:
+      - 项目需要高级项目经理参与，具体涉及把规格说明书拆成可执行任务的资深 PM，记得住以前项目的经验教训，专注务实的范围控制和精确的需求还原时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要高级项目经理参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由高级项目经理明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“核心职责”并提供可复核结果
+  sales/sales-account-strategist.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-account-strategist.md
+    domains:
+      - sales
+    capabilities:
+      - sales-account-strategist
+      - account-expansion
+      - structured-planning
+    projectSignals:
+      - sales-account-strategist
+      - account-growth
+      - qbr
+    activationConditions:
+      - 项目需要客户拓展策略师参与，具体涉及售后客户拓展专家，擅长 Land-and-Expand 执行、干系人关系图谱、QBR 策划及净收入留存率管理。通过系统化扩展规划和多线…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要客户拓展策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由客户拓展策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“Land-and-Expand 执行”并提供可复核结果
+  sales/sales-coach.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-coach.md
+    domains:
+      - sales
+    capabilities:
+      - sales-coach
+      - pipeline-analysis
+      - people-enablement
+    projectSignals:
+      - sales-coach
+      - sales-pipeline
+      - forecasting
+    activationConditions:
+      - 项目需要销售教练参与，具体涉及专注销售团队能力提升的教练专家，擅长 Pipeline Review、通话辅导、单子策略和 Forecast 准确度管理。通过结构化辅…时启用
+    exclusionConditions:
+      - 任务不涉及销售教练负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由销售教练给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“教练投入的价值”并提供可复核结果
+  sales/sales-deal-strategist.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-deal-strategist.md
+    domains:
+      - sales
+    capabilities:
+      - sales-deal-strategist
+      - pipeline-analysis
+      - structured-planning
+    projectSignals:
+      - sales-deal-strategist
+      - sales-pipeline
+      - forecasting
+    activationConditions:
+      - 项目需要赢单策略师参与，具体涉及资深赢单策略师，专精 MEDDPICC 资质审查、竞争定位和复杂 B2B 销售周期的赢单规划。为每笔单子评分、暴露 Pipeline …时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要赢单策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由赢单策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“MEDDPICC 框架——深度应用”并提供可复核结果
+  sales/sales-discovery-coach.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-discovery-coach.md
+    domains:
+      - sales
+    capabilities:
+      - sales-discovery-coach
+      - sales-discovery
+      - people-enablement
+    projectSignals:
+      - sales-discovery-coach
+      - sales-discovery
+      - qualification
+    activationConditions:
+      - 项目需要Discovery 教练参与，具体涉及销售方法论专家，辅导团队掌握高阶 Discovery 技巧——问题设计、现状诊断、差距量化和通话结构，挖掘客户真正的购买动机时启用
+    exclusionConditions:
+      - 任务不涉及Discovery 教练负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由Discovery 教练给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“三大 Discovery 框架”并提供可复核结果
+  sales/sales-engineer.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-engineer.md
+    domains:
+      - sales
+    capabilities:
+      - sales-engineer
+      - sales-discovery
+      - solution-design
+    projectSignals:
+      - sales-engineer
+      - sales-discovery
+      - qualification
+    activationConditions:
+      - 项目需要售前工程师参与，具体涉及资深售前工程师，专精技术 Discovery、Demo 设计、POC 执行、竞争技术定位，擅长将产品能力转化为业务成果。在单子进入采购…时启用
+    exclusionConditions:
+      - 任务不涉及售前工程师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由售前工程师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“角色定义”并提供可复核结果
+  sales/sales-offer-lead-gen-strategist.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-offer-lead-gen-strategist.md
+    domains:
+      - sales
+    capabilities:
+      - sales-offer-lead-gen-strategist
+      - lead-generation
+      - structured-planning
+    projectSignals:
+      - sales-offer-lead-gen-strategist
+      - lead-generation
+      - offer-design
+    activationConditions:
+      - 项目需要Offer 与 Lead Gen 策略师参与，具体涉及漏斗顶端（top-of-funnel）架构师，设计无法抗拒的 offer 和 lead magnet，规模化吸引高质量买家。专精于价值…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要Offer 与 Lead Gen 策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由Offer 与 Lead Gen 策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“满贯级 Offer——价值方程式优先”并提供可复核结果
+  sales/sales-outbound-strategist.md:
+    origin: upstream_translation
+    upstreamPath: specialized/sales-outreach.md
+    domains:
+      - sales
+    capabilities:
+      - sales-outbound-strategist
+      - outbound-sequencing
+      - structured-planning
+    projectSignals:
+      - sales-outbound-strategist
+      - outbound-sales
+      - buying-signals
+    activationConditions:
+      - 项目需要Outbound 策略师参与，具体涉及基于信号的 Outbound 专家，设计多渠道触达序列、定义 ICP、通过调研驱动的个性化开发 Pipeline——不靠量取胜，靠精准时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要Outbound 策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由Outbound 策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“信号驱动销售框架”并提供可复核结果
+  sales/sales-pipeline-analyst.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-pipeline-analyst.md
+    domains:
+      - sales
+    capabilities:
+      - sales-pipeline-analyst
+      - pipeline-analysis
+      - evidence-analysis
+    projectSignals:
+      - sales-pipeline-analyst
+      - sales-pipeline
+      - forecasting
+    activationConditions:
+      - 项目需要Pipeline 分析师参与，具体涉及收入运营分析师，专精 Pipeline 健康诊断、单子速度分析、Forecast 准确度和数据驱动的销售辅导。将 CRM 数据转化为可…时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要Pipeline 分析师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由Pipeline 分析师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“Pipeline 速度分析”并提供可复核结果
+  sales/sales-proposal-strategist.md:
+    origin: upstream_translation
+    upstreamPath: sales/sales-proposal-strategist.md
+    domains:
+      - sales
+    capabilities:
+      - sales-proposal-strategist
+      - proposal-strategy
+      - audience-ready-delivery
+    projectSignals:
+      - sales-proposal-strategist
+      - rfp
+      - proposal
+    activationConditions:
+      - 项目需要投标策略师参与，具体涉及资深投标与方案策略师，将 RFP 和销售机会转化为有说服力的赢标叙事。专精赢标主题提炼、竞争定位、执行摘要写作，构建能打动评审的方案而…时启用
+    exclusionConditions:
+      - 任务不需要投标策略师面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由投标策略师核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“赢标主题提炼”并提供可复核结果
+  security/security-appsec-engineer.md:
+    origin: upstream_translation
+    upstreamPath: security/security-appsec-engineer.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-appsec-engineer
+      - production-implementation
+    projectSignals:
+      - security-appsec-engineer
+      - security-review
+    activationConditions:
+      - 应用安全工程师适用于：在开发开始之前，为新功能、架构变更和第三方集成做威胁建模
+    exclusionConditions:
+      - 仅需与应用安全工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 应用安全工程师质量门：绝不批准带有已知可利用漏洞的代码——"以后再修"等于"等被攻破后再修"
+  security/security-architect.md:
+    origin: upstream_translation
+    upstreamPath: security/security-architect.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-architect
+      - architecture-design
+    projectSignals:
+      - security-architect
+      - api
+      - security-review
+      - cloud
+    activationConditions:
+      - 安全架构师适用于：把安全融入每一个阶段——设计、实现、测试、部署与运维
+    exclusionConditions:
+      - 仅需与安全架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 安全架构师质量门：安全设计必须标明资产、信任边界、威胁、控制措施和残余风险，并完成风险评审
+  security/security-blockchain-security-auditor.md:
+    origin: upstream_translation
+    upstreamPath: security/security-blockchain-security-auditor.md
+    domains:
+      - security
+      - cybersecurity
+      - software-quality
+    capabilities:
+      - security-blockchain-security-auditor
+      - quality-review
+    projectSignals:
+      - security-blockchain-security-auditor
+      - security-review
+      - blockchain
+    activationConditions:
+      - 区块链安全审计师适用于：系统化地识别所有漏洞类别：重入（reentrancy）、访问控制缺陷、整数溢出/下溢、预言机（oracle）操纵、闪电贷攻击、抢跑（front-running）、刁难攻击（griefing）、拒绝服务
+    exclusionConditions:
+      - 仅需与区块链安全审计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 区块链安全审计师质量门：先用自动化分析工具（Slither、Mythril、Echidna、Medusa）跑一遍
+  security/security-cloud-security-architect.md:
+    origin: upstream_translation
+    upstreamPath: security/security-cloud-security-architect.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-cloud-security-architect
+      - architecture-design
+    projectSignals:
+      - security-cloud-security-architect
+      - ci-cd
+      - security-review
+      - cloud
+    activationConditions:
+      - 云安全架构师适用于：设计默认不信任任何流量的网络架构——无论来源如何，每个请求都要经过认证、授权与加密
+    exclusionConditions:
+      - 仅需与云安全架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 云安全架构师质量门：绝不允许长期有效的凭据——一切都用 IAM 角色、工作负载身份、OIDC 联合或短期令牌
+  security/security-compliance-auditor.md:
+    origin: upstream_translation
+    upstreamPath: security/security-compliance-auditor.md
+    domains:
+      - security
+      - cybersecurity
+      - software-quality
+    capabilities:
+      - security-compliance-auditor
+      - quality-review
+    projectSignals:
+      - security-compliance-auditor
+    activationConditions:
+      - 合规审计师适用于：对照目标框架要求，评估当前的安全态势
+    exclusionConditions:
+      - 仅需与合规审计师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 合规审计师质量门：没人遵守的政策比没有政策更糟——它制造虚假的安全感和审计风险
+  security/security-incident-responder.md:
+    origin: upstream_translation
+    upstreamPath: security/security-incident-responder.md
+    domains:
+      - security
+      - cybersecurity
+      - platform-reliability
+    capabilities:
+      - security-incident-responder
+      - incident-response
+    projectSignals:
+      - security-incident-responder
+      - security-review
+    activationConditions:
+      - 事件响应专家适用于：在头 30 分钟内迅速评估安全事件的范围、严重程度与爆炸半径（blast radius）
+    exclusionConditions:
+      - 仅需与事件响应专家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+      - review
+    qualityGates:
+      - 事件响应专家质量门：绝不修改、删除或覆盖任何潜在证据——取证完整性至高无上
+  security/security-penetration-tester.md:
+    origin: upstream_translation
+    upstreamPath: security/security-penetration-tester.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-penetration-tester
+      - quality-review
+    projectSignals:
+      - security-penetration-tester
+      - security-review
+      - quality-assurance
+    activationConditions:
+      - 渗透测试员适用于：枚举所有对外可见的资产：子域名、开放端口、暴露的服务、泄露的凭据、云存储错误配置
+    exclusionConditions:
+      - 仅需与渗透测试员职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 渗透测试员质量门：绝不测试测试范围（scope）之外的系统——未授权访问是犯罪，不是渗透测试
+  security/security-senior-secops.md:
+    origin: upstream_translation
+    upstreamPath: security/security-senior-secops.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-senior-secops
+    projectSignals:
+      - security-senior-secops
+      - security-review
+    activationConditions:
+      - 高级安全运营工程师适用于：运行上述自动扫描
+    exclusionConditions:
+      - 仅需与高级安全运营工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 高级安全运营工程师质量门：必须完成密钥与依赖扫描，并为认证、授权、令牌、输入校验和安全日志提供验证证据
+  security/security-threat-detection-engineer.md:
+    origin: upstream_translation
+    upstreamPath: security/security-threat-detection-engineer.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-threat-detection-engineer
+      - production-implementation
+    projectSignals:
+      - security-threat-detection-engineer
+      - security-review
+    activationConditions:
+      - 威胁检测工程师（安全运营）适用于：用 Sigma（与厂商无关）编写检测规则，再编译到目标 SIEM（Splunk SPL、Microsoft Sentinel KQL、Elastic EQL、Chronicle YARA-L）
+    exclusionConditions:
+      - 仅需与威胁检测工程师（安全运营）职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 威胁检测工程师（安全运营）质量门：绝不在未先用真实日志数据测试的情况下部署检测规则——未经测试的规则要么对一切触发，要么对一切都不触发
+  security/security-threat-intelligence-analyst.md:
+    origin: upstream_translation
+    upstreamPath: security/security-threat-intelligence-analyst.md
+    domains:
+      - security
+      - cybersecurity
+    capabilities:
+      - security-threat-intelligence-analyst
+      - evidence-analysis
+    projectSignals:
+      - security-threat-intelligence-analyst
+      - security-review
+    activationConditions:
+      - 威胁情报分析师适用于：监控威胁情报源、暗网论坛、粘贴站点（paste site）和地下市场，捕捉新兴威胁、泄露凭据和失陷指标（IOC）
+    exclusionConditions:
+      - 仅需与威胁情报分析师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 威胁情报分析师质量门：没有置信度评估，绝不发布情报——说清楚你知道什么、你评估什么、你在猜什么
+  spatial-computing/macos-spatial-metal-engineer.md:
+    origin: upstream_translation
+    upstreamPath: spatial-computing/macos-spatial-metal-engineer.md
+    domains:
+      - spatial-computing
+      - immersive-computing
+    capabilities:
+      - macos-spatial-metal-engineer
+      - production-implementation
+    projectSignals:
+      - macos-spatial-metal-engineer
+      - three-dimensional
+      - performance
+      - visionos
+      - graphics-rendering
+    activationConditions:
+      - macOS Metal 空间工程师适用于：实现 10k-100k 节点的实例化 Metal 渲染，保持 90fps
+    exclusionConditions:
+      - 仅需与macOS Metal 空间工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - macOS Metal 空间工程师质量门：立体渲染不能掉到 90fps 以下
+  spatial-computing/terminal-integration-specialist.md:
+    origin: upstream_translation
+    upstreamPath: spatial-computing/terminal-integration-specialist.md
+    domains:
+      - spatial-computing
+      - immersive-computing
+    capabilities:
+      - terminal-integration-specialist
+      - systems-integration
+    projectSignals:
+      - terminal-integration-specialist
+      - graphics-rendering
+    activationConditions:
+      - 终端集成专家适用于：终端模拟、文本渲染优化和 SwiftTerm 集成，面向现代 Swift 应用
+    exclusionConditions:
+      - 仅需与终端集成专家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 终端集成专家质量门：转义序列解析必须严格按 ECMA-48/VT100 标准——不要猜测厂商私有扩展的含义
+  spatial-computing/visionos-spatial-engineer.md:
+    origin: upstream_translation
+    upstreamPath: spatial-computing/visionos-spatial-engineer.md
+    domains:
+      - spatial-computing
+      - immersive-computing
+    capabilities:
+      - visionos-spatial-engineer
+      - production-implementation
+    projectSignals:
+      - visionos-spatial-engineer
+      - visionos
+    activationConditions:
+      - visionOS 空间工程师适用于：原生 visionOS 空间计算、SwiftUI 体积式界面和 Liquid Glass 设计实现
+    exclusionConditions:
+      - 仅需与visionOS 空间工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - visionOS 空间工程师质量门：用 SwiftUI 原生组件，不要用 UIKit 桥接——体积空间中 UIKit 的行为是未定义的
+  spatial-computing/xr-cockpit-interaction-specialist.md:
+    origin: upstream_translation
+    upstreamPath: spatial-computing/xr-cockpit-interaction-specialist.md
+    domains:
+      - spatial-computing
+      - immersive-computing
+    capabilities:
+      - xr-cockpit-interaction-specialist
+    projectSignals:
+      - xr-cockpit-interaction-specialist
+      - xr
+    activationConditions:
+      - XR 座舱交互专家适用于：用 3D 网格和输入约束设计可手动交互的操纵杆、拉杆和油门
+    exclusionConditions:
+      - 仅需与XR 座舱交互专家职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - XR 座舱交互专家质量门：主控件区域必须在用户坐姿的自然臂展内（肩关节前方 40-60cm）
+  spatial-computing/xr-immersive-developer.md:
+    origin: upstream_translation
+    upstreamPath: spatial-computing/xr-immersive-developer.md
+    domains:
+      - spatial-computing
+      - immersive-computing
+    capabilities:
+      - xr-immersive-developer
+      - production-implementation
+    projectSignals:
+      - xr-immersive-developer
+      - xr
+    activationConditions:
+      - XR 沉浸式开发者适用于：集成完整的 WebXR 支持：手部追踪、捏合、注视和手柄输入
+    exclusionConditions:
+      - 仅需与XR 沉浸式开发者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - XR 沉浸式开发者质量门：WebXR session 生命周期必须严格管理——end 事件里清理所有资源
+  spatial-computing/xr-interface-architect.md:
+    origin: upstream_translation
+    upstreamPath: spatial-computing/xr-interface-architect.md
+    domains:
+      - spatial-computing
+      - immersive-computing
+    capabilities:
+      - xr-interface-architect
+      - architecture-design
+    projectSignals:
+      - xr-interface-architect
+      - xr
+    activationConditions:
+      - XR 界面架构师适用于：创建 HUD、浮动菜单、面板和交互区域
+    exclusionConditions:
+      - 仅需与XR 界面架构师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - XR 界面架构师质量门：不把 2D 界面直接搬进 3D 空间——每个组件都要重新思考空间语义
+  specialized/accounts-payable-agent.md:
+    origin: upstream_translation
+    upstreamPath: specialized/accounts-payable-agent.md
+    domains:
+      - business-operations
+      - finance
+    capabilities:
+      - accounts-payable-agent
+      - accounts-payable
+      - financial-control
+    projectSignals:
+      - accounts-payable-agent
+      - vendor-payment
+      - invoice-payment
+    activationConditions:
+      - 项目需要应付账款智能体参与，具体涉及自主支付处理专家，负责执行供应商付款、承包商发票和定期账单，支持加密货币、法币、稳定币等多种支付通道，通过 MCP 与 AI 智能体工…时启用
+    exclusionConditions:
+      - 任务不涉及应付账款智能体负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由应付账款智能体核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“自主处理付款”并提供可复核结果
+  specialized/agentic-identity-trust.md:
+    origin: upstream_translation
+    upstreamPath: specialized/agentic-identity-trust.md
+    domains:
+      - business-operations
+      - identity-security
+    capabilities:
+      - agentic-identity-trust
+      - identity-governance
+      - evidence-based-review
+    projectSignals:
+      - agentic-identity-trust
+      - agent-identity
+      - trust-verification
+    activationConditions:
+      - 项目需要身份信任架构师参与，具体涉及为自主运行的 AI 智能体设计身份认证和信任验证体系，确保智能体能证明自己是谁、被授权做什么、实际做了什么时启用
+    exclusionConditions:
+      - 任务不涉及身份信任架构师负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由身份信任架构师逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“信任验证与评分”并提供可复核结果
+  specialized/agents-orchestrator.md:
+    origin: upstream_translation
+    upstreamPath: specialized/agents-orchestrator.md
+    domains:
+      - business-operations
+      - ai-systems
+    capabilities:
+      - agents-orchestrator
+      - agent-orchestration
+      - workflow-execution
+    projectSignals:
+      - agents-orchestrator
+      - multi-agent
+      - workflow-orchestration
+    activationConditions:
+      - 项目需要智能体编排者参与，具体涉及自主流水线管理者，负责编排整个开发工作流。你是这个流程的领导者时启用
+    exclusionConditions:
+      - 不存在智能体编排者负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由智能体编排者保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“编排完整的开发流水线”并提供可复核结果
+  specialized/automation-governance-architect.md:
+    origin: upstream_translation
+    upstreamPath: specialized/automation-governance-architect.md
+    domains:
+      - business-operations
+      - ai-systems
+    capabilities:
+      - automation-governance-architect
+      - automation-governance
+      - solution-design
+    projectSignals:
+      - automation-governance-architect
+      - n8n
+      - automation-control
+    activationConditions:
+      - 项目需要自动化治理架构师参与，具体涉及以治理为先的业务自动化架构师（n8n 优先），在实施之前先审计价值、风险和可维护性时启用
+    exclusionConditions:
+      - 任务不涉及自动化治理架构师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由自动化治理架构师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“不可妥协的规则”并提供可复核结果
+  specialized/business-strategist.md:
+    origin: upstream_translation
+    upstreamPath: specialized/business-strategist.md
+    domains:
+      - business-operations
+      - strategy
+    capabilities:
+      - business-strategist
+      - business-strategy
+      - structured-planning
+    projectSignals:
+      - business-strategist
+      - market-entry
+      - competitive-analysis
+    activationConditions:
+      - 项目需要商业战略家参与，具体涉及资深管理咨询专家，专注竞争分析、市场进入策略、商业模式设计、增长规划、组织战略与战略决策——把复杂的市场动态转化为清晰、可落地、能创造…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要商业战略家参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由商业战略家明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“竞争分析框架（Competitive Analysis Framework）”并提供可复核结果
+  specialized/change-management-consultant.md:
+    origin: upstream_translation
+    upstreamPath: specialized/change-management-consultant.md
+    domains:
+      - business-operations
+      - strategy
+    capabilities:
+      - change-management-consultant
+      - change-management
+      - structured-planning
+    projectSignals:
+      - change-management-consultant
+      - organizational-change
+      - adoption
+    activationConditions:
+      - 项目需要变革管理顾问参与，具体涉及资深变革管理专家，运用 ADKAR、Kotter 和 Prosci 框架，引导组织顺利完成技术落地、组织重构、文化转型与并购整合——管…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要变革管理顾问参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由变革管理顾问明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“ADKAR 模型应用”并提供可复核结果
+  specialized/chief-financial-officer.md:
+    origin: upstream_translation
+    upstreamPath: specialized/chief-financial-officer.md
+    domains:
+      - business-operations
+      - finance
+    capabilities:
+      - chief-financial-officer
+      - strategic-finance
+      - financial-control
+    projectSignals:
+      - chief-financial-officer
+      - capital-allocation
+      - board-reporting
+    activationConditions:
+      - 项目需要首席财务官参与，具体涉及战略财务高管，掌管资本配置、资金运营、财务规划、并购财务、投资者关系与董事会汇报——把财务的复杂性转化为清晰决策，驱动业务表现并赢得各…时启用
+    exclusionConditions:
+      - 任务不涉及首席财务官负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由首席财务官核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“年度财务规划框架”并提供可复核结果
+  specialized/corporate-training-designer.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - people-operations
+    capabilities:
+      - corporate-training-designer
+      - training-design
+      - people-enablement
+    projectSignals:
+      - corporate-training-designer
+      - corporate-training
+      - course-design
+    activationConditions:
+      - 项目需要企业培训课程设计师参与，具体涉及专注企业培训体系搭建与课程开发的专家，精通培训需求分析、教学设计方法论、混合式学习方案设计、内训师培养、领导力发展项目以及培训效果评估…时启用
+    exclusionConditions:
+      - 任务不涉及企业培训课程设计师负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由企业培训课程设计师给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“培训需求分析”并提供可复核结果
+  specialized/customer-success-manager.md:
+    origin: upstream_translation
+    upstreamPath: specialized/customer-success-manager.md
+    domains:
+      - business-operations
+      - customer-experience
+    capabilities:
+      - customer-success-manager
+      - customer-success
+      - service-resolution
+    projectSignals:
+      - customer-success-manager
+      - customer-health
+      - renewal
+    activationConditions:
+      - 项目需要客户成功经理参与，具体涉及战略型客户成功专家，负责 onboarding（新客导入）、health scoring（健康度评分）、QBR 主持、churn（流失…时启用
+    exclusionConditions:
+      - 没有客户诉求、服务响应或升级事项需要客户成功经理处理
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+    qualityGates:
+      - 服务交付必须由客户成功经理记录诉求、解决状态、升级条件和回访结果
+      - 验收必须覆盖正文定义的“客户 Health Score 框架”并提供可复核结果
+  specialized/data-consolidation-agent.md:
+    origin: upstream_translation
+    upstreamPath: specialized/data-consolidation-agent.md
+    domains:
+      - business-operations
+      - data-operations
+    capabilities:
+      - data-consolidation-agent
+      - data-consolidation
+      - evidence-analysis
+    projectSignals:
+      - data-consolidation-agent
+      - data-integration
+      - reporting-data
+    activationConditions:
+      - 项目需要数据整合师参与，具体涉及把提取出的销售数据整合到实时报告仪表盘，按区域、销售代表和销售管线生成汇总视图时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要数据整合师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由数据整合师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“仪表盘数据整合引擎”并提供可复核结果
+  specialized/data-privacy-officer.md:
+    origin: upstream_translation
+    upstreamPath: specialized/data-privacy-officer.md
+    domains:
+      - business-operations
+      - legal-compliance
+    capabilities:
+      - data-privacy-officer
+      - privacy-governance
+      - evidence-based-review
+    projectSignals:
+      - data-privacy-officer
+      - privacy-impact
+      - personal-data
+    activationConditions:
+      - 项目需要数据隐私官参与，具体涉及企业数据隐私专家与 DPO（数据保护官），负责构建 GDPR、CCPA 及全球隐私合规体系——覆盖数据测绘、隐私影响评估、同意管理、泄…时启用
+    exclusionConditions:
+      - 任务不涉及数据隐私官负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由数据隐私官逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“隐私监管全景”并提供可复核结果
+  specialized/esg-sustainability-officer.md:
+    origin: upstream_translation
+    upstreamPath: specialized/esg-sustainability-officer.md
+    domains:
+      - business-operations
+      - sustainability
+    capabilities:
+      - esg-sustainability-officer
+      - sustainability-governance
+      - structured-planning
+    projectSignals:
+      - esg-sustainability-officer
+      - esg
+      - sustainability
+    activationConditions:
+      - 项目需要ESG 与可持续发展官参与，具体涉及企业可持续发展战略专家与 ESG 信息披露专员，负责搭建 environmental、social、governance（环境、社会、…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要ESG 与可持续发展官参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由ESG 与可持续发展官明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“Materiality 评估流程”并提供可复核结果
+  specialized/gaokao-college-advisor.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - education
+    capabilities:
+      - gaokao-college-advisor
+      - college-admission-planning
+      - structured-planning
+    projectSignals:
+      - gaokao-college-advisor
+      - gaokao
+      - college-application
+    activationConditions:
+      - 项目需要高考志愿填报顾问参与，具体涉及中国高考志愿填报策略专家，精通平行志愿与院校专业组填报规则、位次法与等位分析、新高考选科组合与专业限选、提前批与专项计划、院校层次定位…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要高考志愿填报顾问参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由高考志愿填报顾问明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“填报规则精通”并提供可复核结果
+  specialized/government-digital-presales-consultant.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - public-sector
+    capabilities:
+      - government-digital-presales-consultant
+      - government-presales
+      - structured-planning
+    projectSignals:
+      - government-digital-presales-consultant
+      - government-project
+      - digital-presales
+    activationConditions:
+      - 项目需要政务数字化售前顾问参与，具体涉及面向中国政务市场（ToG）的数字化项目售前专家，精通政策解读、方案设计、标书编写、POC 验证、合规要求（等保/密评/信创）及客户关系…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要政务数字化售前顾问参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由政务数字化售前顾问明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“政策解读与商机洞察”并提供可复核结果
+  specialized/grant-writer.md:
+    origin: upstream_translation
+    upstreamPath: specialized/grant-writer.md
+    domains:
+      - business-operations
+      - fundraising
+    capabilities:
+      - grant-writer
+      - proposal-strategy
+      - audience-ready-delivery
+    projectSignals:
+      - grant-writer
+      - rfp
+      - proposal
+    activationConditions:
+      - 项目需要资助申请撰稿人参与，具体涉及资深 grant writing（基金申请写作）专家，服务于非营利组织、科研机构与社会企业——覆盖资助方调研（prospect res…时启用
+    exclusionConditions:
+      - 任务不需要资助申请撰稿人面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由资助申请撰稿人核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“Prospect Research（资助方调研）框架”并提供可复核结果
+  specialized/healthcare-customer-service.md:
+    origin: upstream_translation
+    upstreamPath: specialized/healthcare-customer-service.md
+    domains:
+      - business-operations
+      - healthcare
+    capabilities:
+      - healthcare-customer-service
+      - healthcare-support
+      - service-resolution
+    projectSignals:
+      - healthcare-customer-service
+      - patient-service
+      - medical-triage
+    activationConditions:
+      - 项目需要医疗客服专家参与，具体涉及富有同理心的医疗客服专家，负责患者支持、账单查询、预约管理、保险问题、投诉处理，以及向临床或行政人员的无缝转接时启用
+    exclusionConditions:
+      - 没有客户诉求、服务响应或升级事项需要医疗客服专家处理
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+    qualityGates:
+      - 服务交付必须由医疗客服专家记录诉求、解决状态、升级条件和回访结果
+      - 验收必须覆盖正文定义的“标准患者互动开场”并提供可复核结果
+  specialized/healthcare-marketing-compliance.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - healthcare
+    capabilities:
+      - healthcare-marketing-compliance
+      - evidence-based-review
+    projectSignals:
+      - healthcare-marketing-compliance
+      - healthcare-marketing
+      - medical-compliance
+    activationConditions:
+      - 项目需要医疗健康营销合规师参与，具体涉及深耕中国医疗健康行业营销合规的专家，精通《广告法》《医疗广告管理办法》《药品管理法》等法规，覆盖药品、医疗器械、医美、保健品、互联网医…时启用
+    exclusionConditions:
+      - 任务不涉及医疗健康营销合规师负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由医疗健康营销合规师逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“医疗广告合规”并提供可复核结果
+  specialized/hospitality-guest-services.md:
+    origin: upstream_translation
+    upstreamPath: specialized/hospitality-guest-services.md
+    domains:
+      - business-operations
+      - customer-experience
+    capabilities:
+      - hospitality-guest-services
+      - hospitality-service
+      - service-resolution
+    projectSignals:
+      - hospitality-guest-services
+      - hotel-guest
+      - guest-service
+    activationConditions:
+      - 项目需要酒店宾客服务专家参与，具体涉及全面的酒店宾客服务专家，覆盖酒店、度假村、餐厅和活动场所——涵盖预订、入住/退房、礼宾服务、宾客投诉处理、忠诚度计划管理和离店后跟进，…时启用
+    exclusionConditions:
+      - 没有客户诉求、服务响应或升级事项需要酒店宾客服务专家处理
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+    qualityGates:
+      - 服务交付必须由酒店宾客服务专家记录诉求、解决状态、升级条件和回访结果
+      - 验收必须覆盖正文定义的“预订管理”并提供可复核结果
+  specialized/hr-onboarding.md:
+    origin: upstream_translation
+    upstreamPath: specialized/hr-onboarding.md
+    domains:
+      - business-operations
+      - people-operations
+    capabilities:
+      - hr-onboarding
+      - employee-onboarding
+      - people-enablement
+    projectSignals:
+      - hr-onboarding
+      - new-hire
+      - onboarding
+    activationConditions:
+      - 项目需要HR 入职管理专家参与，具体涉及全面的 HR 入职管理专家，负责员工迎新、文档管理、合规追踪、福利登记、文化融入和新员工支持——打造从第一天到第一年的无缝入职体验，驱…时启用
+    exclusionConditions:
+      - 任务不涉及HR 入职管理专家负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由HR 入职管理专家给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“预入职清单”并提供可复核结果
+  specialized/identity-graph-operator.md:
+    origin: upstream_translation
+    upstreamPath: specialized/identity-graph-operator.md
+    domains:
+      - business-operations
+      - identity-security
+    capabilities:
+      - identity-graph-operator
+      - identity-governance
+      - workflow-execution
+    projectSignals:
+      - identity-graph-operator
+      - identity-graph
+      - entity-resolution
+    activationConditions:
+      - 项目需要身份图谱操作员参与，具体涉及运维多智能体系统的共享身份图谱，确保每个智能体对"这个实体是谁？"都能得到一致的规范答案——即使在并发写入下也保持确定性时启用
+    exclusionConditions:
+      - 不存在身份图谱操作员负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由身份图谱操作员保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“将记录解析为规范实体”并提供可复核结果
+  specialized/language-translator.md:
+    origin: upstream_translation
+    upstreamPath: specialized/language-translator.md
+    domains:
+      - business-operations
+      - localization
+    capabilities:
+      - language-translator
+      - language-translation
+      - audience-ready-delivery
+    projectSignals:
+      - language-translator
+      - multilingual
+      - cultural-context
+    activationConditions:
+      - 项目需要语言翻译专家参与，具体涉及实时西班牙语与英语互译专家，提供文化语境、地区方言感知、旅行用语指导以及语气恰当的沟通支持，覆盖日常、商务和紧急场景时启用
+    exclusionConditions:
+      - 任务不需要语言翻译专家面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由语言翻译专家核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“标准翻译输出”并提供可复核结果
+  specialized/legal-billing-time-tracking.md:
+    origin: upstream_translation
+    upstreamPath: specialized/legal-billing-time-tracking.md
+    domains:
+      - business-operations
+      - legal-compliance
+    capabilities:
+      - legal-billing-time-tracking
+      - legal-billing
+      - evidence-based-review
+    projectSignals:
+      - legal-billing-time-tracking
+      - legal-timekeeping
+      - client-billing
+    activationConditions:
+      - 项目需要律所计费与工时专家参与，具体涉及全面的律所计费与工时追踪专家，负责精准工时记录、发票生成、计费叙述撰写、应收账款管理、信托账户合规和计费分析——在保持客户关系和道德合…时启用
+    exclusionConditions:
+      - 任务不涉及律所计费与工时专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由律所计费与工时专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“工时录入标准”并提供可复核结果
+  specialized/legal-client-intake.md:
+    origin: upstream_translation
+    upstreamPath: specialized/legal-client-intake.md
+    domains:
+      - business-operations
+      - legal-compliance
+    capabilities:
+      - legal-client-intake
+      - legal-intake
+      - evidence-based-review
+    projectSignals:
+      - legal-client-intake
+      - legal-client
+      - conflict-check
+    activationConditions:
+      - 项目需要律所客户接案专家参与，具体涉及全面的律所客户接案专家，负责潜在客户资质审核、案件信息收集、咨询预约安排、利益冲突筛查，以及提供律师就绪的接案摘要，覆盖所有业务领域和…时启用
+    exclusionConditions:
+      - 任务不涉及律所客户接案专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由律所客户接案专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“初次联系脚本”并提供可复核结果
+  specialized/legal-document-review.md:
+    origin: upstream_translation
+    upstreamPath: specialized/legal-document-review.md
+    domains:
+      - business-operations
+      - legal-compliance
+    capabilities:
+      - legal-document-review
+      - evidence-based-review
+    projectSignals:
+      - legal-document-review
+      - legal-document
+      - clause-review
+    activationConditions:
+      - 项目需要法律文书审查专家参与，具体涉及全面的法律文书审查专家，涵盖合同、诉讼文件和不动产协议——提供文档摘要、风险条款标记、合同版本比对和合规检查，适用于各类律所和业务领域时启用
+    exclusionConditions:
+      - 任务不涉及法律文书审查专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由法律文书审查专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“文件摘要模板”并提供可复核结果
+  specialized/livestock-archive-auditor.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - agriculture
+    capabilities:
+      - livestock-archive-auditor
+      - livestock-record-audit
+      - evidence-based-review
+    projectSignals:
+      - livestock-archive-auditor
+      - livestock-record
+      - excel-audit
+    activationConditions:
+      - 项目需要养殖档案核对员参与，具体涉及核对畜禽养殖档案 Excel 与生产日报，按子表独立审计兽药、饲料、诊疗、免疫、生产记录等错填漏填，FIFO 复核批号，输出可直接整改…时启用
+    exclusionConditions:
+      - 任务不涉及养殖档案核对员负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由养殖档案核对员逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“输入约定”并提供可复核结果
+  specialized/loan-officer-assistant.md:
+    origin: upstream_translation
+    upstreamPath: specialized/loan-officer-assistant.md
+    domains:
+      - business-operations
+      - finance
+    capabilities:
+      - loan-officer-assistant
+      - loan-processing
+      - financial-control
+    projectSignals:
+      - loan-officer-assistant
+      - loan-application
+      - credit-compliance
+    activationConditions:
+      - 项目需要信贷经理助手参与，具体涉及综合信贷经理助手，涵盖借款人接待、资格预审、文件收集、流水线管理、合规追踪、利率报价和过户协调，适用于住宅、商业和消费信贷时启用
+    exclusionConditions:
+      - 任务不涉及信贷经理助手负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由信贷经理助手核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“借款人接待脚本”并提供可复核结果
+  specialized/lsp-index-engineer.md:
+    origin: upstream_translation
+    upstreamPath: specialized/lsp-index-engineer.md
+    domains:
+      - business-operations
+      - data-operations
+    capabilities:
+      - lsp-index-engineer
+      - code-intelligence
+      - solution-design
+    projectSignals:
+      - lsp-index-engineer
+      - language-server
+      - semantic-index
+    activationConditions:
+      - 项目需要LSP 索引工程师参与，具体涉及Language Server Protocol 专家，通过 LSP 客户端编排和语义索引构建统一的代码智能系统时启用
+    exclusionConditions:
+      - 任务不涉及LSP 索引工程师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由LSP 索引工程师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“构建 graphd LSP 聚合器”并提供可复核结果
+  specialized/ma-integration-manager.md:
+    origin: upstream_translation
+    upstreamPath: specialized/ma-integration-manager.md
+    domains:
+      - business-operations
+    capabilities:
+      - ma-integration-manager
+      - merger-integration
+      - structured-planning
+    projectSignals:
+      - ma-integration-manager
+      - merger-acquisition
+      - integration-plan
+    activationConditions:
+      - 项目需要M&A 整合经理参与，具体涉及并购(M&A)整合专家，负责设计并执行并购后整合(PMI)项目——涵盖 Day 1 就绪、百日计划、synergy(协同效应)追踪、文…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要M&A 整合经理参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由M&A 整合经理明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“整合战略框架”并提供可复核结果
+  specialized/medical-billing-coding-specialist.md:
+    origin: upstream_translation
+    upstreamPath: specialized/medical-billing-coding-specialist.md
+    domains:
+      - business-operations
+      - healthcare
+    capabilities:
+      - medical-billing-coding-specialist
+      - medical-coding
+      - financial-control
+    projectSignals:
+      - medical-billing-coding-specialist
+      - medical-billing
+      - claims
+    activationConditions:
+      - 项目需要医疗账单与编码专员参与，具体涉及精通 ICD-10-CM/PCS、CPT、HCPCS 编码的医疗账单与编码专家，擅长 claim（理赔单）提交、denial（拒付）管…时启用
+    exclusionConditions:
+      - 任务不涉及医疗账单与编码专员负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由医疗账单与编码专员核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“编码参考框架”并提供可复核结果
+  specialized/operations-manager.md:
+    origin: upstream_translation
+    upstreamPath: specialized/operations-manager.md
+    domains:
+      - business-operations
+    capabilities:
+      - operations-manager
+      - operations-management
+      - structured-planning
+    projectSignals:
+      - operations-manager
+      - operational-efficiency
+      - process-kpi
+    activationConditions:
+      - 项目需要运营经理参与，具体涉及业务运营专家，把 Lean（精益）、Six Sigma（六西格玛）和系统思维应用到流程梳理、产能规划、KPI 治理、供应商管理和组织效…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要运营经理参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由运营经理明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“流程梳理框架”并提供可复核结果
+  specialized/organizational-psychologist.md:
+    origin: upstream_translation
+    upstreamPath: specialized/organizational-psychologist.md
+    domains:
+      - business-operations
+      - people-operations
+    capabilities:
+      - organizational-psychologist
+      - organizational-psychology
+      - structured-planning
+    projectSignals:
+      - organizational-psychologist
+      - psychological-safety
+      - team-health
+    activationConditions:
+      - 项目需要组织心理学家参与，具体涉及应用型组织心理学家，诊断团队动力、psychological safety（心理安全感）、burnout（职业倦怠）风险与文化健康度—…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要组织心理学家参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由组织心理学家明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“Psychological Safety 框架”并提供可复核结果
+  specialized/personal-growth-mentor.md:
+    origin: upstream_translation
+    upstreamPath: specialized/personal-growth-mentor.md
+    domains:
+      - business-operations
+    capabilities:
+      - personal-growth-mentor
+      - personal-development
+      - people-enablement
+    projectSignals:
+      - personal-growth-mentor
+      - goal-setting
+      - habit-design
+    activationConditions:
+      - 项目需要个人成长导师参与，具体涉及跨领域个人发展导师，专注目标厘清、习惯（habit）设计、战略决策与责任督促（accountability），不灌鸡汤时启用
+    exclusionConditions:
+      - 任务不涉及个人成长导师负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由个人成长导师给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“先厘清，再行动”并提供可复核结果
+  specialized/prompt-engineer.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - ai-systems
+    capabilities:
+      - prompt-engineer
+      - prompt-engineering
+      - solution-design
+    projectSignals:
+      - prompt-engineer
+      - llm-prompt
+      - prompt-evaluation
+    activationConditions:
+      - 项目需要提示词工程师参与，具体涉及专注大语言模型提示词设计与优化的专家，精通系统提示词架构、思维链设计、少样本学习策略、以及提示词效果评测和迭代方法论时启用
+    exclusionConditions:
+      - 任务不涉及提示词工程师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由提示词工程师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“系统提示词设计”并提供可复核结果
+  specialized/real-estate-buyer-seller.md:
+    origin: upstream_translation
+    upstreamPath: specialized/real-estate-buyer-seller.md
+    domains:
+      - business-operations
+      - real-estate
+    capabilities:
+      - real-estate-buyer-seller
+      - real-estate-transaction
+      - workflow-execution
+    projectSignals:
+      - real-estate-buyer-seller
+      - property-transaction
+      - offer-negotiation
+    activationConditions:
+      - 项目需要房地产经纪助手参与，具体涉及综合房地产经纪人助手，涵盖买方代理、卖方代理、房源管理、报价谈判、交易协调和过户支持，提供从首次看房到最终过户的世界级客户体验，适用于…时启用
+    exclusionConditions:
+      - 不存在房地产经纪助手负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由房地产经纪助手保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“买方需求评估”并提供可复核结果
+  specialized/report-distribution-agent.md:
+    origin: upstream_translation
+    upstreamPath: specialized/report-distribution-agent.md
+    domains:
+      - business-operations
+      - data-operations
+    capabilities:
+      - report-distribution-agent
+      - report-distribution
+      - workflow-execution
+    projectSignals:
+      - report-distribution-agent
+      - report-routing
+      - sales-report
+    activationConditions:
+      - 项目需要报告分发师参与，具体涉及自动把整合好的销售报告按区域分发给对应的销售代表，支持定时和手动触发时启用
+    exclusionConditions:
+      - 不存在报告分发师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由报告分发师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“分发引擎”并提供可复核结果
+  specialized/retail-customer-returns.md:
+    origin: upstream_translation
+    upstreamPath: specialized/retail-customer-returns.md
+    domains:
+      - business-operations
+      - customer-experience
+    capabilities:
+      - retail-customer-returns
+      - returns-management
+      - service-resolution
+    projectSignals:
+      - retail-customer-returns
+      - product-return
+      - refund
+    activationConditions:
+      - 项目需要零售退货专家参与，具体涉及综合零售退货专家，处理线上线下及全渠道零售的退货、换货和退款，涵盖政策执行、防欺诈、客户留存、供应商退货和退货分析，在最大化商品回收的…时启用
+    exclusionConditions:
+      - 没有客户诉求、服务响应或升级事项需要零售退货专家处理
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+    qualityGates:
+      - 服务交付必须由零售退货专家记录诉求、解决状态、升级条件和回访结果
+      - 验收必须覆盖正文定义的“退货资格检查器”并提供可复核结果
+  specialized/sales-data-extraction-agent.md:
+    origin: upstream_translation
+    upstreamPath: specialized/sales-data-extraction-agent.md
+    domains:
+      - business-operations
+      - sales
+    capabilities:
+      - sales-data-extraction-agent
+      - sales-data-extraction
+      - evidence-analysis
+    projectSignals:
+      - sales-data-extraction-agent
+      - excel-sales-data
+      - sales-metrics
+    activationConditions:
+      - 项目需要销售数据提取师参与，具体涉及监控 Excel 文件并提取关键销售指标（月累计、年累计、年末预测），服务于内部实时报告系统时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要销售数据提取师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由销售数据提取师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“文件监控”并提供可复核结果
+  specialized/specialized-ai-policy-writer.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - legal-compliance
+    capabilities:
+      - specialized-ai-policy-writer
+      - policy-governance
+      - evidence-based-review
+    projectSignals:
+      - specialized-ai-policy-writer
+      - policy-writing
+      - regulatory-compliance
+    activationConditions:
+      - 项目需要AI 治理政策专家参与，具体涉及面向中国企业和机构的 AI 治理与合规专家，精通《生成式 AI 管理办法》、算法备案制度、深度合成管理规定、大模型安全评估流程及 AI…时启用
+    exclusionConditions:
+      - 任务不涉及AI 治理政策专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由AI 治理政策专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“法规准确性”并提供可复核结果
+  specialized/specialized-chief-of-staff.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-chief-of-staff.md
+    domains:
+      - business-operations
+    capabilities:
+      - specialized-chief-of-staff
+      - executive-operations
+      - workflow-execution
+    projectSignals:
+      - specialized-chief-of-staff
+      - executive-alignment
+      - okr-tracking
+    activationConditions:
+      - 项目需要幕僚长参与，具体涉及创始人和高管的首席协调者——过滤噪音、掌控流程、确保一致性、路由决策、将产出定位到最大影响处，让老板能清晰思考时启用
+    exclusionConditions:
+      - 不存在幕僚长负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由幕僚长保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“过滤器——什么能到老板面前”并提供可复核结果
+  specialized/specialized-civil-engineer.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-civil-engineer.md
+    domains:
+      - business-operations
+      - civil-engineering
+    capabilities:
+      - specialized-civil-engineer
+      - civil-engineering
+      - solution-design
+    projectSignals:
+      - specialized-civil-engineer
+      - structural-design
+      - engineering-standard
+    activationConditions:
+      - 项目需要土木工程师参与，具体涉及精通全球标准的土木与结构工程专家——覆盖 Eurocode、DIN、ACI、AISC、ASCE、AS/NZS、CSA、GB、IS、AI…时启用
+    exclusionConditions:
+      - 任务不涉及土木工程师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由土木工程师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“结构分析与设计”并提供可复核结果
+  specialized/specialized-cultural-intelligence-strategist.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-cultural-intelligence-strategist.md
+    domains:
+      - business-operations
+    capabilities:
+      - specialized-cultural-intelligence-strategist
+      - cultural-intelligence
+      - evidence-analysis
+    projectSignals:
+      - specialized-cultural-intelligence-strategist
+      - cross-cultural
+      - inclusion
+    activationConditions:
+      - 项目需要文化智能策略师参与，具体涉及文化智商（CQ）专家，检测隐性排斥、研究全球化上下文，确保软件产品在跨文化和交叉身份中产生真实共鸣时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要文化智能策略师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由文化智能策略师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“代码示例：符号学与语言审计”并提供可复核结果
+  specialized/specialized-developer-advocate.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-developer-advocate.md
+    domains:
+      - business-operations
+    capabilities:
+      - specialized-developer-advocate
+      - developer-relations
+      - solution-design
+    projectSignals:
+      - specialized-developer-advocate
+      - developer-community
+      - developer-experience
+    activationConditions:
+      - 项目需要开发者布道师参与，具体涉及专业开发者关系专家，擅长构建开发者社区、创作技术内容、优化开发者体验（DX），通过真实的工程参与驱动平台采用。连接产品团队、工程团队与…时启用
+    exclusionConditions:
+      - 任务不涉及开发者布道师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由开发者布道师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“开发者体验（DX）工程”并提供可复核结果
+  specialized/specialized-document-generator.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-document-generator.md
+    domains:
+      - business-operations
+    capabilities:
+      - specialized-document-generator
+      - document-generation
+      - audience-ready-delivery
+    projectSignals:
+      - specialized-document-generator
+      - pdf
+      - office-document
+    activationConditions:
+      - 项目需要文档生成器参与，具体涉及专业文档创建专家，通过代码化方式生成专业的 PDF、PPTX、DOCX 和 XLSX 文件，支持格式化、图表和数据可视化时启用
+    exclusionConditions:
+      - 任务不需要文档生成器面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由文档生成器核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“PDF 生成”并提供可复核结果
+  specialized/specialized-mcp-builder.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-mcp-builder.md
+    domains:
+      - business-operations
+      - ai-systems
+    capabilities:
+      - specialized-mcp-builder
+      - mcp-development
+      - solution-design
+    projectSignals:
+      - specialized-mcp-builder
+      - mcp-server
+      - tool-integration
+    activationConditions:
+      - 项目需要MCP 构建器参与，具体涉及Model Context Protocol 开发专家，设计、构建和测试 MCP 服务器，通过自定义工具、资源和提示词扩展 AI 智能…时启用
+    exclusionConditions:
+      - 任务不涉及MCP 构建器负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由MCP 构建器给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“工具设计纪律”并提供可复核结果
+  specialized/specialized-meeting-assistant.md:
+    origin: china_original
+    domains:
+      - business-operations
+    capabilities:
+      - specialized-meeting-assistant
+      - meeting-management
+      - workflow-execution
+    projectSignals:
+      - specialized-meeting-assistant
+      - meeting-efficiency
+      - decision-tracking
+    activationConditions:
+      - 项目需要会议效率专家参与，具体涉及面向中国企业的会议管理与效率提升专家，精通飞书、钉钉、腾讯会议等协作平台，擅长会议纪要撰写、行动项追踪、议程设计、OKR 周会组织及跨…时启用
+    exclusionConditions:
+      - 不存在会议效率专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由会议效率专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“时间尊重原则”并提供可复核结果
+  specialized/specialized-model-qa.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-model-qa.md
+    domains:
+      - business-operations
+      - data-operations
+    capabilities:
+      - specialized-model-qa
+      - model-quality-audit
+      - evidence-based-review
+    projectSignals:
+      - specialized-model-qa
+      - model-validation
+      - model-risk
+    activationConditions:
+      - 项目需要模型 QA 专家参与，具体涉及独立模型 QA 专家，端到端审计机器学习和统计模型——从文档审查、数据重建到复现、校准测试、可解释性分析、性能监控和审计级报告时启用
+    exclusionConditions:
+      - 任务不涉及模型 QA 专家负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由模型 QA 专家逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“文档与治理审查”并提供可复核结果
+  specialized/specialized-pricing-analyst.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-pricing-analyst.md
+    domains:
+      - business-operations
+      - finance
+    capabilities:
+      - specialized-pricing-analyst
+      - pricing-strategy
+      - financial-control
+    projectSignals:
+      - specialized-pricing-analyst
+      - pricing
+      - margin
+    activationConditions:
+      - 项目需要定价分析师参与，具体涉及专精定价分析师，通过市场调研、竞品分析、成本结构评估和 margin（利润率）优化，构建最优定价模型——把定价从凭感觉拍脑袋，变成数据…时启用
+    exclusionConditions:
+      - 任务不涉及定价分析师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由定价分析师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“定价分析框架”并提供可复核结果
+  specialized/specialized-pricing-optimizer.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - finance
+    capabilities:
+      - specialized-pricing-optimizer
+      - pricing-strategy
+      - financial-control
+    projectSignals:
+      - specialized-pricing-optimizer
+      - pricing
+      - margin
+    activationConditions:
+      - 项目需要动态定价策略师参与，具体涉及专注电商动态定价与促销策略的价格优化专家，精通淘宝、京东、拼多多等平台的价格机制、大促定价规则、竞品价格监控和利润最大化策略，帮助商家…时启用
+    exclusionConditions:
+      - 任务不涉及动态定价策略师负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由动态定价策略师核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“基础定价策略”并提供可复核结果
+  specialized/specialized-risk-assessor.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - risk-management
+    capabilities:
+      - specialized-risk-assessor
+      - enterprise-risk
+      - evidence-based-review
+    projectSignals:
+      - specialized-risk-assessor
+      - risk-register
+      - enterprise-risk
+    activationConditions:
+      - 项目需要企业风险评估师参与，具体涉及面向中国企业的全面风险管理专家，精通国企风控体系建设、内控合规（COSO 框架本土化）、审计整改、ESG 风险管理及供应链风险评估，帮…时启用
+    exclusionConditions:
+      - 任务不涉及企业风险评估师负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由企业风险评估师逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“客观独立”并提供可复核结果
+  specialized/specialized-salesforce-architect.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-salesforce-architect.md
+    domains:
+      - business-operations
+      - sales
+    capabilities:
+      - specialized-salesforce-architect
+      - salesforce-architecture
+      - solution-design
+    projectSignals:
+      - specialized-salesforce-architect
+      - salesforce
+      - crm-integration
+    activationConditions:
+      - 项目需要Salesforce 架构师参与，具体涉及Salesforce 平台的解决方案架构——多云设计、集成模式、Governor Limits、部署策略和数据模型治理，适用于企业级组织时启用
+    exclusionConditions:
+      - 任务不涉及Salesforce 架构师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由Salesforce 架构师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“架构决策记录（ADR）”并提供可复核结果
+  specialized/specialized-strategy-duel-agent.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-strategy-duel-agent.md
+    domains:
+      - business-operations
+      - strategy
+    capabilities:
+      - specialized-strategy-duel-agent
+      - scenario-strategy
+      - workflow-execution
+    projectSignals:
+      - specialized-strategy-duel-agent
+      - game-theory
+      - scenario-planning
+    activationConditions:
+      - 项目需要策略对决推演师参与，具体涉及运用 game theory（博弈论）和三十六计开展实时策略对决推演时启用
+    exclusionConditions:
+      - 不存在策略对决推演师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由策略对决推演师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“你的成功指标”并提供可复核结果
+  specialized/specialized-workflow-architect.md:
+    origin: upstream_translation
+    upstreamPath: specialized/specialized-workflow-architect.md
+    domains:
+      - business-operations
+      - ai-systems
+    capabilities:
+      - specialized-workflow-architect
+      - workflow-design
+      - solution-design
+    projectSignals:
+      - specialized-workflow-architect
+      - workflow
+      - user-journey
+    activationConditions:
+      - 项目需要工作流架构师参与，具体涉及工作流设计专家，为每个系统、用户旅程和智能体交互绘制完整的工作流树——涵盖正常路径、所有分支条件、故障模式、恢复路径、交接契约和可观测…时启用
+    exclusionConditions:
+      - 任务不涉及工作流架构师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由工作流架构师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“发现无人告知你的工作流”并提供可复核结果
+  specialized/study-abroad-advisor.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - education
+    capabilities:
+      - study-abroad-advisor
+      - study-abroad-planning
+      - structured-planning
+    projectSignals:
+      - study-abroad-advisor
+      - international-education
+      - application-planning
+    activationConditions:
+      - 项目需要留学规划顾问参与，具体涉及覆盖美英加澳欧港新的全阶段留学规划专家，精通本科/硕士/博士申请策略、选校定位、文书打磨、背景提升、标化规划、签证准备和海外生活适应，…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要留学规划顾问参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由留学规划顾问明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“留学方向规划”并提供可复核结果
+  specialized/technical-translator-agent.md:
+    origin: china_original
+    domains:
+      - business-operations
+      - localization
+    capabilities:
+      - technical-translator-agent
+      - technical-translation
+      - audience-ready-delivery
+    projectSignals:
+      - technical-translator-agent
+      - technical-content
+      - bilingual-translation
+    activationConditions:
+      - 项目需要技术翻译专家参与，具体涉及专注于技术领域的中英文双向翻译，精通编程、AI、云计算等技术术语，确保技术文档的准确性和专业性时启用
+    exclusionConditions:
+      - 任务不需要技术翻译专家面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由技术翻译专家核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“专业翻译示例”并提供可复核结果
+  specialized/zk-steward.md:
+    origin: upstream_translation
+    upstreamPath: specialized/zk-steward.md
+    domains:
+      - business-operations
+      - knowledge-management
+    capabilities:
+      - zk-steward
+      - knowledge-management
+      - workflow-execution
+    projectSignals:
+      - zk-steward
+      - knowledge-base
+      - atomic-notes
+    activationConditions:
+      - 项目需要ZK 管家参与，具体涉及秉承 Niklas Luhmann 卡片盒笔记法精神的知识库管家。默认视角为 Luhmann；按任务切换领域专家（Feynman、Mu…时启用
+    exclusionConditions:
+      - 不存在ZK 管家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由ZK 管家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“构建知识网络”并提供可复核结果
+  supply-chain/supply-chain-garment-factory-planning-engineer.md:
+    origin: china_original
+    domains:
+      - supply-chain
+    capabilities:
+      - supply-chain-garment-factory-planning-engineer
+      - factory-planning
+      - solution-design
+    projectSignals:
+      - supply-chain-garment-factory-planning-engineer
+      - factory-layout
+      - capacity-planning
+    activationConditions:
+      - 项目需要服装工厂规划工程师参与，具体涉及全球多基地服装工厂规划专家——精通牛仔/羽绒服/无痕内衣/针织产线全流程设计，覆盖场地规划、产能测算、设备选型、精益优化与多国合规，支…时启用
+    exclusionConditions:
+      - 任务不涉及服装工厂规划工程师负责的方案设计、实现或技术验证
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 技术交付必须由服装工厂规划工程师给出约束、实现证据、失败路径和验证结果
+      - 验收必须覆盖正文定义的“工厂整体规划”并提供可复核结果
+  supply-chain/supply-chain-inventory-forecaster.md:
+    origin: china_original
+    domains:
+      - supply-chain
+    capabilities:
+      - supply-chain-inventory-forecaster
+      - inventory-forecasting
+      - evidence-analysis
+    projectSignals:
+      - supply-chain-inventory-forecaster
+      - inventory
+      - demand-forecast
+    activationConditions:
+      - 项目需要库存预测专家参与，具体涉及专注需求预测与库存管理的供应链专家，擅长基于历史销售数据和市场趋势的精准需求预测、安全库存计算、补货策略优化，帮助企业在中国电商大促节…时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要库存预测专家补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由库存预测专家标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“需求预测建模”并提供可复核结果
+  supply-chain/supply-chain-route-optimizer.md:
+    origin: china_original
+    domains:
+      - supply-chain
+    capabilities:
+      - supply-chain-route-optimizer
+      - logistics-optimization
+      - workflow-execution
+    projectSignals:
+      - supply-chain-route-optimizer
+      - logistics
+      - route-planning
+    activationConditions:
+      - 项目需要物流路线优化师参与，具体涉及专注物流配送路线规划与成本优化的供应链专家，精通中国快递物流体系、同城配送网络、冷链运输和跨境物流方案，帮助企业在保障时效的前提下实现…时启用
+    exclusionConditions:
+      - 不存在物流路线优化师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由物流路线优化师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“快递物流方案选择”并提供可复核结果
+  supply-chain/supply-chain-strategist.md:
+    origin: upstream_translation
+    upstreamPath: specialized/supply-chain-strategist.md
+    domains:
+      - supply-chain
+    capabilities:
+      - supply-chain-strategist
+      - strategic-procurement
+      - structured-planning
+    projectSignals:
+      - supply-chain-strategist
+      - procurement
+      - supplier-management
+    activationConditions:
+      - 项目需要供应链采购策略师参与，具体涉及专业的供应链管理与采购策略专家，精通供应商开发与管理、战略采购、质量管控和供应链数字化。立足中国制造业生态，帮助企业构建高效、韧性、可…时启用
+    exclusionConditions:
+      - 范围、责任人与决策已明确，不需要供应链采购策略师参与规划
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由供应链采购策略师明确范围、责任人、时间点和可量化成功标准
+      - 验收必须覆盖正文定义的“构建高效的供应商管理体系”并提供可复核结果
+  supply-chain/supply-chain-vendor-evaluator.md:
+    origin: china_original
+    domains:
+      - supply-chain
+    capabilities:
+      - supply-chain-vendor-evaluator
+      - vendor-management
+      - workflow-execution
+    projectSignals:
+      - supply-chain-vendor-evaluator
+      - supplier-evaluation
+      - vendor-risk
+    activationConditions:
+      - 项目需要供应商评估专家参与，具体涉及专注供应商全生命周期管理的采购策略专家，擅长供应商筛选与评分、验厂审核、质量管理体系搭建、账期与成本谈判，帮助企业在1688等采购平台…时启用
+    exclusionConditions:
+      - 不存在供应商评估专家负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由供应商评估专家保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“供应商筛选与准入”并提供可复核结果
+  support/support-analytics-reporter.md:
+    origin: upstream_translation
+    upstreamPath: support/support-analytics-reporter.md
+    domains:
+      - business-support
+      - customer-experience
+    capabilities:
+      - support-analytics-reporter
+      - business-analytics
+      - evidence-analysis
+    projectSignals:
+      - support-analytics-reporter
+      - business-data
+      - dashboard
+    activationConditions:
+      - 项目需要数据分析师参与，具体涉及专业数据分析师，擅长将原始数据转化为可操作的业务洞察。创建仪表盘、执行统计分析、跟踪 KPI，并通过数据可视化和报告提供战略决策支持时启用
+    exclusionConditions:
+      - 已有充分且可追溯的结论，不需要数据分析师补充分析
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 分析结论必须由数据分析师标注数据来源、分析口径、假设和不确定性
+      - 验收必须覆盖正文定义的“将数据转化为战略洞察”并提供可复核结果
+  support/support-executive-summary-generator.md:
+    origin: upstream_translation
+    upstreamPath: support/support-executive-summary-generator.md
+    domains:
+      - business-support
+      - customer-experience
+    capabilities:
+      - support-executive-summary-generator
+      - executive-communication
+      - audience-ready-delivery
+    projectSignals:
+      - support-executive-summary-generator
+      - executive-summary
+      - decision-brief
+    activationConditions:
+      - 项目需要高管摘要师参与，具体涉及像资深战略顾问一样思考和表达的 AI 专家，擅长把复杂的业务信息压缩成简洁、可执行的高管摘要。用 McKinsey SCQA、BCG …时启用
+    exclusionConditions:
+      - 任务不需要高管摘要师面向特定受众产出或校核内容
+    preferredTasks:
+      - clarify
+      - implement
+      - review
+    qualityGates:
+      - 交付前必须由高管摘要师核对目标受众、渠道规范、事实来源和行动目标
+      - 验收必须覆盖正文定义的“像管理顾问一样思考”并提供可复核结果
+  support/support-finance-tracker.md:
+    origin: upstream_translation
+    upstreamPath: support/support-finance-tracker.md
+    domains:
+      - business-support
+      - finance
+    capabilities:
+      - support-finance-tracker
+      - financial-tracking
+      - financial-control
+    projectSignals:
+      - support-finance-tracker
+      - budget-tracking
+      - financial-control
+    activationConditions:
+      - 项目需要财务追踪员参与，具体涉及专业的财务分析与管控专家，擅长财务规划、预算管理和经营绩效分析。守住企业财务健康底线，优化现金流，为业务增长提供有数据支撑的财务洞察时启用
+    exclusionConditions:
+      - 任务不涉及财务追踪员负责的财务口径、资金或经营数据
+    preferredTasks:
+      - clarify
+      - verify
+      - review
+    qualityGates:
+      - 财务结论必须由财务追踪员核对期间、口径、计算过程和风险假设
+      - 验收必须覆盖正文定义的“守住财务健康和经营绩效”并提供可复核结果
+  support/support-infrastructure-maintainer.md:
+    origin: upstream_translation
+    upstreamPath: support/support-infrastructure-maintainer.md
+    domains:
+      - business-support
+      - customer-experience
+    capabilities:
+      - support-infrastructure-maintainer
+      - infrastructure-operations
+      - workflow-execution
+    projectSignals:
+      - support-infrastructure-maintainer
+      - system-reliability
+      - infrastructure
+    activationConditions:
+      - 项目需要基础设施运维师参与，具体涉及专业的基础设施运维专家，专注系统可靠性、性能优化和技术运营管理。用安全、高性能、低成本的方式维护稳定可扩展的基础设施，撑住业务运转时启用
+    exclusionConditions:
+      - 不存在基础设施运维师负责的执行、运营或流程编排工作
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 执行结果必须由基础设施运维师保留输入、处理步骤、异常和可复核输出
+      - 验收必须覆盖正文定义的“确保系统最大可靠性和性能”并提供可复核结果
+  support/support-legal-compliance-checker.md:
+    origin: upstream_translation
+    upstreamPath: support/support-legal-compliance-checker.md
+    domains:
+      - business-support
+      - legal-compliance
+    capabilities:
+      - support-legal-compliance-checker
+      - operational-compliance
+      - evidence-based-review
+    projectSignals:
+      - support-legal-compliance-checker
+      - business-compliance
+      - data-handling
+    activationConditions:
+      - 项目需要法务合规员参与，具体涉及专业的法律合规专家，确保业务运营、数据处理和内容创作符合多个司法管辖区的相关法律法规和行业标准时启用
+    exclusionConditions:
+      - 任务不涉及法务合规员负责的审查、合规或风险判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 审查结论必须由法务合规员逐项列出证据、风险等级和整改建议
+      - 验收必须覆盖正文定义的“确保全面法律合规”并提供可复核结果
+  support/support-recruitment-specialist.md:
+    origin: china_original
+    domains:
+      - business-support
+      - people-operations
+    capabilities:
+      - support-recruitment-specialist
+      - talent-acquisition
+      - people-enablement
+    projectSignals:
+      - support-recruitment-specialist
+      - recruitment
+      - candidate-pipeline
+    activationConditions:
+      - 项目需要招聘运营专家参与，具体涉及专业的招聘运营与人才获取专家，精通中国主流招聘渠道运营、人才评估体系搭建和劳动法合规管理。帮助企业高效吸引、筛选和留住优秀人才，打造有…时启用
+    exclusionConditions:
+      - 任务不涉及招聘运营专家负责的人员培养、招聘或能力提升
+    preferredTasks:
+      - clarify
+      - design
+      - review
+    qualityGates:
+      - 方案必须由招聘运营专家给出对象、评估标准、执行节奏和反馈闭环
+      - 验收必须覆盖正文定义的“招聘渠道运营”并提供可复核结果
+  support/support-support-responder.md:
+    origin: upstream_translation
+    upstreamPath: specialized/customer-service.md
+    domains:
+      - business-support
+      - customer-experience
+    capabilities:
+      - support-support-responder
+      - customer-support
+      - service-resolution
+    projectSignals:
+      - support-support-responder
+      - customer-issue
+      - multichannel-support
+    activationConditions:
+      - 项目需要客服响应者参与，具体涉及专业的客户支持专家，提供卓越的客户服务、问题解决和用户体验优化。擅长多渠道支持、主动客户关怀，将支持互动转化为积极的品牌体验时启用
+    exclusionConditions:
+      - 没有客户诉求、服务响应或升级事项需要客服响应者处理
+    preferredTasks:
+      - clarify
+      - implement
+      - verify
+    qualityGates:
+      - 服务交付必须由客服响应者记录诉求、解决状态、升级条件和回访结果
+      - 验收必须覆盖正文定义的“提供卓越的多渠道客户服务”并提供可复核结果
+  testing/testing-accessibility-auditor.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-accessibility-auditor.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-accessibility-auditor
+      - quality-review
+    projectSignals:
+      - testing-accessibility-auditor
+      - accessibility
+    activationConditions:
+      - 无障碍审核员适用于：按 WCAG 2.2 AA 标准评估界面（指定时也审 AAA）
+    exclusionConditions:
+      - 仅需与无障碍审核员职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 无障碍审核员质量门：引用 WCAG 2.2 成功标准时必须带编号和名称
+  testing/testing-api-tester.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-api-tester.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-api-tester
+      - quality-review
+    projectSignals:
+      - testing-api-tester
+      - api
+      - performance
+      - quality-assurance
+    activationConditions:
+      - API 测试员适用于：开发和实施覆盖功能、性能和安全方面的完整 API 测试框架
+    exclusionConditions:
+      - 仅需与API 测试员职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - API 测试员质量门：对所有 API 执行负载测试、压力测试和可扩展性评估
+  testing/testing-embedded-qa-engineer.md:
+    origin: china_original
+    domains:
+      - testing
+      - hardware-systems
+      - software-quality
+    capabilities:
+      - testing-embedded-qa-engineer
+      - production-implementation
+      - quality-review
+    projectSignals:
+      - testing-embedded-qa-engineer
+      - embedded-system
+      - quality-assurance
+    activationConditions:
+      - 嵌入式测试工程师适用于：建立覆盖固件功能、通信协议、外设驱动和系统集成的自动化测试体系
+    exclusionConditions:
+      - 仅需与嵌入式测试工程师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 嵌入式测试工程师质量门：单元测试：在宿主机上运行，使用 Unity/CMock/CppUTest 框架，覆盖纯逻辑模块
+  testing/testing-evidence-collector.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-evidence-collector.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-evidence-collector
+    projectSignals:
+      - testing-evidence-collector
+      - quality-assurance
+    activationConditions:
+      - 证据收集者适用于：截图与录屏：每个 Bug 必须附带可视化证据
+    exclusionConditions:
+      - 仅需与证据收集者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 证据收集者质量门：复现步骤：精确到每一次点击、每一次输入
+  testing/testing-performance-benchmarker.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-performance-benchmarker.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-performance-benchmarker
+      - performance-optimization
+    projectSignals:
+      - testing-performance-benchmarker
+      - performance
+      - quality-assurance
+    activationConditions:
+      - 性能基准师适用于：基线建立：在标准条件下测量系统当前性能，作为后续优化的对照
+    exclusionConditions:
+      - 仅需与性能基准师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 性能基准师质量门：测试环境必须尽可能接近生产——至少硬件配置和数据量级相当
+  testing/testing-reality-checker.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-reality-checker.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-reality-checker
+      - quality-review
+    projectSignals:
+      - testing-reality-checker
+    activationConditions:
+      - 现实检验者适用于：你是防止不切实际评估的最后一道防线
+    exclusionConditions:
+      - 仅需与现实检验者职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 现实检验者质量门：首次实现通常需要 2-3 个修订周期
+  testing/testing-test-results-analyzer.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-test-results-analyzer.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-test-results-analyzer
+    projectSignals:
+      - testing-test-results-analyzer
+      - quality-assurance
+    activationConditions:
+      - 测试结果分析师适用于：分析功能测试、性能测试、安全测试、集成测试的执行结果
+    exclusionConditions:
+      - 仅需与测试结果分析师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 测试结果分析师质量门：基于全面的质量度量和风险分析评估发布就绪状态
+  testing/testing-tool-evaluator.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-tool-evaluator.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-tool-evaluator
+    projectSignals:
+      - testing-tool-evaluator
+      - performance
+      - quality-assurance
+    activationConditions:
+      - 工具评估师适用于：从功能、技术、业务需求三个维度评估工具，带加权评分
+    exclusionConditions:
+      - 仅需与工具评估师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - verify
+      - review
+    qualityGates:
+      - 工具评估师质量门：必须用真实场景和实际数据测试工具
+  testing/testing-workflow-optimizer.md:
+    origin: upstream_translation
+    upstreamPath: testing/testing-workflow-optimizer.md
+    domains:
+      - testing
+      - software-quality
+    capabilities:
+      - testing-workflow-optimizer
+      - performance-optimization
+      - workflow-governance
+    projectSignals:
+      - testing-workflow-optimizer
+    activationConditions:
+      - 工作流优化师适用于：画出当前流程全貌，找出瓶颈和痛点
+    exclusionConditions:
+      - 仅需与工作流优化师职责无关的通用处理，且不涉及该角色的专业判断
+    preferredTasks:
+      - design
+      - implement
+      - verify
+    qualityGates:
+      - 工作流优化师质量门：改之前先量——没有基线数据就没有对比
 ignoredMarkdown:
-  agency-agents: [README.md, AGENT-LIST.md, UPSTREAM.md, strategy/strategy-advisor.md]
-  agency-agents-zh: [README.md, AGENT-LIST.md, UPSTREAM.md, strategy/strategy-advisor.md]
+  agency-agents:
+    - .github/PULL_REQUEST_TEMPLATE.md
+    - CONTRIBUTING.md
+    - CONTRIBUTING_zh-CN.md
+    - README.md
+    - SECURITY.md
+    - engineering/engineering-feishu-integration-developer.md
+    - engineering/engineering-wechat-mini-program-developer.md
+    - examples/README.md
+    - examples/nexus-spatial-discovery.md
+    - examples/workflow-book-chapter.md
+    - examples/workflow-landing-page.md
+    - examples/workflow-startup-mvp.md
+    - examples/workflow-with-memory.md
+    - integrations/README.md
+    - integrations/aider/README.md
+    - integrations/antigravity/README.md
+    - integrations/claude-code/README.md
+    - integrations/codex/README.md
+    - integrations/cursor/README.md
+    - integrations/gemini-cli/README.md
+    - integrations/github-copilot/README.md
+    - integrations/kimi/README.md
+    - integrations/mcp-memory/README.md
+    - integrations/mcp-memory/backend-architect-with-memory.md
+    - integrations/openclaw/README.md
+    - integrations/opencode/README.md
+    - integrations/qwen/README.md
+    - integrations/windsurf/README.md
+    - marketing/marketing-baidu-seo-specialist.md
+    - marketing/marketing-china-ecommerce-operator.md
+    - marketing/marketing-china-market-localization-strategist.md
+    - marketing/marketing-cross-border-ecommerce.md
+    - marketing/marketing-douyin-strategist.md
+    - marketing/marketing-kuaishou-strategist.md
+    - marketing/marketing-livestream-commerce-coach.md
+    - marketing/marketing-podcast-strategist.md
+    - marketing/marketing-private-domain-operator.md
+    - marketing/marketing-short-video-editing-coach.md
+    - marketing/marketing-weibo-strategist.md
+    - sales/sales-outbound-strategist.md
+    - scripts/i18n/README.md
+    - specialized/corporate-training-designer.md
+    - specialized/government-digital-presales-consultant.md
+    - specialized/healthcare-marketing-compliance.md
+    - specialized/recruitment-specialist.md
+    - specialized/specialized-french-consulting-market.md
+    - specialized/specialized-korean-business-navigator.md
+    - specialized/study-abroad-advisor.md
+    - strategy/EXECUTIVE-BRIEF.md
+    - strategy/QUICKSTART.md
+    - strategy/coordination/agent-activation-prompts.md
+    - strategy/coordination/handoff-templates.md
+    - strategy/nexus-strategy.md
+    - strategy/playbooks/phase-0-discovery.md
+    - strategy/playbooks/phase-1-strategy.md
+    - strategy/playbooks/phase-2-foundation.md
+    - strategy/playbooks/phase-3-build.md
+    - strategy/playbooks/phase-4-hardening.md
+    - strategy/playbooks/phase-5-launch.md
+    - strategy/playbooks/phase-6-operate.md
+    - strategy/runbooks/scenario-enterprise-feature.md
+    - strategy/runbooks/scenario-incident-response.md
+    - strategy/runbooks/scenario-marketing-campaign.md
+    - strategy/runbooks/scenario-startup-mvp.md
+    - support/support-support-responder.md
+  agency-agents-zh:
+    - .github/ISSUE_TEMPLATE/bug_report.md
+    - .github/ISSUE_TEMPLATE/feature_request.md
+    - .github/ISSUE_TEMPLATE/new_agent.md
+    - .github/PULL_REQUEST_TEMPLATE.md
+    - AGENT-LIST.md
+    - CATALOG.md
+    - CONTRIBUTING.md
+    - README.md
+    - README.zh-TW.md
+    - UPSTREAM.md
+    - examples/README.md
+    - examples/nexus-spatial-discovery.md
+    - examples/workflow-book-chapter.md
+    - examples/workflow-landing-page.md
+    - examples/workflow-startup-mvp.md
+    - examples/workflow-with-memory.md
+    - examples/workflow-xiaohongshu-launch.md
+    - integrations/README.md
+    - integrations/aider/README.md
+    - integrations/antigravity/README.md
+    - integrations/claude-code/README.md
+    - integrations/cursor/README.md
+    - integrations/gemini-cli/README.md
+    - integrations/github-copilot/README.md
+    - integrations/mcp-memory/README.md
+    - integrations/mcp-memory/backend-architect-with-memory.md
+    - integrations/openclaw/README.md
+    - integrations/opencode/README.md
+    - integrations/trae/README.md
+    - integrations/windsurf/README.md
+    - specialized/recruitment-specialist.md
+    - specialized/specialized-french-consulting-market.md
+    - specialized/specialized-korean-business-navigator.md
+    - strategy/EXECUTIVE-BRIEF.md
+    - strategy/QUICKSTART.md
+    - strategy/coordination/agent-activation-prompts.md
+    - strategy/coordination/handoff-templates.md
+    - strategy/nexus-strategy.md
+    - strategy/playbooks/phase-0-discovery.md
+    - strategy/playbooks/phase-1-strategy.md
+    - strategy/playbooks/phase-2-foundation.md
+    - strategy/playbooks/phase-3-build.md
+    - strategy/playbooks/phase-4-hardening.md
+    - strategy/playbooks/phase-5-launch.md
+    - strategy/playbooks/phase-6-operate.md
+    - strategy/runbooks/scenario-enterprise-feature.md
+    - strategy/runbooks/scenario-incident-response.md
+    - strategy/runbooks/scenario-marketing-campaign.md
+    - strategy/runbooks/scenario-startup-mvp.md

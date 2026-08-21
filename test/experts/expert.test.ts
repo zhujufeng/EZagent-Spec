@@ -242,10 +242,17 @@ describe("normalized expert schema", () => {
 
   test("accepts instructions at the exact 65,536 UTF-16-unit limit", () => {
     const input = clone(translated);
-    input.instructionsZh = `中${"a".repeat(65_535)}`;
+    input.instructionsZh = "中文".repeat(32_768);
 
     expect(input.instructionsZh).toHaveLength(65_536);
     expect(parseExpert(input).instructionsZh).toHaveLength(65_536);
+  });
+
+  test("rejects instructions whose Chinese content is only incidental metadata", () => {
+    const input = clone(translated);
+    input.instructionsZh = `${"English recruitment instructions. ".repeat(512)}招聘人才`;
+
+    expect(() => parseExpert(input)).toThrow(/substantive Chinese/i);
   });
 
   test("accepts a canonical GitHub repository URL with the .git suffix", () => {

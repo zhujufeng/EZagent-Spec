@@ -62,7 +62,8 @@ const META_KEYS = [
   "origin",
   "upstreamPath",
 ] as const;
-const FRONTMATTER_KEYS = ["name", "description", "emoji", "color"] as const;
+const FRONTMATTER_KEYS = ["name", "description", "emoji", "color", "tools", "services"] as const;
+const SERVICE_KEYS = ["name", "url", "tier"] as const;
 const MAX_MARKDOWN_BYTES = MAX_ATTESTED_MARKDOWN_BYTES;
 const MAX_CONFIG_BYTES = MAX_ATTESTED_SOURCE_LOCK_BYTES;
 const MAX_FILES = MAX_ATTESTED_MARKDOWN_FILES;
@@ -508,7 +509,7 @@ function canonicalizeMarkdown(markdown: unknown): string {
   if (normalized.includes("\r") || normalized.includes("\uFEFF") || !isWellFormedUnicode(normalized)) {
     fail("markdown must use well-formed UTF-8 text and CRLF or LF line endings");
   }
-  normalized = `${normalized.replace(/\n*$/u, "")}\n`;
+  if (normalized.length === 0) fail("markdown must not be empty");
   if (Buffer.byteLength(normalized, "utf8") > MAX_MARKDOWN_BYTES) fail("markdown is too large");
   return normalized;
 }
@@ -521,13 +522,45 @@ function splitFrontmatter(markdown: string): { readonly metadata: Readonly<Recor
   const raw = parseOneYamlDocument(frontmatter, "frontmatter");
   const metadata = snapshotObject(raw, "frontmatter", FRONTMATTER_KEYS);
   for (const key of ["name", "description"] as const) if (!Object.hasOwn(metadata, key)) fail(`frontmatter.${key} is required`);
-  for (const key of ["emoji", "color"] as const) {
+  for (const key of ["emoji", "color", "tools"] as const) {
     if (!Object.hasOwn(metadata, key)) continue;
-    if (typeof metadata[key] !== "string" || metadata[key].length === 0 || metadata[key].length > 256
+    const maximum = key === "tools" ? 4_096 : 256;
+    if (typeof metadata[key] !== "string" || metadata[key].length === 0 || metadata[key].length > maximum
       || metadata[key].trim() !== metadata[key] || metadata[key].normalize("NFC") !== metadata[key]
       || !isWellFormedUnicode(metadata[key]) || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(metadata[key])) {
       fail(`frontmatter.${key} must be bounded visible NFC text without controls`);
     }
+  }
+  if (Object.hasOwn(metadata, "services")) {
+    const services = snapshotArray(metadata.services, "frontmatter.services", 32);
+    if (services.length === 0) fail("frontmatter.services must contain at least one reviewed service");
+    const names = new Set<string>();
+    services.forEach((value, index) => {
+      const path = `frontmatter.services.${index}`;
+      const service = snapshotObject(value, path, SERVICE_KEYS);
+      for (const key of SERVICE_KEYS) {
+        if (!Object.hasOwn(service, key)) fail(`${path}.${key} is required`);
+      }
+      const name = requiredString(service, "name", path, 128);
+      const url = requiredString(service, "url", path, 512);
+      const tier = requiredString(service, "tier", path, 32);
+      if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(name) || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(url)) {
+        fail(`${path} must contain visible text without controls`);
+      }
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch (error: unknown) {
+        fail(`${path}.url must be an HTTPS URL`, error);
+      }
+      if (parsedUrl.protocol !== "https:" || parsedUrl.username !== "" || parsedUrl.password !== "" || parsedUrl.hostname === "") {
+        fail(`${path}.url must be an HTTPS URL without credentials`);
+      }
+      if (tier !== "free" && tier !== "paid") fail(`${path}.tier is unsupported`);
+      const nameKey = collisionKey(name);
+      if (names.has(nameKey)) fail("frontmatter.services contains a duplicate service name");
+      names.add(nameKey);
+    });
   }
   const body = markdown.slice(end + 5).trim();
   const lastCommentOpen = body.lastIndexOf("<!--");
@@ -718,6 +751,14 @@ function sameFile(left: Stats, right: Stats): boolean {
     && left.size === right.size
     && left.mtimeMs === right.mtimeMs
     && left.ctimeMs === right.ctimeMs;
+}
+
+function sameFileIdentity(left: Stats, right: Stats): boolean {
+  return left.isFile()
+    && right.isFile()
+    && left.dev === right.dev
+    && left.ino === right.ino
+    && left.size === right.size;
 }
 
 function sameDirectory(left: Stats, right: Stats): boolean {
@@ -916,14 +957,12 @@ export async function importExpertCatalog(options: ImportExpertCatalogOptions): 
   const chinese = await indexMarkdownFiles(options.chineseRoot, lock.sourcesById["agency-agents-zh"], nodeMarkdownIndexRuntime, options.projectRoot);
   const chineseIgnored = new Set(taxonomy.ignoredMarkdown["agency-agents-zh"]);
   const englishIgnored = new Set(taxonomy.ignoredMarkdown["agency-agents"]);
-  const upstreamOwners = new Map<string, string>();
+  const usedUpstreamPaths = new Set<string>();
   for (const [path, metadata] of Object.entries(taxonomy.experts)) {
     if (chineseIgnored.has(path)) fail(`Chinese Markdown path is classified as both expert and ignored: ${path}`);
     if (metadata.origin === "upstream_translation") {
       if (englishIgnored.has(metadata.upstreamPath!)) fail(`English Markdown path is classified as both upstream and ignored: ${metadata.upstreamPath}`);
-      const owner = upstreamOwners.get(metadata.upstreamPath!);
-      if (owner) fail(`English upstream path is mapped by both ${owner} and ${path}`);
-      upstreamOwners.set(metadata.upstreamPath!, path);
+      usedUpstreamPaths.add(metadata.upstreamPath!);
     }
   }
   const missingDivisions = new Set<string>();
@@ -941,10 +980,10 @@ export async function importExpertCatalog(options: ImportExpertCatalogOptions): 
       .filter((path) => !Object.hasOwn(taxonomy.experts, path) && !chineseIgnored.has(path))
       .map((path) => `agency-agents-zh:${path}`),
     ...[...english.keys()]
-      .filter((path) => !upstreamOwners.has(path) && !englishIgnored.has(path))
+      .filter((path) => !usedUpstreamPaths.has(path) && !englishIgnored.has(path))
       .map((path) => `agency-agents:${path}`),
   ].sort(comparePortable);
-  const missingUpstreamPaths = [...upstreamOwners.keys()].filter((path) => !english.has(path)).sort(comparePortable);
+  const missingUpstreamPaths = [...usedUpstreamPaths].filter((path) => !english.has(path)).sort(comparePortable);
   const extraIgnoredPaths = [
     ...[...chineseIgnored].filter((path) => !chinese.has(path)).map((path) => `agency-agents-zh:${path}`),
     ...[...englishIgnored].filter((path) => !english.has(path)).map((path) => `agency-agents:${path}`),
@@ -1257,6 +1296,13 @@ export async function writeNormalizedCatalog(
         const staged = await handle.stat();
         if (!staged.isFile() || staged.size !== Buffer.byteLength(publication.content, "utf8")) {
           fail("normalized catalog artifact-pair staging write is incomplete");
+        }
+        await handle.chmod(0o644);
+        await handle.sync();
+        const permissioned = await handle.stat();
+        if (!sameFileIdentity(staged, permissioned)
+          || (process.platform !== "win32" && (permissioned.mode & 0o777) !== 0o644)) {
+          fail("normalized catalog artifact-pair staging permissions are not distributable");
         }
         await handle.close();
         handle = undefined;

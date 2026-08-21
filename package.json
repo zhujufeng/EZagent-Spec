@@ -8,7 +8,6 @@
     "!dist/src/experts/source-lock.js",
     "!dist/src/experts/importer.js",
     "!dist/src/experts/attested-source-contract.js",
-    "!dist/src/experts/bounded-read.js",
     "README.md",
     "THIRD_PARTY_NOTICES.md",
     "LICENSE*",

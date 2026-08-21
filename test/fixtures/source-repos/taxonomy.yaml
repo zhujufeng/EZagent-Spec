@@ -1,0 +1,39 @@
+schemaVersion: 1
+divisions:
+  engineering:
+    defaultDomains: [engineering]
+  design:
+    defaultDomains: [design]
+experts:
+  engineering/frontend-developer.md:
+    origin: upstream_translation
+    upstreamPath: engineering/engineering-frontend-developer.md
+    domains: [engineering, frontend]
+    capabilities: [frontend-architecture, state-design]
+    projectSignals: [react, vue, web-ui]
+    activationConditions: [跨组件行为变化]
+    exclusionConditions: [纯后端数据迁移]
+    preferredTasks: [design, review]
+    qualityGates: [引用实际文件, 覆盖错误状态]
+  design/product-designer.md:
+    origin: china_original
+    domains: [design, product]
+    capabilities: [user-journey, interaction-design]
+    projectSignals: [product-ui, user-flow]
+    activationConditions: [需要设计用户体验]
+    exclusionConditions: [纯基础设施维护]
+    preferredTasks: [clarify, design, review]
+    qualityGates: [覆盖关键用户旅程, 定义可验证验收标准]
+  design/ux-researcher.md:
+    origin: upstream_translation
+    upstreamPath: design/design-ux-researcher.md
+    domains: [design, research]
+    capabilities: [user-research, evidence-synthesis]
+    projectSignals: [usability, user-feedback]
+    activationConditions: [需要研究用户行为]
+    exclusionConditions: [已有充分研究证据]
+    preferredTasks: [clarify, design, review]
+    qualityGates: [引用研究证据, 定义可验证研究结论]
+ignoredMarkdown:
+  agency-agents: [README.md, AGENT-LIST.md, UPSTREAM.md, strategy/strategy-advisor.md]
+  agency-agents-zh: [README.md, AGENT-LIST.md, UPSTREAM.md, strategy/strategy-advisor.md]

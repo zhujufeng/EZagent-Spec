@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "expertCount": 265,
+  "artifacts": {
+    "expertsJson": {
+      "bytes": 3868091,
+      "sha256": "sha256:4a8622371ae266bac55b54fbe7105d98e5be57d45beb4b990d85b4249726e04b"
+    },
+    "sourceLockJson": {
+      "bytes": 238068,
+      "sha256": "sha256:0799fd0aa98aeda1888e3a92048f662c7f370b2d03c5e3a4ca07fe6fd87a2b63"
+    },
+    "taxonomyYaml": {
+      "bytes": 260265,
+      "sha256": "sha256:a7e9b1145e8c6135b7adfb98cda6ca4f80c186efd3dd8264542d0b79303f009f"
+    }
+  }
+}

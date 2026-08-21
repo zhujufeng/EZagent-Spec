@@ -105,29 +105,28 @@ describe.sequential("ezagent CLI", () => {
     }
   });
 
-  test("fails closed without a snapshot and audits the runtime-only package without scripts", async () => {
+  test("passes the catalog gate and audits the runtime-only package", async () => {
     const before = (await readdir(PROJECT_ROOT)).sort();
     const cache = await temporaryProject("EZagent npm cache ");
-    const gated = await execa("npm", ["pack", "--dry-run", "--json"], {
-      cwd: PROJECT_ROOT,
-      env: { npm_config_cache: cache },
-      reject: false,
-    });
-    expect(gated.exitCode).not.toBe(0);
-    expect(`${gated.stdout}\n${gated.stderr}`).toContain("run catalog:lock and catalog:import first");
-
-    const packed = await execa("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], {
+    const packed = await execa("npm", ["pack", "--dry-run", "--json"], {
       cwd: PROJECT_ROOT,
       env: { npm_config_cache: cache },
     });
-    const manifests = JSON.parse(packed.stdout) as readonly [{
+    expect(packed.stdout).toContain("catalog valid: 265 experts, 0 provenance errors");
+    const jsonStart = packed.stdout.indexOf("[\n");
+    expect(jsonStart).toBeGreaterThanOrEqual(0);
+    const manifests = JSON.parse(packed.stdout.slice(jsonStart)) as readonly [{
       readonly files: readonly { readonly path: string; readonly mode: number }[];
     }];
     const files = manifests[0].files;
     const paths = files.map(({ path }) => path);
     const cliEntry = files.find(({ path }) => path === "dist/src/cli/main.js");
+    const expertsEntry = files.find(({ path }) => path === "catalog/normalized/experts.json");
+    const catalogLockEntry = files.find(({ path }) => path === "catalog/normalized/catalog.lock.json");
 
     expect(cliEntry?.mode).toBe(0o755);
+    expect(expertsEntry?.mode).toBe(0o644);
+    expect(catalogLockEntry?.mode).toBe(0o644);
     expect(paths).toContain("dist/src/workspace/repository.js");
     expect(paths).toContain("dist/src/domain/state-machine.js");
     expect(paths).toContain("README.md");
@@ -135,9 +134,18 @@ describe.sequential("ezagent CLI", () => {
     expect(paths).toContain("licenses/agency-agents-MIT.txt");
     expect(paths).toContain("licenses/agency-agents-zh-MIT.txt");
     expect(paths).toContain("dist/src/experts/catalog.js");
-    expect(paths).not.toContain("dist/src/experts/bounded-read.js");
+    expect(paths).toContain("dist/src/experts/active.js");
+    expect(paths).toContain("dist/src/experts/selector.js");
+    expect(paths).toContain("dist/src/experts/bounded-read.js");
+    expect(paths).toContain("catalog/normalized/experts.json");
+    expect(paths).toContain("catalog/normalized/catalog.lock.json");
     expect(paths).not.toContain("dist/src/experts/importer.js");
     expect(paths).not.toContain("dist/src/experts/source-lock.js");
+    expect(paths).not.toContain("dist/src/experts/attested-source-contract.js");
+    expect(paths.some((path) => path.includes("verify-catalog"))).toBe(false);
+    expect(paths.some((path) => path.startsWith("vendor-sources/"))).toBe(false);
+    expect(paths).not.toContain("catalog/sources.lock.json");
+    expect(paths).not.toContain("catalog/taxonomy.yaml");
     expect(paths).toContain("licenses/UNICODE-LICENSE.txt");
     expect(paths.some((path) => /^(?:src|test|docs|dist\/test)\//u.test(path))).toBe(false);
     expect(paths.some((path) => path.endsWith(".map") || path.endsWith(".d.ts"))).toBe(false);

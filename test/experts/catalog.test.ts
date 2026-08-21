@@ -250,6 +250,25 @@ describe("validateCatalog", () => {
       .toThrowError(expect.objectContaining({ code: "CANONICAL_SOURCE_COLLISION" }));
   });
 
+  it("allows distinct Chinese records to share one reviewed upstream source", async () => {
+    const translated = await fixture("translated");
+    const legacyTranslation = structuredClone(translated);
+    legacyTranslation.id = "ezagent.engineering.legacy-security-engineer";
+    (legacyTranslation.source as { path: string }).path = "engineering/legacy-security-engineer.md";
+
+    const catalog = validateCatalog([translated, legacyTranslation], NOTICES);
+    expect(catalog).toHaveLength(2);
+    const first = catalog[0]!;
+    const second = catalog[1]!;
+    expect(first.source.path).not.toBe(second.source.path);
+    expect(first.origin).toBe("upstream_translation");
+    expect(second.origin).toBe("upstream_translation");
+    if (first.origin !== "upstream_translation" || second.origin !== "upstream_translation") {
+      throw new Error("fixture must remain translated");
+    }
+    expect(first.upstreamSource.path).toBe(second.upstreamSource.path);
+  });
+
   it("fails closed before traversing Proxy, accessor, sparse, extra, prototype, or huge arrays", async () => {
     const translated = await fixture("translated");
     const proxy = new Proxy([translated], {
@@ -568,8 +587,8 @@ describe("verify-catalog command boundary", () => {
       "!dist/src/experts/source-lock.js",
       "!dist/src/experts/importer.js",
       "!dist/src/experts/attested-source-contract.js",
-      "!dist/src/experts/bounded-read.js",
     ]));
+    expect(files).not.toContain("!dist/src/experts/bounded-read.js");
     expect(runtimeSource).not.toMatch(/node:(?:fs|child_process|http|https|net|tls)|\.\/source-lock|\.\/importer|\bfetch\s*\(/u);
     expect(packageJson.scripts).toMatchObject({
       "catalog:lock": "node --import tsx scripts/lock-catalog-sources.ts",

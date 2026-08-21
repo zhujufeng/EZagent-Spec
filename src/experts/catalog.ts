@@ -158,20 +158,28 @@ export function validateCatalog(
   const ids = new Set<string>();
   const exactSources = new Set<string>();
   const canonicalSources = new Set<string>();
+  const upstreamCanonicalSources = new Map<string, string>();
   for (const expert of experts) {
     if (ids.has(expert.id)) catalogFail("DUPLICATE_EXPERT_ID");
     ids.add(expert.id);
-    const sources = expert.origin === "upstream_translation"
-      ? [expert.source, expert.upstreamSource]
-      : [expert.source];
-    for (const source of sources) {
-      if (!notices.has(source.repository)) catalogFail("MISSING_LICENSE_NOTICE");
-      const exact = sourceIdentity(source);
-      if (exactSources.has(exact)) catalogFail("DUPLICATE_SOURCE_IDENTITY");
-      exactSources.add(exact);
-      const canonical = canonicalSourceIdentity(source);
-      if (canonicalSources.has(canonical)) catalogFail("CANONICAL_SOURCE_COLLISION");
-      canonicalSources.add(canonical);
+    if (!notices.has(expert.source.repository)) catalogFail("MISSING_LICENSE_NOTICE");
+    const exact = sourceIdentity(expert.source);
+    if (exactSources.has(exact)) catalogFail("DUPLICATE_SOURCE_IDENTITY");
+    exactSources.add(exact);
+    const canonical = canonicalSourceIdentity(expert.source);
+    if (canonicalSources.has(canonical)) catalogFail("CANONICAL_SOURCE_COLLISION");
+    canonicalSources.add(canonical);
+
+    if (expert.origin === "upstream_translation") {
+      const upstream = expert.upstreamSource;
+      if (!notices.has(upstream.repository)) catalogFail("MISSING_LICENSE_NOTICE");
+      const upstreamExact = sourceIdentity(upstream);
+      const upstreamCanonical = canonicalSourceIdentity(upstream);
+      const existing = upstreamCanonicalSources.get(upstreamCanonical);
+      if (existing !== undefined && existing !== upstreamExact) {
+        catalogFail("CANONICAL_SOURCE_COLLISION");
+      }
+      upstreamCanonicalSources.set(upstreamCanonical, upstreamExact);
     }
   }
 

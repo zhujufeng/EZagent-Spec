@@ -601,7 +601,11 @@ export function selectExperts(values: unknown[], request: SelectionRequest): Sel
         return { expert, score, covered, reasons: [...covered.map((item) => `covers:${item}`), ...domainHits.map((item) => `domain:${item}`), ...signalHits.map((item) => `signal:${item}`)] };
       })
       .filter((item) => item.covered.length > 0)
-      .sort((a, b) => b.score - a.score || a.expert.id.localeCompare(b.expert.id));
+      .sort((a, b) =>
+        b.covered.length - a.covered.length ||
+        b.score - a.score ||
+        (a.expert.id < b.expert.id ? -1 : a.expert.id > b.expert.id ? 1 : 0),
+      );
     const best = ranked[0];
     if (!best) break;
     selected.push({ expert: best.expert, score: best.score, reasons: best.reasons });
@@ -610,6 +614,11 @@ export function selectExperts(values: unknown[], request: SelectionRequest): Sel
   return { selected, uncoveredCapabilities: [...uncovered].sort(), requiresPlanReview: selected.length > request.reviewAfter };
 }
 ```
+
+**Product correction:** rank newly covered capability count first, then the existing
+`6/4/2/+2` score, then expert id in portable code-unit order. Soft domain, signal,
+or review matches must not outrank greater new coverage and cause avoidable expert
+expansion; the selected count remains adaptive rather than fixed.
 
 - [ ] **Step 3: Add dynamic expansion behavior**
 
@@ -744,13 +753,13 @@ Explain that this step clones two public MIT repositories into ignored `vendor-s
 - [ ] **Step 2: Clone and check out the reviewed refs**
 
 ```bash
-git clone --filter=blob:none https://github.com/msitarzewski/agency-agents vendor-sources/agency-agents
+git clone https://github.com/msitarzewski/agency-agents vendor-sources/agency-agents
 git -C vendor-sources/agency-agents checkout 3f78a30
-git clone --filter=blob:none https://github.com/jnMetaCode/agency-agents-zh vendor-sources/agency-agents-zh
+git clone https://github.com/jnMetaCode/agency-agents-zh vendor-sources/agency-agents-zh
 git -C vendor-sources/agency-agents-zh checkout main
 ```
 
-Expected: the English checkout is pinned to the recorded upstream base and the Chinese checkout is at the reviewed current `main`; both contain MIT license files. The next step converts both working trees into immutable full SHAs before import.
+Expected: both are complete clones without partial-clone/promisor configuration. The English checkout is pinned to the recorded upstream base and the Chinese checkout is at the reviewed current `main`; both contain MIT license files. The next step converts both working trees into immutable full SHAs before import.
 
 - [ ] **Step 3: Resolve immutable locks**
 
@@ -763,6 +772,8 @@ Expected: `catalog/sources.lock.json` contains exactly two records, each with a 
 Run: `npm run catalog:import`
 
 Expected on the first pass: either success or deterministic lists of unmapped source divisions and expert paths. Curate every reported entry in `catalog/taxonomy.yaml`, review the mapping against the expert's Chinese definition, rerun, and stop only when import exits `0` with no unknown divisions, missing/extra expert mappings, or duplicate IDs. The successful import must deterministically regenerate both `catalog/normalized/experts.json` and `catalog/normalized/catalog.lock.json`; rerun it and require both files to remain byte-identical before release.
+
+**Release evidence correction:** the locked Chinese `main` contains 268 agent-list entries, including two China-original additions after the older 266-entry `UPSTREAM.md` baseline. Three listed files (`specialized/recruitment-specialist.md`, `specialized/specialized-french-consulting-market.md`, and `specialized/specialized-korean-business-navigator.md`) have Chinese metadata/headings but their substantive instructions are not yet localized into Chinese, so they remain explicitly classified as reviewed ignores rather than weakening the Chinese-content gate. The usable offline snapshot is therefore 265 experts: 212 attested translations (including two reviewed legacy translations that share a current upstream definition) and 53 explicit China-original definitions.
 
 - [ ] **Step 5: Verify the complete snapshot**
 

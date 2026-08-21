@@ -136,7 +136,7 @@ async function fixtureInputs() {
   const [english, chinese, taxonomyText] = await Promise.all([
     lockedSource(englishRoot, "english"),
     lockedSource(chineseRoot, "chinese"),
-    readFile(new URL("../../catalog/taxonomy.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../fixtures/source-repos/taxonomy.yaml", import.meta.url), "utf8"),
   ]);
   return {
     projectRoot,
@@ -167,12 +167,36 @@ describe("normalizeExpertFile", () => {
     expect(expert.contentHash).toBe("sha256:7b258bf5bf3de2e36b53133661396d63890aaf84f114f432cda1c5adf5892765");
   });
 
+  it("keeps a missing terminal LF in the attested content hash", () => {
+    const markdown = "---\nname: 前端开发工程师\ndescription: 负责前端结构。\n---\n分析组件边界。";
+    const expert = normalizeExpertFile({ division: "engineering", relativePath: source.path, markdown, source, upstreamSource, taxonomy: translatedTaxonomy });
+    expect(expert.contentHash).toBe(`sha256:${createHash("sha256").update(markdown).digest("hex")}`);
+  });
+
   it.each(["💻", "🇨🇳", "1️⃣", "desktop assistant"])('accepts bounded visible reviewed emoji text %j', (emoji) => {
     const markdown = `---\nname: 前端开发工程师\ndescription: 负责前端结构。\nemoji: "${emoji}"\ncolor: "warm blue"\n---\n正文中文。\n`;
     const expert = normalizeExpertFile({ division: "engineering", relativePath: source.path, markdown, source, upstreamSource, taxonomy: translatedTaxonomy });
     expect(expert.nameZh).toBe("前端开发工程师");
     expect(expert).not.toHaveProperty("emoji");
     expect(expert).not.toHaveProperty("color");
+  });
+
+  it("accepts and discards reviewed upstream tools and service metadata", () => {
+    const markdown = `---
+name: 发布专家
+description: 负责中文内容发布编排。
+tools: Read, Write, Edit
+services:
+  - name: Wechatsync
+    url: https://github.com/wechatsync/Wechatsync
+    tier: free
+---
+执行中文发布编排并保留人工审核门。
+`;
+    const expert = normalizeExpertFile({ division: "engineering", relativePath: source.path, markdown, source, upstreamSource, taxonomy: translatedTaxonomy });
+    expect(expert.nameZh).toBe("发布专家");
+    expect(expert).not.toHaveProperty("tools");
+    expect(expert).not.toHaveProperty("services");
   });
 
   it.each([
@@ -185,6 +209,12 @@ describe("normalizeExpertFile", () => {
     ["color empty", 'color: "   "'],
     ["emoji huge", `emoji: "${"x".repeat(257)}"`],
     ["color huge", `color: "${"x".repeat(257)}"`],
+    ["tools type", "tools: [Read]"],
+    ["tools huge", `tools: "${"x".repeat(4_097)}"`],
+    ["services type", "services: {name: unsafe}"],
+    ["service extra", "services: [{name: safe, url: https://example.com, tier: free, command: run}]"],
+    ["service URL", "services: [{name: safe, url: http://example.com, tier: free}]"],
+    ["service tier", "services: [{name: safe, url: https://example.com, tier: enterprise}]"],
   ])("rejects unreviewed or invalid frontmatter: %s", (_label, extra) => {
     const markdown = `---\nname: 前端开发工程师\ndescription: 负责前端结构。\n${extra}\n---\n正文中文。\n`;
     expect(() => normalizeExpertFile({ division: "engineering", relativePath: source.path, markdown, source, upstreamSource, taxonomy: translatedTaxonomy })).toThrow();
@@ -389,7 +419,7 @@ describe("explicit taxonomy and attested source inventory", () => {
   });
 
   it("parses origins, different upstream paths, and per-source ignored Markdown", async () => {
-    const parsed = parseTaxonomyYaml(await readFile(new URL("../../catalog/taxonomy.yaml", import.meta.url), "utf8"));
+    const parsed = parseTaxonomyYaml(await readFile(new URL("../fixtures/source-repos/taxonomy.yaml", import.meta.url), "utf8"));
     expect(parsed.experts["engineering/frontend-developer.md"]).toMatchObject({ origin: "upstream_translation", upstreamPath: "engineering/engineering-frontend-developer.md" });
     expect(parsed.experts["engineering/frontend-developer.md"]?.capabilities)
       .toEqual(["frontend-architecture", "state-design"]);
@@ -397,8 +427,25 @@ describe("explicit taxonomy and attested source inventory", () => {
     expect(parsed.ignoredMarkdown["agency-agents"]).toContain("strategy/strategy-advisor.md");
   });
 
+  it("locks the reviewed production inventory to 265 substantively Chinese experts", async () => {
+    const parsed = parseTaxonomyYaml(await readFile(new URL("../../catalog/taxonomy.yaml", import.meta.url), "utf8"));
+    const experts = Object.entries(parsed.experts);
+    expect(Object.keys(parsed.divisions)).toHaveLength(19);
+    expect(experts).toHaveLength(265);
+    expect(experts.filter(([, metadata]) => metadata.origin === "upstream_translation")).toHaveLength(212);
+    expect(experts.filter(([, metadata]) => metadata.origin === "china_original")).toHaveLength(53);
+    for (const path of [
+      "specialized/recruitment-specialist.md",
+      "specialized/specialized-french-consulting-market.md",
+      "specialized/specialized-korean-business-navigator.md",
+    ]) {
+      expect(parsed.experts).not.toHaveProperty(path);
+      expect(parsed.ignoredMarkdown["agency-agents-zh"]).toContain(path);
+    }
+  });
+
   it("rejects missing/forbidden upstreamPath and unknown inventory keys", async () => {
-    const text = await readFile(new URL("../../catalog/taxonomy.yaml", import.meta.url), "utf8");
+    const text = await readFile(new URL("../fixtures/source-repos/taxonomy.yaml", import.meta.url), "utf8");
     expect(() => parseTaxonomyYaml(text.replace("    upstreamPath: engineering/engineering-frontend-developer.md\n", ""))).toThrow("upstreamPath");
     expect(() => parseTaxonomyYaml(text.replace("    origin: china_original\n", "    origin: china_original\n    upstreamPath: design/nope.md\n"))).toThrow("unsupported");
     expect(() => parseTaxonomyYaml(text.replace("ignoredMarkdown:\n", "ignoredMarkdown:\n  unknown-source: [README.md]\n"))).toThrow("unsupported");
@@ -414,7 +461,7 @@ describe("explicit taxonomy and attested source inventory", () => {
   });
 
   it("rejects a taxonomy BOM, including BOM-prefixed YAML directives", async () => {
-    const valid = await readFile(new URL("../../catalog/taxonomy.yaml", import.meta.url), "utf8");
+    const valid = await readFile(new URL("../fixtures/source-repos/taxonomy.yaml", import.meta.url), "utf8");
     expect(() => parseTaxonomyYaml(`\uFEFF${valid}`)).toThrow("BOM");
     expect(() => parseTaxonomyYaml(`\uFEFF%YAML 1.2\n---\n${valid}`)).toThrow();
     expect(() => parseTaxonomyYaml(`\uFEFF%TAG !e! tag:example.invalid,2026:\n---\n${valid}`)).toThrow();
@@ -461,6 +508,28 @@ describe("explicit taxonomy and attested source inventory", () => {
       ["ezagent.design.ux-researcher", "upstream_translation", "design/design-ux-researcher.md"],
       ["ezagent.engineering.frontend-developer", "upstream_translation", "engineering/engineering-frontend-developer.md"],
     ]);
+  });
+
+  it("allows two reviewed Chinese translations to share one locked upstream definition", async () => {
+    const inputs = await fixtureInputs();
+    const taxonomyText = inputs.taxonomyText
+      .replace(
+        "    upstreamPath: design/design-ux-researcher.md\n",
+        "    upstreamPath: engineering/engineering-frontend-developer.md\n",
+      )
+      .replace(
+        "agency-agents: [README.md,",
+        "agency-agents: [design/design-ux-researcher.md, README.md,",
+      );
+
+    const experts = await importExpertCatalog({ ...inputs, taxonomyText });
+    const translated = experts.filter((expert) => expert.origin === "upstream_translation");
+    expect(translated).toHaveLength(2);
+    expect(translated.map((expert) => expert.upstreamSource.path)).toEqual([
+      "engineering/engineering-frontend-developer.md",
+      "engineering/engineering-frontend-developer.md",
+    ]);
+    expect(new Set(translated.map((expert) => expert.source.path)).size).toBe(2);
   });
 
   it("fails closed on lock-after modification, added Markdown, and absent mapped upstream", async () => {
@@ -790,6 +859,10 @@ describe("filesystem and publication boundaries", () => {
     const generated = await readFile(output, "utf8");
     const artifactLock = join(root, "catalog", "normalized", "catalog.lock.json");
     const generatedLock = await readFile(artifactLock, "utf8");
+    if (process.platform !== "win32") {
+      expect((await lstat(output)).mode & 0o777).toBe(0o644);
+      expect((await lstat(artifactLock)).mode & 0o777).toBe(0o644);
+    }
     expect(parseCatalogArtifactLockJson(generatedLock)).toMatchObject({ expertCount: 0 });
     await expect(writeNormalizedCatalog(output, [], normalizedWriteRuntime(root))).resolves.toBeUndefined();
     expect(await readFile(output, "utf8")).toBe(generated);

@@ -73,6 +73,7 @@ const LIST_LIMITS = [
 ] as const;
 
 const HAN_CHARACTER = /\p{Script=Han}/u;
+const LATIN_CHARACTER = /[A-Za-z]/u;
 const EXPERT_ID = /^ezagent\.[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const PORTABLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/;
@@ -257,6 +258,16 @@ function hanBearingText(label: string, maxLength: number) {
     );
 }
 
+function hasSubstantiveChinese(value: string): boolean {
+  let hanCharacters = 0;
+  let latinCharacters = 0;
+  for (const character of value) {
+    if (HAN_CHARACTER.test(character)) hanCharacters += 1;
+    else if (LATIN_CHARACTER.test(character)) latinCharacters += 1;
+  }
+  return hanCharacters * 20 >= hanCharacters + latinCharacters;
+}
+
 function collisionKey(value: string): string {
   return unicodeDefaultCaseFold(value);
 }
@@ -403,7 +414,8 @@ const sharedExpertShape = {
   id: expertIdSchema,
   nameZh: hanBearingText("nameZh", LENGTH_LIMITS.nameZh),
   summaryZh: hanBearingText("summaryZh", LENGTH_LIMITS.summaryZh),
-  instructionsZh: hanBearingText("instructionsZh", LENGTH_LIMITS.instructionsZh),
+  instructionsZh: hanBearingText("instructionsZh", LENGTH_LIMITS.instructionsZh)
+    .refine(hasSubstantiveChinese, "instructionsZh must contain substantive Chinese content"),
   capabilities: uniqueStringArray(slugSchema, "capabilities", 1, LIST_MAXIMUMS.capabilities),
   domains: uniqueStringArray(slugSchema, "domains", 1, LIST_MAXIMUMS.domains),
   projectSignals: uniqueStringArray(slugSchema, "projectSignals", 0, LIST_MAXIMUMS.projectSignals),
