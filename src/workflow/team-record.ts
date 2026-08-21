@@ -122,6 +122,8 @@ function canonicalBase(value: z.infer<typeof teamBaseSchema>): Omit<ExpertTeamPl
     }),
     members: Object.freeze(members),
     uncoveredCapabilities: sortedUnique(value.uncoveredCapabilities, "uncovered capabilities"),
+    catalogFingerprint: value.catalogFingerprint as `sha256:${string}`,
+    selectionFingerprint: value.selectionFingerprint as `sha256:${string}`,
   });
 }
 
@@ -139,7 +141,11 @@ export function createExpertTeamPlan(
 export function parseExpertTeamPlan(value: unknown): ExpertTeamPlan {
   const parsed = teamSchema.parse(value);
   const { teamFingerprint, ...base } = parsed;
-  const expected = createExpertTeamPlan(base);
+  const expected = createExpertTeamPlan({
+    ...base,
+    catalogFingerprint: base.catalogFingerprint as `sha256:${string}`,
+    selectionFingerprint: base.selectionFingerprint as `sha256:${string}`,
+  });
   if (teamFingerprint !== expected.teamFingerprint) {
     throw new TypeError("expert team fingerprint mismatch");
   }

@@ -67,6 +67,7 @@ export async function loadRuntimeCatalogBytes(path: string): Promise<Buffer> {
   } finally {
     await handle?.close();
   }
+  fail("local catalog read ended unexpectedly");
 }
 
 export function parseRuntimeCatalog(bytes: Uint8Array): RuntimeCatalog {

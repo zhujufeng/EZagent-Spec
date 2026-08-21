@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { ActiveExpertRepository } from "../../src/experts/active.js";
 import { parseRuntimeCatalog, type RuntimeCatalog } from "../../src/experts/runtime-catalog.js";
-import type { AssignmentDraft, ExpertTeamProposal } from "../../src/workflow/expert-team.js";
+import {
+  proposeExpertTeam,
+  type AssignmentDraft,
+  type ExpertTeamProposal,
+} from "../../src/workflow/expert-team.js";
 import { ExpertTeamWorkflowService } from "../../src/workflow/service.js";
 import { WorkspaceRepository } from "../../src/workspace/repository.js";
 import { expertFixture } from "./expert-team-fixture.js";
@@ -44,9 +48,9 @@ export interface WorkflowFixtureOptions {
 async function snapshotDirectory(root: string): Promise<readonly [string, string][]> {
   const entries: [string, string][] = [];
   async function walk(directory: string, prefix: string): Promise<void> {
-    let children: Awaited<ReturnType<typeof readdir>>;
+    let children: string[];
     try {
-      children = await readdir(directory);
+      children = await readdir(directory) as string[];
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
       throw error;
@@ -80,6 +84,7 @@ export async function createWorkflowTeamFixture(options: WorkflowFixtureOptions 
       expertFixture(`implementer-${index}`, [capability], ["implement"])
     )),
     expertFixture("reviewer", capabilities, ["review"]),
+    expertFixture("audit", ["audit-logging"], ["implement"]),
   ];
   const catalog: RuntimeCatalog = parseRuntimeCatalog(Buffer.from(JSON.stringify({
     schemaVersion: 1,
@@ -117,6 +122,7 @@ export async function createWorkflowTeamFixture(options: WorkflowFixtureOptions 
     catalog,
     draft,
     service,
+    runtime,
     assignmentsFor,
     snapshot: async () => snapshotDirectory(root),
     prepareApprovedInput: async () => {
@@ -133,6 +139,52 @@ export async function createWorkflowTeamFixture(options: WorkflowFixtureOptions 
       const state = await repository.readState();
       await repository.recordState({ ...state, revision: state.revision + 1 }, state.revision, "fixture-bump");
     },
+  };
+}
+
+export async function createAppliedWorkflowTeamFixture() {
+  const fixture = await createWorkflowTeamFixture();
+  const approved = await fixture.prepareApprovedInput();
+  const applied = await fixture.service.planApply(approved);
+  const expandedPlan = structuredClone({
+    ...fixture.draft,
+    task: {
+      ...fixture.draft.task,
+      deliverables: [...fixture.draft.task.deliverables, "增加审计日志"],
+      qualityGates: [...fixture.draft.task.qualityGates, "审计日志测试通过"],
+    },
+    selection: {
+      ...fixture.draft.selection,
+      capabilities: [...fixture.draft.selection.capabilities, "audit-logging"],
+    },
+  });
+
+  function expandedDraft() {
+    const proposal = proposeExpertTeam(fixture.catalog.experts, {
+      capabilities: [...expandedPlan.selection.capabilities],
+      domains: [...expandedPlan.selection.domains],
+      projectSignals: [...expandedPlan.selection.projectSignals],
+      risk: expandedPlan.task.risk,
+      reviewAfter: expandedPlan.selection.reviewAfter,
+    });
+    return {
+      draft: expandedPlan,
+      selectionFingerprint: proposal.selectionFingerprint,
+      assignments: fixture.assignmentsFor(proposal),
+    };
+  }
+
+  return {
+    ...fixture,
+    applied,
+    team: applied.team,
+    taskId: applied.task.id,
+    taskRevision: applied.task.revision,
+    expandedDraft,
+    freshService: () => new ExpertTeamWorkflowService(fixture.root, fixture.runtime),
+    teamHistoryRevisions: async () => (
+      (await readdir(join(fixture.root, ".ezagent", "experts", "teams", applied.task.id))).sort()
+    ),
   };
 }
 

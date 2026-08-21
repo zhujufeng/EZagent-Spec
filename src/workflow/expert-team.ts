@@ -26,7 +26,13 @@ export interface ExpertTeamProposal {
   readonly blockers: readonly ExpertTeamBlocker[];
   readonly requiresPlanReview: boolean;
   readonly selectionFingerprint: `sha256:${string}`;
-  readonly selectionRequest: Readonly<SelectionRequest> & { readonly risk: PlanRisk };
+  readonly selectionRequest: {
+    readonly capabilities: readonly string[];
+    readonly domains: readonly string[];
+    readonly projectSignals: readonly string[];
+    readonly risk: PlanRisk;
+    readonly reviewAfter: number;
+  };
 }
 
 export interface AssignmentDraft {
@@ -73,7 +79,7 @@ function frozenRequest(request: SelectionRequest): ExpertTeamProposal["selection
   });
 }
 
-function overlapReasons(expert: Expert, request: SelectionRequest): readonly string[] {
+function overlapReasons(expert: Expert, request: ExpertTeamProposal["selectionRequest"]): readonly string[] {
   const capabilities = new Set(request.capabilities);
   const domains = new Set(request.domains);
   const signals = new Set(request.projectSignals);
@@ -85,7 +91,7 @@ function overlapReasons(expert: Expert, request: SelectionRequest): readonly str
   ].sort(portableCompare));
 }
 
-function reviewerScore(expert: Expert, request: SelectionRequest): number {
+function reviewerScore(expert: Expert, request: ExpertTeamProposal["selectionRequest"]): number {
   const capabilities = new Set(request.capabilities);
   const domains = new Set(request.domains);
   const signals = new Set(request.projectSignals);

@@ -1,4 +1,5 @@
-import { lstat, readdir, realpath } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -18,13 +19,18 @@ import { WorkspaceRepository } from "../workspace/repository.js";
 import type { WorkspaceState } from "../workspace/schema.js";
 import {
   finalizeExpertTeam,
+  diffExpertTeams,
   proposeExpertTeam,
   type AssignmentDraft,
   type ExpertTeamBlocker,
   type ExpertTeamProposal,
+  type TeamDiff,
 } from "./expert-team.js";
 import {
   parsePlanDraft,
+  parseRequirementArtifactYaml,
+  parseSpecArtifactYaml,
+  parseTaskArtifactYaml,
   serializeRequirementArtifact,
   serializeSpecArtifact,
   serializeTaskArtifact,
@@ -35,10 +41,15 @@ import {
 } from "./plan-artifacts.js";
 import {
   approvalToken,
+  parseExpertTeamPlan,
   serializeExpertTeamPlan,
   teamHistoryPath,
   type ExpertTeamPlan,
 } from "./team-record.js";
+import {
+  freezeWorkflowResumeContext,
+  type WorkflowResumeContext,
+} from "./resume-context.js";
 
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
@@ -85,7 +96,34 @@ export interface PlanPreview {
 
 export type AppliedPlan = Omit<PlanPreview, "approvalToken">;
 
+export interface ReplanPreview {
+  readonly requirement: RequirementArtifact;
+  readonly spec: SpecArtifact;
+  readonly task: TaskArtifact;
+  readonly previousTeam: ExpertTeamPlan;
+  readonly nextTeam: ExpertTeamPlan;
+  readonly diff: TeamDiff;
+  readonly blockers: readonly ExpertTeamBlocker[];
+  readonly vocabularyMismatches: VocabularyMismatches;
+  readonly approvalToken: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
 interface PreparedPlan extends PlanPreview {
+  readonly canonicalRoot: string;
+  readonly state: WorkspaceState;
+  readonly activeExperts: ActiveExperts;
+}
+
+interface ActiveRecords {
+  readonly requirement: RequirementArtifact;
+  readonly spec: SpecArtifact;
+  readonly task: TaskArtifact;
+  readonly team: ExpertTeamPlan;
+  readonly activeExperts: ActiveExperts;
+}
+
+interface PreparedReplan extends ReplanPreview {
   readonly canonicalRoot: string;
   readonly state: WorkspaceState;
   readonly activeExperts: ActiveExperts;
@@ -268,6 +306,111 @@ function addActiveTeam(
   };
 }
 
+function replaceActiveTeam(
+  active: ActiveExperts,
+  previous: ExpertTeamPlan,
+  next: ExpertTeamPlan,
+): ActiveExperts {
+  const previousIds = new Set(previous.members.map((member) => member.expertId));
+  const withoutPreviousTask: ActiveExperts = {
+    revision: active.revision,
+    experts: active.experts.flatMap((expert) => {
+      if (!previousIds.has(expert.id)) return [expert];
+      const taskIds = expert.taskIds.filter((taskId) => taskId !== previous.taskId);
+      return taskIds.length === 0 ? [] : [{ ...expert, taskIds }];
+    }),
+  };
+  return addActiveTeam(withoutPreviousTask, next);
+}
+
+function retireActiveTeam(active: ActiveExperts, team: ExpertTeamPlan): ActiveExperts {
+  const teamIds = new Set(team.members.map((member) => member.expertId));
+  return {
+    revision: active.revision + 1,
+    experts: active.experts.flatMap((expert) => {
+      if (!teamIds.has(expert.id)) return [expert];
+      const taskIds = expert.taskIds.filter((taskId) => taskId !== team.taskId);
+      return taskIds.length === 0 ? [] : [{ ...expert, taskIds }];
+    }),
+  };
+}
+
+async function readBoundedText(path: string): Promise<string> {
+  const observed = await lstat(path);
+  if (!observed.isFile() || observed.isSymbolicLink() || observed.size < 1 || observed.size > 1_048_576) {
+    throw new Error("Core artifact is not a bounded regular file");
+  }
+  const text = await readFile(path, "utf8");
+  if (Buffer.byteLength(text, "utf8") !== observed.size) {
+    throw new Error("Core artifact changed during read");
+  }
+  return text;
+}
+
+async function latestTeamRecord(root: string, taskId: string): Promise<ExpertTeamPlan> {
+  const directory = join(workspacePaths(root).root, "experts", "teams", taskId);
+  const names = await readdir(directory);
+  if (names.length === 0 || names.some((name) => !/^\d{6,}\.json$/u.test(name))) {
+    throw new Error("expert team history is missing or malformed");
+  }
+  const name = [...names].sort(portableCompare).at(-1)!;
+  const value: unknown = JSON.parse(await readBoundedText(join(directory, name)));
+  const team = parseExpertTeamPlan(value);
+  if (team.taskId !== taskId || name !== `${String(team.teamRevision).padStart(6, "0")}.json`) {
+    throw new Error("expert team history identity mismatch");
+  }
+  return team;
+}
+
+async function readActiveRecords(
+  root: string,
+  state: WorkspaceState,
+  activeExperts: ActiveExperts,
+): Promise<ActiveRecords> {
+  const active = state.activeWorkItem;
+  if (active === null || active.kind !== "task") throw new Error("no active Task with an expert team");
+  const base = workspacePaths(root).root;
+  const task = parseTaskArtifactYaml(await readBoundedText(join(base, "tasks", `${active.id}.yaml`)));
+  const spec = parseSpecArtifactYaml(await readBoundedText(join(base, "specs", `${task.specId}.yaml`)));
+  const requirement = parseRequirementArtifactYaml(
+    await readBoundedText(join(base, "requirements", `${task.requirementId}.yaml`)),
+  );
+  const team = await latestTeamRecord(root, task.id);
+  if (task.id !== active.id
+    || task.status !== active.status
+    || task.revision !== active.revision
+    || spec.id !== task.specId
+    || requirement.id !== task.requirementId
+    || spec.requirementId !== requirement.id
+    || team.requirementId !== requirement.id
+    || team.specId !== spec.id
+    || team.taskRevision !== task.revision) {
+    throw new Error("active Plan artifact identities do not match workspace state");
+  }
+  const projected = new Map(activeExperts.experts.map((expert) => [expert.id, expert]));
+  if (team.members.some((member) => !projected.get(member.expertId)?.taskIds.includes(task.id))) {
+    throw new Error("active expert projection does not match approved team");
+  }
+  return { requirement, spec, task, team, activeExperts };
+}
+
+function replanToken(
+  root: string,
+  workspaceRevision: number,
+  previous: ExpertTeamPlan,
+  next: ExpertTeamPlan,
+  diff: TeamDiff,
+  decision?: "accepted",
+): `sha256:${string}` {
+  const base = approvalToken(root, workspaceRevision, next, decision);
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    schemaVersion: 1,
+    base,
+    previousTeamFingerprint: previous.teamFingerprint,
+    diff,
+  })).digest("hex")}`;
+}
+
 async function assertMissing(root: string, relativePaths: readonly string[]): Promise<void> {
   for (const relativePath of relativePaths) {
     const path = join(workspacePaths(root).root, ...relativePath.split("/"));
@@ -290,18 +433,18 @@ export class ExpertTeamWorkflowService {
     this.runtime = runtime;
   }
 
-  private async context() {
+  private async context(requireIdleWorkspace = true) {
     const canonicalRoot = await this.runtime.canonicalRoot(this.projectRoot);
     const repository = this.runtime.createRepository(canonicalRoot);
     const context = await repository.readContext();
-    requireIdle(context.state);
+    if (requireIdleWorkspace) requireIdle(context.state);
     return { canonicalRoot, repository, context };
   }
 
   async selectPreview(draftValue: unknown): Promise<SelectionPreview> {
     const draft = parsePlanDraft(draftValue);
-    const [{ context }, catalog] = await Promise.all([this.context(), this.runtime.readCatalog()]);
-    requireIdle(context.state);
+    const [{ context }, catalog] = await Promise.all([this.context(false), this.runtime.readCatalog()]);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
     const proposal = proposeExpertTeam(catalog.experts, requestFor(draft));
     return Object.freeze({
       ...proposal,
@@ -455,5 +598,307 @@ export class ExpertTeamWorkflowService {
       vocabularyMismatches: prepared.vocabularyMismatches,
       workspaceRevision: nextState.revision,
     };
+  }
+
+  private async prepareReplan(input: PlanPreviewInput): Promise<PreparedReplan> {
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const [catalog, activeExperts] = await Promise.all([
+      this.runtime.readCatalog(),
+      this.runtime.readActiveExperts(canonicalRoot),
+    ]);
+    const current = await readActiveRecords(canonicalRoot, context.state, activeExperts);
+    if (current.team.catalogFingerprint !== catalog.fingerprint) {
+      throw new Error("approved expert team catalog fingerprint no longer matches runtime catalog");
+    }
+    const proposal = proposeExpertTeam(catalog.experts, requestFor(input.draft));
+    if (proposal.selectionFingerprint !== input.selectionFingerprint) {
+      throw new Error("selection fingerprint no longer matches the replacement Plan and catalog");
+    }
+    const spec: SpecArtifact = {
+      schemaVersion: 1,
+      id: current.spec.id,
+      requirementId: current.requirement.id,
+      status: "approved",
+      revision: current.spec.revision + 1,
+      ...input.draft.spec,
+    };
+    const task: TaskArtifact = {
+      schemaVersion: 1,
+      id: current.task.id,
+      requirementId: current.requirement.id,
+      specId: current.spec.id,
+      status: "planned",
+      revision: current.task.revision + 1,
+      ...input.draft.task,
+    };
+    const nextTeam = finalizeExpertTeam(proposal, input.assignments, {
+      teamRevision: current.team.teamRevision + 1,
+      requirementId: current.requirement.id,
+      specId: current.spec.id,
+      taskId: current.task.id,
+      taskRevision: task.revision,
+      catalogFingerprint: catalog.fingerprint,
+    });
+    const diff = diffExpertTeams(current.team, nextTeam);
+    return {
+      requirement: current.requirement,
+      spec,
+      task,
+      previousTeam: current.team,
+      nextTeam,
+      diff,
+      blockers: proposal.blockers,
+      vocabularyMismatches: vocabularyMismatches(input.draft, catalog),
+      approvalToken: replanToken(
+        canonicalRoot,
+        context.state.revision,
+        current.team,
+        nextTeam,
+        diff,
+        input.largeTeamDecision,
+      ),
+      workspaceRevision: context.state.revision,
+      canonicalRoot,
+      state: context.state,
+      activeExperts,
+    };
+  }
+
+  async replanPreview(inputValue: unknown): Promise<ReplanPreview> {
+    const prepared = await this.prepareReplan(parsePreviewInput(inputValue));
+    return {
+      requirement: prepared.requirement,
+      spec: prepared.spec,
+      task: prepared.task,
+      previousTeam: prepared.previousTeam,
+      nextTeam: prepared.nextTeam,
+      diff: prepared.diff,
+      blockers: prepared.blockers,
+      vocabularyMismatches: prepared.vocabularyMismatches,
+      approvalToken: prepared.approvalToken,
+      workspaceRevision: prepared.workspaceRevision,
+    };
+  }
+
+  async replanApply(inputValue: unknown): Promise<AppliedPlan & { readonly diff: TeamDiff }> {
+    const input = parseApplyInput(inputValue);
+    const prepared = await this.prepareReplan(input);
+    if (prepared.approvalToken !== input.approvalToken) {
+      throw new Error("approval token no longer matches the current replan diff or workspace revision");
+    }
+    if (prepared.blockers.includes("capability-uncovered")) {
+      throw new Error("replacement Plan has uncovered capabilities");
+    }
+    if (prepared.blockers.includes("independent-reviewer-missing")) {
+      throw new Error("replacement Plan has no independent reviewer");
+    }
+    if (prepared.blockers.includes("large-team-review-required")
+      && input.largeTeamDecision !== "accepted") {
+      throw new Error("large team requires an explicitly accepted replacement Plan decision");
+    }
+
+    const active = replaceActiveTeam(
+      prepared.activeExperts,
+      prepared.previousTeam,
+      prepared.nextTeam,
+    );
+    const historyPath = teamHistoryPath(prepared.task.id, prepared.nextTeam.teamRevision);
+    await assertMissing(prepared.canonicalRoot, [historyPath]);
+    const nextState: WorkspaceState = {
+      schemaVersion: 1,
+      revision: prepared.state.revision + 1,
+      activeWorkItem: {
+        id: prepared.task.id,
+        kind: "task",
+        status: "planned",
+        risk: prepared.task.risk,
+        revision: prepared.task.revision,
+      },
+      safeMode: false,
+    };
+    await this.runtime.createRepository(prepared.canonicalRoot).commitMutation(
+      nextState,
+      prepared.state.revision,
+      "plan-replanned",
+      [
+        { relativePath: `specs/${prepared.spec.id}.yaml`, content: serializeSpecArtifact(prepared.spec) },
+        { relativePath: `tasks/${prepared.task.id}.yaml`, content: serializeTaskArtifact(prepared.task) },
+        { relativePath: historyPath, content: serializeExpertTeamPlan(prepared.nextTeam) },
+        { relativePath: "experts/active.yaml", content: serializeActiveExperts(active) },
+      ],
+      {
+        requirementId: prepared.requirement.id,
+        specId: prepared.spec.id,
+        taskId: prepared.task.id,
+        teamRevision: prepared.nextTeam.teamRevision,
+        addedCount: prepared.diff.added.length,
+        removedCount: prepared.diff.removed.length,
+        changedCount: prepared.diff.changed.length,
+        teamFingerprint: prepared.nextTeam.teamFingerprint,
+      },
+    );
+    return {
+      requirement: prepared.requirement,
+      spec: prepared.spec,
+      task: prepared.task,
+      team: prepared.nextTeam,
+      blockers: prepared.blockers,
+      vocabularyMismatches: prepared.vocabularyMismatches,
+      workspaceRevision: nextState.revision,
+      diff: prepared.diff,
+    };
+  }
+
+  async retireTeam(
+    taskId: string,
+    expectedTaskRevision: number,
+    to: "completed" | "cancelled",
+  ): Promise<void> {
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const active = context.state.activeWorkItem;
+    if (active === null
+      || active.kind !== "task"
+      || active.id !== taskId
+      || active.revision !== expectedTaskRevision) {
+      throw new Error("active Task revision does not match expert team retirement request");
+    }
+    const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
+    const records = await readActiveRecords(canonicalRoot, context.state, activeExperts);
+    const task: TaskArtifact = {
+      ...records.task,
+      status: to,
+      revision: records.task.revision + 1,
+    };
+    const retired = retireActiveTeam(activeExperts, records.team);
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+      activeWorkItem: null,
+    };
+    await this.runtime.createRepository(canonicalRoot).commitMutation(
+      nextState,
+      context.state.revision,
+      "expert-team-retired",
+      [
+        { relativePath: `tasks/${task.id}.yaml`, content: serializeTaskArtifact(task) },
+        { relativePath: "experts/active.yaml", content: serializeActiveExperts(retired) },
+      ],
+      {
+        taskId: task.id,
+        terminalStatus: to,
+        taskRevision: task.revision,
+        teamRevision: records.team.teamRevision,
+        teamFingerprint: records.team.teamFingerprint,
+      },
+    );
+  }
+
+  async activeTeamRecord(): Promise<ExpertTeamPlan | null> {
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    if (context.state.activeWorkItem === null) return null;
+    const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
+    return (await readActiveRecords(canonicalRoot, context.state, activeExperts)).team;
+  }
+
+  async resumeContext(): Promise<WorkflowResumeContext> {
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) {
+      return freezeWorkflowResumeContext({
+        workspaceRevision: context.state.revision,
+        safeMode: true,
+        recovered: context.recovered,
+        recoveryStatus: "inspection-required",
+        requirement: null,
+        spec: null,
+        task: null,
+        team: null,
+        blockers: ["workspace-safe-mode"],
+      });
+    }
+    if (context.state.activeWorkItem === null) {
+      return freezeWorkflowResumeContext({
+        workspaceRevision: context.state.revision,
+        safeMode: false,
+        recovered: context.recovered,
+        recoveryStatus: "ready",
+        requirement: null,
+        spec: null,
+        task: null,
+        team: null,
+        blockers: [],
+      });
+    }
+
+    try {
+      const [catalog, activeExperts] = await Promise.all([
+        this.runtime.readCatalog(),
+        this.runtime.readActiveExperts(canonicalRoot),
+      ]);
+      const records = await readActiveRecords(canonicalRoot, context.state, activeExperts);
+      if (records.team.catalogFingerprint !== catalog.fingerprint) {
+        throw new Error("catalog fingerprint mismatch");
+      }
+      const members = records.team.members.map((member) => {
+        const expert = catalog.byId.get(member.expertId);
+        if (expert === undefined) throw new Error("approved expert is absent from runtime catalog");
+        return {
+          expertId: member.expertId,
+          nameZh: expert.nameZh,
+          mode: member.mode,
+          reasons: member.reasons,
+        };
+      });
+      return freezeWorkflowResumeContext({
+        workspaceRevision: context.state.revision,
+        safeMode: false,
+        recovered: context.recovered,
+        recoveryStatus: "ready",
+        requirement: {
+          id: records.requirement.id,
+          title: records.requirement.title,
+          status: records.requirement.status,
+          revision: records.requirement.revision,
+        },
+        spec: {
+          id: records.spec.id,
+          requirementId: records.spec.requirementId,
+          goal: records.spec.goal,
+          status: records.spec.status,
+          revision: records.spec.revision,
+        },
+        task: {
+          id: records.task.id,
+          specId: records.task.specId,
+          title: records.task.title,
+          status: records.task.status,
+          risk: records.task.risk,
+          revision: records.task.revision,
+        },
+        team: {
+          teamRevision: records.team.teamRevision,
+          taskId: records.team.taskId,
+          taskRevision: records.team.taskRevision,
+          teamFingerprint: records.team.teamFingerprint,
+          catalogFingerprint: records.team.catalogFingerprint,
+          members,
+        },
+        blockers: [],
+      });
+    } catch {
+      return freezeWorkflowResumeContext({
+        workspaceRevision: context.state.revision,
+        safeMode: true,
+        recovered: context.recovered,
+        recoveryStatus: "inspection-required",
+        requirement: null,
+        spec: null,
+        task: null,
+        team: null,
+        blockers: ["active-plan-corrupt"],
+      });
+    }
   }
 }

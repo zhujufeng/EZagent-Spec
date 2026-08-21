@@ -58,7 +58,7 @@ function team(revision: number, members: readonly ExpertTeamMember[]): ExpertTea
     specId: "SPEC-20260821-001",
     taskId: "TASK-20260821-001",
     taskRevision: revision - 1,
-    selectionRequest: requestFixture({ risk: "standard" }),
+    selectionRequest: { ...requestFixture({ risk: "standard" }), risk: "standard" },
     members,
     uncoveredCapabilities: [],
     requiresPlanReview: false,
