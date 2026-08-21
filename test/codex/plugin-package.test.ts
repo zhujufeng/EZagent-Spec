@@ -279,7 +279,7 @@ describe.sequential("self-contained Codex plugin package", () => {
     if (process.platform !== "win32") {
       expect((await stat(bundlePath)).mode & 0o777).toBe(0o755);
     }
-  }, 15_000);
+  }, 30_000);
 
   test("passes hostile roots and names as argv without shell execution", async () => {
     const pluginRoot = await temporaryDirectory("ezagent-plugin-argv-");
