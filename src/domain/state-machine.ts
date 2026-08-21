@@ -37,11 +37,9 @@ export function transitionWorkItem(
 
   if (
     request.to === "implementing" &&
-    current.risk === "high" &&
-    current.status !== "verifying" &&
-    !request.highRiskAuthorizationId?.trim()
+    current.risk === "high"
   ) {
-    throw new Error("high-risk implementation requires authorization");
+    throw new Error("high-risk implementation is not supported in this release");
   }
 
   return { ...current, status: request.to, revision: current.revision + 1 };

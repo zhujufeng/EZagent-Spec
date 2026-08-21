@@ -22,5 +22,4 @@ export interface WorkItemState {
 export interface TransitionRequest {
   to: WorkItemStatus;
   expectedRevision: number;
-  highRiskAuthorizationId?: string;
 }

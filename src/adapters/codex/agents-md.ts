@@ -25,7 +25,7 @@ const RULES = [
   "仅当项目根目录存在 `.ezagent/project.yaml` 时，所有开发、修改、修复、重构、实现、审查和验证请求都必须自动使用 `$ezagent-router`；不要要求用户手动输入 EZagent 命令。",
   "每次相关工作开始，先调用插件内打包 CLI 的 `context --root <project-root> --json` 读取当前状态；不得直接编辑 `.ezagent/**`。",
   "每次相关工作先恢复并核对已批准专家团队；若 `platformSyncStatus` 为 `pending`，先使用插件内 CLI 的 `experts-reconcile`，确认 `ready` 后才能进入 implementing。",
-  "所有工作必须遵循当前流程等级要求的批准、任务状态和质量门；高风险动作还需要单独的一次性授权。",
+  "所有工作必须遵循当前流程等级要求的批准、任务状态和质量门；当前版本不支持高风险 Task 实施，必须关闭失败。",
   "多 Agent 委派必须绑定 Requirement/Spec/Task ID、专家 ID、delegation ID、范围、交付物和对应质量门。",
   "不得自动联网、安装软件、执行任何 Git 写操作、发布或上传项目。",
 ] as const;

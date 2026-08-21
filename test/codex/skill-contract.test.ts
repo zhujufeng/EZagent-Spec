@@ -181,19 +181,13 @@ describe("Codex Skill contracts", () => {
     }
   });
 
-  test("documents the supported high-risk planned-to-implementing authorization combination", async () => {
+  test("fails closed for every high-risk implementation in this release", async () => {
     const implement = await readSkill("ezagent-implement");
-    const highRisk = argvExamples(implement).find((argv) => argv.includes("--high-risk-authorization"));
 
-    expect(highRisk).toBeDefined();
-    expect(option(highRisk!, "--to")).toBe("implementing");
-    expect(option(highRisk!, "--revision")).toBe("<active-work-item-revision>");
-    expect(option(highRisk!, "--high-risk-authorization")).toBe("<authorization-id>");
-    expect(implement.body).toMatch(/high.*planned.*implementing/isu);
-    expect(implement.body).toMatch(/Spec 批准.*不.*授权/su);
-    expect(implement.body).toMatch(/AUTH.*本地核心.*已存在.*绑定.*action/su);
-    expect(implement.body).toMatch(/不得.*(?:模型|用户).*编造/u);
-    expect(implement.body).toMatch(/授权记录.*不存在.*能力缺失.*停止/su);
+    expect(argvExamples(implement).some((argv) => argv.includes("--high-risk-authorization"))).toBe(false);
+    expect(implement.body).not.toContain("AUTH-");
+    expect(implement.body).toMatch(/当前版本.*不支持.*高风险.*实施/su);
+    expect(implement.body).toMatch(/risk.*high.*停止.*不得.*implementing/su);
   });
 
   test("closes the review failure loop through the supported verifying-to-implementing transition", async () => {
@@ -209,13 +203,14 @@ describe("Codex Skill contracts", () => {
     expect(failureHandoff).toEqual({
       fromStatus: "verifying",
       toStatus: "implementing",
+      supportedRisks: ["light", "standard"],
+      highRisk: "fail-closed",
       targetSkill: "ezagent-implement",
       onTransitionFailure: "fail-closed",
     });
     expect(option(retry, "--to")).toBe("implementing");
     expect(option(retry, "--revision")).toBe("<active-work-item-revision>");
-    expect(review.body).toMatch(/verifying.*返工.*不.*planned.*首次授权/su);
-    expect(review.body).toMatch(/危险动作.*单独授权/u);
+    expect(review.body).toMatch(/high.*返工.*关闭失败/su);
     expect(review.body).toMatch(/transition.*失败.*关闭失败.*不得.*Implement/su);
     expect(review.body).toContain("$ezagent-implement");
     expect(implement.body).toMatch(/status.*planned.*implementing/su);
@@ -263,19 +258,20 @@ describe("Codex Skill contracts", () => {
     expect(option(integrationInit, "--name")).toBe("<project-name>");
   });
 
-  test("keeps review verifying until structured Knowledge is persisted and verified", async () => {
+  test("captures structured Knowledge before completing a verified Task", async () => {
     const review = await readSkill("ezagent-review");
     const completion = structuredContract(review, "completion");
 
     expect(completion).toEqual({
       knowledgeRequiredBeforeStatus: "completed",
-      currentKnowledgePersistence: "unavailable",
-      currentAction: "fail-closed",
-      retainedStatus: "verifying",
+      currentKnowledgePersistence: "available",
+      currentAction: "capture-and-complete",
+      resultStatus: "completed",
     });
-    expect(argvExamples(review).some((argv) => option(argv, "--to") === "completed")).toBe(false);
+    expect(argvExamples(review).some((argv) => option(argv, "--to") === "completed")).toBe(true);
     expect(review.body).toMatch(/Knowledge.*写入.*读回.*验证.*completed/su);
-    expect(review.body).toMatch(/当前.*未打包.*保持.*verifying.*关闭失败/su);
+    expect(review.body).toMatch(/stdin.*决策.*约束.*验证证据.*后续/su);
+    expect(review.body).toMatch(/不保存.*聊天.*完整用户提示.*完整专家提示/su);
   });
 
   test("transitions a completed implementation to verifying before review handoff", async () => {

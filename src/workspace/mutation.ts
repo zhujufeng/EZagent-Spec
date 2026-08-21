@@ -24,7 +24,6 @@ const PENDING_KEYS = [
 ] as const;
 const PENDING_WRITE_KEYS = ["relativePath", "contentHash"] as const;
 const MAX_MUTATION_WRITES = 256;
-const AUTHORIZATION_FILENAME = /^AUTH-(\d{4})(\d{2})(\d{2})-(\d{3})\.json$/u;
 
 export interface WorkspaceMutationWrite {
   readonly relativePath: string;
@@ -90,14 +89,6 @@ function assertCanonicalTimestamp(value: unknown, label: string): asserts value 
   }
 }
 
-function isRealAuthorizationFilename(value: string): boolean {
-  const match = AUTHORIZATION_FILENAME.exec(value);
-  if (match === null) return false;
-  const date = `${match[1]!}-${match[2]!}-${match[3]!}`;
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
-}
-
 function isAllowedArtifactPath(components: readonly string[]): boolean {
   const root = components[0];
   return components.length >= 2 && (
@@ -108,10 +99,6 @@ function isAllowedArtifactPath(components: readonly string[]): boolean {
     || (root === "knowledge" && components.length >= 3
       && (components[1] === "decisions" || components[1] === "patterns"))
     || (root === "quality" && components.length >= 3 && components[1] === "runs")
-    || (root === "quality"
-      && components.length === 3
-      && components[1] === "authorizations"
-      && isRealAuthorizationFilename(components[2]!))
   );
 }
 

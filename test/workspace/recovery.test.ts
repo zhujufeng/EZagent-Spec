@@ -914,6 +914,12 @@ describe("WorkspaceRepository recovery and mutations", () => {
 
   test.each([
     "quality/authorizations/approval.json",
+    "quality/authorizations/AUTH-20260820-001.json",
+    "quality/authorizations/AUTH-20260230-001.json",
+    "quality/authorizations/auth-20260820-001.json",
+    "quality/authorizations/AUTH-20260820-01.json",
+    "quality/authorizations/AUTH-20260820-001.txt",
+    "quality/authorizations/archive/AUTH-20260820-001.json",
     "backups/snapshot.json",
     "knowledge/other/note.md",
     "quality/other/run.json",
@@ -924,38 +930,6 @@ describe("WorkspaceRepository recovery and mutations", () => {
 
     await expect(repository.commitMutation(
       state(1), 0, "blocked-prefix", [{ relativePath, content: "blocked" }],
-    )).rejects.toBeInstanceOf(TypeError);
-    expect(await readdir(root)).toEqual([]);
-  });
-
-  test("commits an exact dated quality authorization artifact", async () => {
-    const { repository, paths } = await temporaryWorkspace();
-    const relativePath = "quality/authorizations/AUTH-20260820-001.json";
-
-    await repository.commitMutation(
-      state(1),
-      0,
-      "authorization-recorded",
-      [{ relativePath, content: "{\"approved\":true}\n" }],
-    );
-
-    await expect(readFile(join(paths.root, relativePath), "utf8")).resolves.toBe("{\"approved\":true}\n");
-    await expect(lstat(paths.pendingMutation)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  test.each([
-    "quality/authorizations/AUTH-20260230-001.json",
-    "quality/authorizations/auth-20260820-001.json",
-    "quality/authorizations/AUTH-20260820-01.json",
-    "quality/authorizations/AUTH-20260820-001.txt",
-    "quality/authorizations/archive/AUTH-20260820-001.json",
-  ])("rejects invalid quality authorization path %j before filesystem side effects", async (relativePath) => {
-    const root = await mkdtemp(join(tmpdir(), "ezagent-authorization-"));
-    roots.push(root);
-    const repository = new WorkspaceRepository(root);
-
-    await expect(repository.commitMutation(
-      state(1), 0, "authorization", [{ relativePath, content: "blocked" }],
     )).rejects.toBeInstanceOf(TypeError);
     expect(await readdir(root)).toEqual([]);
   });

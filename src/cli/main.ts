@@ -30,7 +30,6 @@ import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
-const AUTHORIZATION_ID = /^AUTH-(\d{4})(\d{2})(\d{2})-(\d{3})$/u;
 const WORK_ITEM_STATUSES = [
   "captured",
   "clarifying",
@@ -80,7 +79,7 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     requiredOptions: ["--root", "--json"],
   },
   transition: {
-    valueOptions: ["--root", "--to", "--revision", "--high-risk-authorization"],
+    valueOptions: ["--root", "--to", "--revision"],
     booleanOptions: [],
     requiredOptions: ["--root", "--to", "--revision"],
   },
@@ -257,30 +256,6 @@ function canonicalRevision(value: string): number {
   return parsed;
 }
 
-function authorizationId(value: string): string {
-  const normalized = value.trim();
-  const match = AUTHORIZATION_ID.exec(normalized);
-  if (match === null) {
-    throw new Error("--high-risk-authorization must match AUTH-YYYYMMDD-NNN with a real date");
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(0);
-  date.setUTCFullYear(year, month - 1, day);
-  date.setUTCHours(0, 0, 0, 0);
-  if (
-    year < 1000
-    || year > 9999
-    || date.getUTCFullYear() !== year
-    || date.getUTCMonth() !== month - 1
-    || date.getUTCDate() !== day
-  ) {
-    throw new Error("--high-risk-authorization must match AUTH-YYYYMMDD-NNN with a real date");
-  }
-  return normalized;
-}
-
 function writeJson(io: CliIo, value: unknown): void {
   const json = JSON.stringify(value)
     .replace(/\u2028/gu, "\\u2028")
@@ -411,6 +386,7 @@ export async function runCli(
       spec: resumed.spec,
       task: resumed.task,
       team: resumed.team,
+      knowledge: resumed.knowledge,
       blockers: resumed.blockers,
       recoveryStatus: resumed.recoveryStatus,
       platformSyncStatus: platform.status,
@@ -420,29 +396,17 @@ export async function runCli(
 
   const to = workItemStatus(requiredValueOption(parsed, "--to"));
   const revision = canonicalRevision(requiredValueOption(parsed, "--revision"));
-  const suppliedAuthorization = valueOption(parsed, "--high-risk-authorization");
-  const normalizedAuthorization = suppliedAuthorization === undefined
-    ? undefined
-    : authorizationId(suppliedAuthorization);
   const context = await repository.readContext();
   if (context.state.safeMode) throw new Error("workspace is in safe mode; transition is disabled");
   if (context.state.activeWorkItem === null) throw new Error("no active work item");
-  if (
-    normalizedAuthorization !== undefined
-    && !(
-      context.state.activeWorkItem.risk === "high"
-      && context.state.activeWorkItem.status === "planned"
-      && to === "implementing"
-    )
-  ) {
-    throw new Error(
-      "--high-risk-authorization is only valid for a high-risk planned -> implementing transition",
-    );
-  }
 
   if (context.state.activeWorkItem.kind === "task") {
     if (to === "completed") {
-      throw new Error("completed is blocked until Knowledge capture is implemented");
+      writeJson(io, await workflow.completeActiveTask(
+        revision,
+        await readBoundedJsonInput(runtime.stdin),
+      ));
+      return;
     }
     if (to === "cancelled") {
       await workflow.retireTeam(context.state.activeWorkItem.id, revision, "cancelled");
@@ -455,32 +419,25 @@ export async function runCli(
         throw new Error(`approved Codex expert team is not ready: ${readiness.status}; run experts-reconcile`);
       }
     }
-    writeJson(io, await workflow.transitionActiveTask(to, revision, normalizedAuthorization));
+    writeJson(io, await workflow.transitionActiveTask(to, revision));
     return;
   }
 
   const activeWorkItem = transitionWorkItem(context.state.activeWorkItem, {
     to,
     expectedRevision: revision,
-    ...(normalizedAuthorization === undefined
-      ? {}
-      : { highRiskAuthorizationId: normalizedAuthorization }),
   });
   const next = {
     ...context.state,
     revision: context.state.revision + 1,
     activeWorkItem,
   };
-  // This CLI layer records only the caller-provided authorization reference. The workflow gate
-  // is responsible for checking its file, fingerprint, and one-time consumption before execution.
   await repository.commitMutation(
     next,
     context.state.revision,
     "work-item-transitioned",
     [],
-    normalizedAuthorization === undefined
-      ? {}
-      : { highRiskAuthorizationId: normalizedAuthorization },
+    {},
   );
   writeJson(io, next);
 }

@@ -246,7 +246,7 @@ describe.sequential("automatic expert-team packaged workflow", () => {
       "transition", "--root", highRoot, "--to", "implementing", "--revision", "0",
     ]);
     expect(blocked.code).not.toBe(0);
-    expect(blocked.stderr).toMatch(/authorization/iu);
+    expect(blocked.stderr).toMatch(/high-risk implementation is not supported/iu);
     const highContext = await cliJson<{
       readonly state: { readonly activeWorkItem: { readonly status: string } };
     }>(highRoot, "context");

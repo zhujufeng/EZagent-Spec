@@ -235,13 +235,14 @@ describe.sequential("ezagent CLI", () => {
       spec: null,
       task: null,
       team: null,
+      knowledge: [],
       blockers: [],
       recoveryStatus: "ready",
       platformSyncStatus: "none",
     });
   });
 
-  test("previews and applies an approved expert team through JSON stdin", async () => {
+  test("previews, applies, verifies, and completes an expert-team Task through JSON stdin", async () => {
     const root = await temporaryProject();
     expectJsonSuccess(await runCli(["init", "--root", root, "--name", "CLI Team"]));
     const draft = {
@@ -256,7 +257,7 @@ describe.sequential("ezagent CLI", () => {
       },
       task: {
         title: "实现资料校验",
-        risk: "high",
+        risk: "standard",
         allowedPaths: ["src/users/**", "test/users/**"],
         deliverables: ["实现与测试"],
         qualityGates: ["测试通过", "独立审查"],
@@ -298,14 +299,44 @@ describe.sequential("ezagent CLI", () => {
       "transition", "--root", root,
       "--to", "implementing",
       "--revision", "0",
-      "--high-risk-authorization", "  AUTH-20260821-001  ",
     ]));
     expect(transitioned).toMatchObject({
       activeWorkItem: { status: "implementing", revision: 1 },
     });
+    expectJsonSuccess(await runCli([
+      "transition", "--root", root,
+      "--to", "verifying",
+      "--revision", "1",
+    ]));
+    const knowledgeInput = {
+      schemaVersion: 1,
+      title: "用户资料校验完成",
+      summary: "资料 API 已拒绝非法输入。",
+      decisions: ["统一在 API 边界校验。"],
+      constraints: ["不改变登录流程。"],
+      verificationEvidence: ["单元测试和独立审查通过。"],
+      followUps: [],
+    };
+    const completed = expectJsonSuccess(await runCli(
+      ["transition", "--root", root, "--to", "completed", "--revision", "2"],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(knowledgeInput)}\n` },
+    ));
+    expect(completed).toMatchObject({
+      task: { status: "completed", revision: 3 },
+      state: { activeWorkItem: null },
+      knowledgePath: expect.stringMatching(/^knowledge\/decisions\/SPEC-/u),
+    });
+    expect(expectJsonSuccess(await runCli(["context", "--root", root, "--json"]))).toMatchObject({
+      task: null,
+      team: null,
+      knowledge: [{ title: "用户资料校验完成", summary: "资料 API 已拒绝非法输入。" }],
+    });
     await expect(readAuditEvents(workspacePaths(root).audit)).resolves.toMatchObject([
       { type: "plan-approved" },
-      { type: "work-item-transitioned", metadata: { highRiskAuthorizationId: "AUTH-20260821-001" } },
+      { type: "work-item-transitioned", metadata: {} },
+      { type: "work-item-transitioned", metadata: {} },
+      { type: "task-completed", metadata: { knowledgePath: expect.stringMatching(/^knowledge\/decisions\/SPEC-/u) } },
     ]);
   });
 
@@ -439,7 +470,6 @@ describe.sequential("ezagent CLI", () => {
       "transition", "--root", root,
       "--to", "implementing",
       "--revision", "0",
-      "--high-risk-authorization", "  AUTH-20260820-001  ",
     ]);
 
     expectSingleLineFailure(result, "inspection-required");
@@ -457,16 +487,7 @@ describe.sequential("ezagent CLI", () => {
     ["unsafe revision", ["--to", "clarifying", "--revision", "9007199254740992"], "canonical"],
     ["revision conflict", ["--to", "clarifying", "--revision", "1"], "revision conflict"],
     ["illegal transition", ["--to", "completed", "--revision", "0"], "illegal transition"],
-    [
-      "invalid authorization date",
-      ["--to", "clarifying", "--revision", "0", "--high-risk-authorization", "AUTH-20260230-001"],
-      "authorization",
-    ],
-    [
-      "authorization on an ordinary transition",
-      ["--to", "clarifying", "--revision", "0", "--high-risk-authorization", "AUTH-20260820-001"],
-      "only valid for a high-risk planned",
-    ],
+    ["removed authorization option", ["--to", "clarifying", "--revision", "0", "--high-risk-authorization", "AUTH-20260820-001"], "unknown option"],
   ])("rejects %s without changing state or audit", async (_label, options, message) => {
     const active: WorkItemState = {
       id: "REQ-20260820-001",

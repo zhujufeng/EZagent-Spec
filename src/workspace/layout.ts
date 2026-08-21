@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 export const WORKSPACE_DIRECTORIES = [
   "state", "requirements", "specs", "tasks", "knowledge/decisions", "knowledge/patterns",
-  "experts", "quality/runs", "quality/authorizations", "audit", "backups",
+  "experts", "quality/runs", "audit", "backups",
 ] as const;
 
 export interface WorkspacePaths {

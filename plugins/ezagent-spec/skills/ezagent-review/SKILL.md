@@ -28,20 +28,32 @@ description: 由已批准团队中的独立审查专家验证 EZagent Spec Task 
 任一质量门失败时不得把 Task 标成完成。重新执行 `context`，按以下返工契约使用最新 revision：
 
 ```json
-{"failureHandoff":{"fromStatus":"verifying","toStatus":"implementing","targetSkill":"ezagent-implement","onTransitionFailure":"fail-closed"}}
+{"failureHandoff":{"fromStatus":"verifying","toStatus":"implementing","supportedRisks":["light","standard"],"highRisk":"fail-closed","targetSkill":"ezagent-implement","onTransitionFailure":"fail-closed"}}
 ```
 
 ```json
 ["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "implementing", "--revision", "<active-work-item-revision>"]
 ```
 
-高风险 Task 从 verifying 返工不复用、也不需要 planned 首次授权，但返工中的实际危险动作仍须单独授权。transition 失败就关闭失败，不得转入 Implement 或修改代码；成功后才转 `$ezagent-implement`。
+只有 `light` 和 `standard` Task 可以按此路径返工。若上下文中的 risk 为 `high`，返工也必须关闭失败，不得转入 Implement 或修改代码。transition 失败时必须关闭失败，不得转入 Implement；成功后才转 `$ezagent-implement`。
 
-全部质量门通过也不能先推进 completed。必须先确认 Knowledge 持久化能力可用，写入结构化 Knowledge（决策、约束、验证证据与后续风险），再由本地核心读回并验证，最后才允许考虑 completed transition。当前插件未打包 Knowledge 持久化命令，因此必须保持 verifying 并关闭失败；绝不能先 completed。不保存聊天全文、完整用户提示或完整专家提示。
+全部质量门通过后，把结构化 Knowledge 作为单个 JSON 文档从 stdin 传入。内容只包含标题、摘要、决策、约束、验证证据与后续事项；不保存聊天全文、完整用户提示或完整专家提示：
 
 ```json
-{"completion":{"knowledgeRequiredBeforeStatus":"completed","currentKnowledgePersistence":"unavailable","currentAction":"fail-closed","retainedStatus":"verifying"}}
+{"schemaVersion":1,"title":"<knowledge-title>","summary":"<bounded-summary>","decisions":["<decision>"],"constraints":["<constraint>"],"verificationEvidence":["<actual-evidence>"],"followUps":[]}
 ```
+
+```json
+{"completion":{"knowledgeRequiredBeforeStatus":"completed","currentKnowledgePersistence":"available","currentAction":"capture-and-complete","resultStatus":"completed"}}
+```
+
+重新执行 `context` 取得最新 revision 后，用同一个进程调用将 Knowledge 写入并推进 completed：
+
+```json
+["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "completed", "--revision", "<active-work-item-revision>"]
+```
+
+本地核心会在一次原子事务中写入 Knowledge、完成 Task 并清退专家。命令成功后再次执行 `context`，确认 `state.activeWorkItem` 为空，且 `knowledge` 中能按内容哈希读回并验证刚写入的记录；任一步失败都保持关闭失败，不得自行声称 completed。
 
 每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。不得虚构证据、状态或命令。
 

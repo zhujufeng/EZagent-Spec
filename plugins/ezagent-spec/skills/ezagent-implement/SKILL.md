@@ -23,6 +23,8 @@ description: 使用已批准且已同步的项目级专家团队执行 EZagent S
 
 安全模式只诊断。仅继续本地核心已批准的 Task：最近上下文的 `state.activeWorkItem.status` 必须是 `planned` 或 `implementing`；`planned` 先走合法首次 transition，`implementing` 可继续实施。开始前核对 `allowedPaths`、依赖、`deliverables`、委派和 `gates`；状态或字段缺失就停止。
 
+当前版本不支持高风险 Task 实施。若最近上下文中的 `state.activeWorkItem.risk` 为 `high`，立即停止并说明该版本关闭了高风险实施；不得进入 `implementing`，也不得通过编造参数、授权编号或绕过本地核心继续。
+
 必须同时核对顶层 `platformSyncStatus`。只有其值为 `ready` 才可执行或继续执行 Task；若为 `pending`，先调用：
 
 ```json
@@ -33,19 +35,11 @@ description: 使用已批准且已同步的项目级专家团队执行 EZagent S
 
 每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。
 
-普通 planned Task 首次进入 implementing 使用：
+仅 `light` 或 `standard` planned Task 首次进入 implementing 使用：
 
 ```json
 ["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "implementing", "--revision", "<active-work-item-revision>"]
 ```
-
-仅当最近一次上下文显示 `state.activeWorkItem.risk` 为 `high`、状态为 `planned`，目标为 `implementing`，且 `AUTH` 是本地核心中已存在并绑定该 action 的一次性记录时，才使用：
-
-```json
-["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "implementing", "--revision", "<active-work-item-revision>", "--high-risk-authorization", "<authorization-id>"]
-```
-
-不得由模型或用户随意编造授权 ID；授权记录不存在或无法验证时视为能力缺失并停止。Spec 批准不能代替该 action 授权。
 
 ## 受控实施与重规划
 
@@ -65,6 +59,6 @@ description: 使用已批准且已同步的项目级专家团队执行 EZagent S
 ["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "verifying", "--revision", "<active-work-item-revision>"]
 ```
 
-transition 成功后才路由 `$ezagent-review`；失败就关闭失败，不得进入 Review。高风险实施中的实际危险动作仍各自需要独立授权。
+transition 成功后才路由 `$ezagent-review`；失败就关闭失败，不得进入 Review。
 
 不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。

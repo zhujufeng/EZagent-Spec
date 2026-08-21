@@ -20,8 +20,8 @@ import { ALLOWED_BUNDLE_IMPORTS } from "../../scripts/build-plugin.js";
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "../..");
 const SOURCE_PLUGIN_ROOT = join(REPOSITORY_ROOT, "plugins", "ezagent-spec");
 const WORKFLOW_PATH = join(REPOSITORY_ROOT, ".github", "workflows", "ci.yml");
-const CHECKOUT_ACTION = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
-const SETUP_NODE_ACTION = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
+const CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+const SETUP_NODE_ACTION = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
 const EXPECTED_PLUGIN_FILES = [
   ".codex-plugin/plugin.json",
   "LICENSE",
@@ -218,7 +218,12 @@ function count(contents: string, needle: string): number {
 
 afterEach(async () => {
   await Promise.all(
-    temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    temporaryRoots.splice(0).map((root) => rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    })),
   );
 });
 
@@ -326,6 +331,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
       spec: null,
       task: null,
       team: null,
+      knowledge: [],
       blockers: [],
       recoveryStatus: "ready",
       platformSyncStatus: "none",
@@ -420,7 +426,35 @@ describe.sequential("Codex plugin offline release smoke", () => {
     await expect(runPackagedCli(cliPath, projectRoot, [
       "context", "--root", projectRoot, "--json",
     ])).resolves.toEqual(restored);
-  });
+
+    await runPackagedCli(cliPath, projectRoot, [
+      "transition", "--root", projectRoot, "--to", "implementing", "--revision", "0",
+    ]);
+    await runPackagedCli(cliPath, projectRoot, [
+      "transition", "--root", projectRoot, "--to", "verifying", "--revision", "1",
+    ]);
+    const completed = await runPackagedCli(cliPath, projectRoot, [
+      "transition", "--root", projectRoot, "--to", "completed", "--revision", "2",
+    ], {
+      schemaVersion: 1,
+      title: "资料校验完成",
+      summary: "复制后的离线插件完成了标准任务。",
+      decisions: ["在 API 边界执行结构化校验。"],
+      constraints: ["不改变登录流程。"],
+      verificationEvidence: ["离线端到端验证通过。"],
+      followUps: [],
+    }) as { readonly task: { readonly status: string }; readonly knowledgePath: string };
+    expect(completed.task.status).toBe("completed");
+    expect(completed.knowledgePath).toMatch(/^knowledge\/decisions\/SPEC-/u);
+    await expect(runPackagedCli(cliPath, projectRoot, [
+      "context", "--root", projectRoot, "--json",
+    ])).resolves.toMatchObject({
+      state: { activeWorkItem: null },
+      task: null,
+      team: null,
+      knowledge: [{ title: "资料校验完成" }],
+    });
+  }, 30_000);
 
   test("defines read-only cross-platform CI and LF checkout contracts structurally", async () => {
     const attributeOutput = await runTextCommand("git", REPOSITORY_ROOT, [
@@ -503,7 +537,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
 
   test("documents the public plugin boundary and verified platforms", async () => {
     const readme = await readFile(join(REPOSITORY_ROOT, "README.md"), "utf8");
-    expect(readme).toContain("codex plugin marketplace add zhujufeng/EZagent-Spec --ref main");
+    expect(readme).toContain("codex plugin marketplace add zhujufeng/EZagent-Spec --ref v0.1.0");
     expect(readme).toContain("codex plugin add ezagent-spec@ezagent");
     expect(readme).toContain("请帮我安装这个 Codex 插件");
     expect(readme).toContain("Node.js 22+");
@@ -517,12 +551,12 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(readme).toContain("自动专家组队");
     expect(readme).toContain("Plan 和团队只确认一次");
     expect(readme).toContain("团队差异:");
-    expect(readme).toContain("Task 仍会保持 `verifying`");
-    expect(readme).toContain("`completed` 会被本地核心阻止");
-    expect(readme).toContain("高风险授权签发");
+    expect(readme).toContain("结构化 Knowledge");
+    expect(readme).toContain("Task Finish");
+    expect(readme).toContain("当前版本不支持高风险 Task 实施");
     expect(readme).toContain("关闭失败");
     expect(readme).toContain("MIT License");
-    expect(readme).toContain("Windows 与 macOS GitHub Actions 已通过");
+    expect(readme).toContain("GitHub Actions 对 Windows 与 macOS");
     expect(readme).not.toContain("ezagent-spec-internal");
     expect(readme).not.toContain("Windows：pending first CI run");
 
@@ -533,10 +567,10 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(roadmap).toContain("plugins/ezagent-spec/");
     expect(roadmap).toContain("Skills + managed AGENTS.md + bundled CLI");
     expect(roadmap).toContain("官方插件 validator + offline activation smoke");
-    expect(roadmap).toContain("partial: automatic team vertical slice verified");
-    expect(roadmap).toContain("team-select-preview → plan-preview → plan-apply");
+    expect(roadmap).toContain("complete: standard workflow release gate verified");
+    expect(roadmap).toContain("team-select-preview → plan-preview → plan-apply → implementing → verifying → Knowledge → completed");
     expect(roadmap).toContain("Knowledge");
-    expect(roadmap).toContain("高风险授权签发");
+    expect(roadmap).toContain("v0.1.0 不提供授权编号入口");
     expect(roadmap).toContain("macOS 与 Windows GitHub Actions");
     expect(roadmap).toContain("公开 marketplace");
     expect(roadmap).not.toContain("Windows：pending first CI run");

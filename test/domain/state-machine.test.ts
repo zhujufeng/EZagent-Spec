@@ -88,7 +88,7 @@ describe("work item state machine", () => {
     ).toEqual({ ...current, status: "implementing", revision: 6 });
   });
 
-  test("requires authorization for a high-risk Task's first implementation", () => {
+  test("blocks a high-risk Task's first implementation in this release", () => {
     const current: WorkItemState = {
       id: "TASK-20260820-002",
       kind: "task",
@@ -99,7 +99,7 @@ describe("work item state machine", () => {
 
     expect(() =>
       transitionWorkItem(current, { to: "implementing", expectedRevision: 1 }),
-    ).toThrow(/authorization/);
+    ).toThrow("high-risk implementation is not supported in this release");
   });
 
   test("checks revision conflicts before other transition errors", () => {
@@ -128,7 +128,7 @@ describe("work item state machine", () => {
     ).toThrow("illegal transition: approved -> implementing");
   });
 
-  test("allows authorized high-risk planned implementation and copies state", () => {
+  test("does not allow a caller-provided authorization to bypass the high-risk block", () => {
     const current: WorkItemState = {
       id: "TASK-20260820-001",
       kind: "task",
@@ -136,13 +136,13 @@ describe("work item state machine", () => {
       risk: "high",
       revision: 1,
     };
-    const next = transitionWorkItem(current, {
+    const legacyRequest = {
       to: "implementing",
       expectedRevision: 1,
       highRiskAuthorizationId: "AUTH-1",
-    });
-    expect(next).toEqual({ ...current, status: "implementing", revision: 2 });
-    expect(next).not.toBe(current);
+    } as const;
+    expect(() => transitionWorkItem(current, legacyRequest))
+      .toThrow("high-risk implementation is not supported in this release");
     expect(current).toEqual({
       id: "TASK-20260820-001",
       kind: "task",
@@ -152,27 +152,7 @@ describe("work item state machine", () => {
     });
   });
 
-  test.each([undefined, "", "   "])(
-    "rejects missing or blank high-risk authorization (%s)",
-    (highRiskAuthorizationId) => {
-      const current: WorkItemState = {
-        id: "TASK-20260820-001",
-        kind: "task",
-        status: "planned",
-        risk: "high",
-        revision: 1,
-      };
-      expect(() =>
-        transitionWorkItem(current, {
-          to: "implementing",
-          expectedRevision: 1,
-          ...(highRiskAuthorizationId === undefined ? {} : { highRiskAuthorizationId }),
-        }),
-      ).toThrow("high-risk implementation requires authorization");
-    },
-  );
-
-  test("does not require new authorization when verifying high-risk work", () => {
+  test("also blocks a high-risk Task from returning to implementation", () => {
     const current: WorkItemState = {
       id: "TASK-20260820-001",
       kind: "task",
@@ -180,10 +160,9 @@ describe("work item state machine", () => {
       risk: "high",
       revision: 5,
     };
-    expect(transitionWorkItem(current, { to: "implementing", expectedRevision: 5 })).toEqual({
-      ...current,
-      status: "implementing",
-      revision: 6,
-    });
+    expect(() => transitionWorkItem(current, {
+      to: "implementing",
+      expectedRevision: 5,
+    })).toThrow("high-risk implementation is not supported in this release");
   });
 });

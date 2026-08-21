@@ -1,0 +1,169 @@
+import { createHash } from "node:crypto";
+
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { z } from "zod";
+
+import { isWorkItemId } from "../domain/id.js";
+import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
+import { isWellFormedUnicode } from "../text/unicode.js";
+
+const CONTROL = /[\u0000-\u001f\u007f]/u;
+const MAX_KNOWLEDGE_BYTES = 256 * 1024;
+
+export interface KnowledgeCaptureInput {
+  readonly schemaVersion: 1;
+  readonly title: string;
+  readonly summary: string;
+  readonly decisions: readonly string[];
+  readonly constraints: readonly string[];
+  readonly verificationEvidence: readonly string[];
+  readonly followUps: readonly string[];
+}
+
+export interface KnowledgeRecord extends KnowledgeCaptureInput {
+  readonly specId: string;
+  readonly taskId: string;
+}
+
+function textSchema(label: string, maximum: number) {
+  return z.string().max(maximum + 256)
+    .transform((value) => value.trim().normalize("NFC"))
+    .pipe(z.string()
+      .min(1, `${label} must not be blank`)
+      .max(maximum, `${label} is too long`)
+      .refine(isWellFormedUnicode, `${label} must be well-formed Unicode`)
+      .refine((value) => !CONTROL.test(value), `${label} contains control characters`));
+}
+
+function textList(label: string, minimum: number) {
+  return z.array(textSchema(label, 4_096)).min(minimum).max(64).superRefine((values, context) => {
+    const seen = new Set<string>();
+    for (const [index, value] of values.entries()) {
+      const key = unicodeDefaultCaseFold(value.normalize("NFKC")).normalize("NFKC");
+      if (seen.has(key)) {
+        context.addIssue({ code: "custom", path: [index], message: `${label} contains a duplicate` });
+      }
+      seen.add(key);
+    }
+  });
+}
+
+function workItemId(prefix: "SPEC" | "TASK") {
+  return z.string().refine(
+    (value) => value.startsWith(`${prefix}-`) && isWorkItemId(value),
+    `invalid ${prefix} ID`,
+  );
+}
+
+const captureSchema = z.object({
+  schemaVersion: z.literal(1),
+  title: textSchema("knowledge title", 256),
+  summary: textSchema("knowledge summary", 4_096),
+  decisions: textList("knowledge decisions", 1),
+  constraints: textList("knowledge constraints", 1),
+  verificationEvidence: textList("knowledge verification evidence", 1),
+  followUps: textList("knowledge follow-ups", 0),
+}).strict();
+
+const recordSchema = z.object({
+  schemaVersion: z.literal(1),
+  specId: workItemId("SPEC"),
+  taskId: workItemId("TASK"),
+  title: textSchema("knowledge title", 256),
+  summary: textSchema("knowledge summary", 4_096),
+  decisions: textList("knowledge decisions", 1),
+  constraints: textList("knowledge constraints", 1),
+  verificationEvidence: textList("knowledge verification evidence", 1),
+  followUps: textList("knowledge follow-ups", 0),
+}).strict();
+
+function freezeRecord(value: z.infer<typeof recordSchema>): KnowledgeRecord {
+  return Object.freeze({
+    ...value,
+    decisions: Object.freeze([...value.decisions]),
+    constraints: Object.freeze([...value.constraints]),
+    verificationEvidence: Object.freeze([...value.verificationEvidence]),
+    followUps: Object.freeze([...value.followUps]),
+  });
+}
+
+export function parseKnowledgeCaptureInput(value: unknown): KnowledgeCaptureInput {
+  const parsed = captureSchema.parse(value);
+  return Object.freeze({
+    ...parsed,
+    decisions: Object.freeze([...parsed.decisions]),
+    constraints: Object.freeze([...parsed.constraints]),
+    verificationEvidence: Object.freeze([...parsed.verificationEvidence]),
+    followUps: Object.freeze([...parsed.followUps]),
+  });
+}
+
+export function createKnowledgeRecord(
+  specId: string,
+  taskId: string,
+  input: KnowledgeCaptureInput,
+): KnowledgeRecord {
+  return freezeRecord(recordSchema.parse({ ...parseKnowledgeCaptureInput(input), specId, taskId }));
+}
+
+function markdownList(values: readonly string[]): string {
+  return values.length === 0 ? "- 无" : values.map((value) => `- ${value}`).join("\n");
+}
+
+export function serializeKnowledgeRecord(value: KnowledgeRecord): string {
+  const record = freezeRecord(recordSchema.parse(value));
+  const frontmatter = stringifyYaml(record, { lineWidth: 0 });
+  return [
+    "---",
+    frontmatter.trimEnd(),
+    "---",
+    "",
+    `# ${record.title}`,
+    "",
+    record.summary,
+    "",
+    "## 决策",
+    "",
+    markdownList(record.decisions),
+    "",
+    "## 约束",
+    "",
+    markdownList(record.constraints),
+    "",
+    "## 验证证据",
+    "",
+    markdownList(record.verificationEvidence),
+    "",
+    "## 后续事项",
+    "",
+    markdownList(record.followUps),
+    "",
+  ].join("\n");
+}
+
+export function parseKnowledgeRecordMarkdown(contents: string): KnowledgeRecord {
+  if (
+    typeof contents !== "string"
+    || contents.length === 0
+    || Buffer.byteLength(contents, "utf8") > MAX_KNOWLEDGE_BYTES
+    || !contents.startsWith("---\n")
+  ) {
+    throw new TypeError("Knowledge record must be bounded canonical Markdown");
+  }
+  const end = contents.indexOf("\n---\n", 4);
+  if (end < 0) throw new TypeError("Knowledge record frontmatter is incomplete");
+  const record = freezeRecord(recordSchema.parse(parseYaml(contents.slice(4, end))));
+  if (serializeKnowledgeRecord(record) !== contents) {
+    throw new TypeError("Knowledge record is not canonical");
+  }
+  return record;
+}
+
+export function knowledgeRecordPath(specId: string): string {
+  if (!specId.startsWith("SPEC-") || !isWorkItemId(specId)) throw new TypeError("invalid SPEC ID");
+  return `knowledge/decisions/${specId}.md`;
+}
+
+export function knowledgeContentHash(contents: string): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(contents, "utf8").digest("hex")}`;
+}

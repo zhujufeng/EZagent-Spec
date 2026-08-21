@@ -40,6 +40,15 @@ export interface ResumeExpertTeam {
   readonly members: readonly ResumeTeamMember[];
 }
 
+export interface ResumeKnowledge {
+  readonly specId: string;
+  readonly taskId: string;
+  readonly path: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly contentHash: `sha256:${string}`;
+}
+
 export interface WorkflowResumeContext {
   readonly workspaceRevision: number;
   readonly safeMode: boolean;
@@ -49,6 +58,7 @@ export interface WorkflowResumeContext {
   readonly spec: ResumeSpec | null;
   readonly task: ResumeTask | null;
   readonly team: ResumeExpertTeam | null;
+  readonly knowledge: readonly ResumeKnowledge[];
   readonly blockers: readonly string[];
 }
 
@@ -65,6 +75,7 @@ export function freezeWorkflowResumeContext(value: WorkflowResumeContext): Workf
         reasons: Object.freeze([...member.reasons]),
       }))),
     }),
+    knowledge: Object.freeze(value.knowledge.map((record) => Object.freeze({ ...record }))),
     blockers: Object.freeze([...value.blockers]),
   });
 }

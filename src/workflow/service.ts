@@ -50,8 +50,18 @@ import {
 } from "./team-record.js";
 import {
   freezeWorkflowResumeContext,
+  type ResumeKnowledge,
   type WorkflowResumeContext,
 } from "./resume-context.js";
+import {
+  createKnowledgeRecord,
+  knowledgeContentHash,
+  knowledgeRecordPath,
+  parseKnowledgeCaptureInput,
+  parseKnowledgeRecordMarkdown,
+  serializeKnowledgeRecord,
+  type KnowledgeRecord,
+} from "./knowledge.js";
 
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
@@ -97,6 +107,14 @@ export interface PlanPreview {
 }
 
 export type AppliedPlan = Omit<PlanPreview, "approvalToken">;
+
+export interface KnowledgeCaptureResult {
+  readonly state: WorkspaceState;
+  readonly task: TaskArtifact;
+  readonly knowledge: KnowledgeRecord;
+  readonly knowledgePath: string;
+  readonly knowledgeHash: `sha256:${string}`;
+}
 
 export interface ReplanPreview {
   readonly requirement: RequirementArtifact;
@@ -424,6 +442,29 @@ async function assertMissing(root: string, relativePaths: readonly string[]): Pr
     }
     throw new Error(`Core artifact already exists: ${relativePath}`);
   }
+}
+
+async function readRecentKnowledge(root: string): Promise<readonly ResumeKnowledge[]> {
+  const directory = join(workspacePaths(root).root, "knowledge", "decisions");
+  const names = (await readdir(directory))
+    .filter((name) => /^SPEC-\d{8}-(?:\d{3}|[1-9]\d{3,})\.md$/u.test(name))
+    .sort(portableCompare)
+    .reverse()
+    .slice(0, 5);
+  return Promise.all(names.map(async (name) => {
+    const path = `knowledge/decisions/${name}`;
+    const contents = await readBoundedText(join(directory, name));
+    const record = parseKnowledgeRecordMarkdown(contents);
+    if (`${record.specId}.md` !== name) throw new Error("Knowledge record filename does not match Spec ID");
+    return Object.freeze({
+      specId: record.specId,
+      taskId: record.taskId,
+      path,
+      title: record.title,
+      summary: record.summary,
+      contentHash: knowledgeContentHash(contents),
+    });
+  }));
 }
 
 export class ExpertTeamWorkflowService {
@@ -755,7 +796,7 @@ export class ExpertTeamWorkflowService {
   async retireTeam(
     taskId: string,
     expectedTaskRevision: number,
-    to: "completed" | "cancelled",
+    to: "cancelled",
   ): Promise<void> {
     const { canonicalRoot, context } = await this.context(false);
     if (context.state.safeMode) throw new Error("workspace is in safe mode");
@@ -797,10 +838,64 @@ export class ExpertTeamWorkflowService {
     );
   }
 
+  async completeActiveTask(
+    expectedTaskRevision: number,
+    inputValue: unknown,
+  ): Promise<KnowledgeCaptureResult> {
+    const input = parseKnowledgeCaptureInput(inputValue);
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const active = context.state.activeWorkItem;
+    if (active === null || active.kind !== "task") throw new Error("no active Task to complete");
+    const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
+    const records = await readActiveRecords(canonicalRoot, context.state, activeExperts);
+    const activeWorkItem = transitionWorkItem(active, {
+      to: "completed",
+      expectedRevision: expectedTaskRevision,
+    });
+    const task: TaskArtifact = {
+      ...records.task,
+      status: activeWorkItem.status,
+      revision: activeWorkItem.revision,
+    };
+    const knowledge = createKnowledgeRecord(records.spec.id, task.id, input);
+    const knowledgePath = knowledgeRecordPath(records.spec.id);
+    const knowledgeContents = serializeKnowledgeRecord(knowledge);
+    parseKnowledgeRecordMarkdown(knowledgeContents);
+    await assertMissing(canonicalRoot, [knowledgePath]);
+    const knowledgeHash = knowledgeContentHash(knowledgeContents);
+    const retired = retireActiveTeam(activeExperts, records.team);
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+      activeWorkItem: null,
+    };
+    await this.runtime.createRepository(canonicalRoot).commitMutation(
+      nextState,
+      context.state.revision,
+      "task-completed",
+      [
+        { relativePath: `tasks/${task.id}.yaml`, content: serializeTaskArtifact(task) },
+        { relativePath: "experts/active.yaml", content: serializeActiveExperts(retired) },
+        { relativePath: knowledgePath, content: knowledgeContents },
+      ],
+      {
+        taskId: task.id,
+        specId: records.spec.id,
+        taskRevision: task.revision,
+        teamRevision: records.team.teamRevision,
+        teamFingerprint: records.team.teamFingerprint,
+        knowledgePath,
+        knowledgeHash,
+        verificationEvidenceCount: knowledge.verificationEvidence.length,
+      },
+    );
+    return Object.freeze({ state: nextState, task, knowledge, knowledgePath, knowledgeHash });
+  }
+
   async transitionActiveTask(
     to: WorkItemStatus,
     expectedTaskRevision: number,
-    highRiskAuthorizationId?: string,
   ): Promise<WorkspaceState> {
     if (to === "cancelled" || to === "completed") {
       throw new Error("terminal Task transitions must use the lifecycle retirement gate");
@@ -812,7 +907,6 @@ export class ExpertTeamWorkflowService {
     const activeWorkItem = transitionWorkItem(context.state.activeWorkItem!, {
       to,
       expectedRevision: expectedTaskRevision,
-      ...(highRiskAuthorizationId === undefined ? {} : { highRiskAuthorizationId }),
     });
     const task: TaskArtifact = {
       ...records.task,
@@ -829,7 +923,7 @@ export class ExpertTeamWorkflowService {
       context.state.revision,
       "work-item-transitioned",
       [{ relativePath: `tasks/${task.id}.yaml`, content: serializeTaskArtifact(task) }],
-      highRiskAuthorizationId === undefined ? {} : { highRiskAuthorizationId },
+      {},
     );
     return nextState;
   }
@@ -844,6 +938,23 @@ export class ExpertTeamWorkflowService {
 
   async resumeContext(): Promise<WorkflowResumeContext> {
     const { canonicalRoot, context } = await this.context(false);
+    let knowledge: readonly ResumeKnowledge[];
+    try {
+      knowledge = await readRecentKnowledge(canonicalRoot);
+    } catch {
+      return freezeWorkflowResumeContext({
+        workspaceRevision: context.state.revision,
+        safeMode: true,
+        recovered: context.recovered,
+        recoveryStatus: "inspection-required",
+        requirement: null,
+        spec: null,
+        task: null,
+        team: null,
+        knowledge: [],
+        blockers: ["knowledge-corrupt"],
+      });
+    }
     if (context.state.safeMode) {
       return freezeWorkflowResumeContext({
         workspaceRevision: context.state.revision,
@@ -854,6 +965,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        knowledge,
         blockers: ["workspace-safe-mode"],
       });
     }
@@ -867,6 +979,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        knowledge,
         blockers: [],
       });
     }
@@ -924,6 +1037,7 @@ export class ExpertTeamWorkflowService {
           catalogFingerprint: records.team.catalogFingerprint,
           members,
         },
+        knowledge,
         blockers: [],
       });
     } catch {
@@ -936,6 +1050,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        knowledge,
         blockers: ["active-plan-corrupt"],
       });
     }

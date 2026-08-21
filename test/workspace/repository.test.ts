@@ -185,7 +185,6 @@ describe("WorkspaceRepository.initialize", () => {
       "knowledge/decisions",
       "knowledge/patterns",
       "quality",
-      "quality/authorizations",
       "quality/runs",
       "requirements",
       "specs",
