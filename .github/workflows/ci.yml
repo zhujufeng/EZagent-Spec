@@ -35,6 +35,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Audit high and critical npm vulnerabilities
+        run: npm audit --audit-level=high
       - name: Check deterministic plugin distribution
         run: npm run plugin:check
       - name: Verify repository
