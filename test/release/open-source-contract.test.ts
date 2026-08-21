@@ -89,4 +89,25 @@ describe("open-source release contract", () => {
       { type: "update" },
     ]));
   });
+
+  test("documents an explicit real-Codex release gate without adding it to PR CI", async () => {
+    const packageJson = JSON.parse(await text("package.json")) as {
+      readonly scripts: Record<string, string>;
+    };
+    const workflow = await text(".github/workflows/ci.yml");
+    const guide = await text("docs/release/codex-host-acceptance.md");
+    const ignore = await text(".gitignore");
+
+    expect(packageJson.scripts["plugin:host-eval"]).toBe(
+      "node --import tsx scripts/codex-host-eval.ts run",
+    );
+    expect(packageJson.scripts["plugin:host-eval:verify"]).toBe(
+      "node --import tsx scripts/codex-host-eval.ts verify",
+    );
+    expect(workflow).not.toContain("plugin:host-eval");
+    expect(guide).toContain("codex plugin add ezagent-spec@ezagent");
+    expect(guide).toContain("git tag -s");
+    expect(guide).toContain("git verify-tag");
+    expect(ignore).toContain(".artifacts/codex-host-eval/");
+  });
 });

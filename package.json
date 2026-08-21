@@ -41,6 +41,8 @@
     "plugin:check": "node --import tsx scripts/build-plugin.ts --check",
     "plugin:validate": "vitest run test/codex/plugin-manifest.test.ts test/codex/skill-contract.test.ts",
     "plugin:verify": "npm run catalog:verify && npm run plugin:check && npm run plugin:validate && npm run test:codex",
+    "plugin:host-eval": "node --import tsx scripts/codex-host-eval.ts run",
+    "plugin:host-eval:verify": "node --import tsx scripts/codex-host-eval.ts verify",
     "verify": "npm run check && npm run test && npm run build"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 .worktrees/
+.artifacts/codex-host-eval/
 .pnpm-store/
 node_modules/
 dist/
