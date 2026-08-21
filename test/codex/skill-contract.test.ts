@@ -222,19 +222,20 @@ describe("Codex Skill contracts", () => {
     expect(implement.body).toMatch(/implementing.*继续/u);
   });
 
-  test("reports current capture and replan capability boundaries without inventing state", async () => {
+  test("routes automatic selection, approval, readiness, and replan through real commands", async () => {
     const router = await readSkill("ezagent-router");
     const spec = await readSkill("ezagent-spec");
     const implement = await readSkill("ezagent-implement");
+    const review = await readSkill("ezagent-review");
 
-    for (const skill of [router, spec]) {
-      expect(skill.body).toMatch(/无.*activeWorkItem.*没有.*capture.*plan.*命令/su);
-      expect(skill.body).toMatch(/结构化草案.*关闭失败/u);
-      expect(skill.body).toMatch(/不得.*声称.*已创建/u);
-    }
-    expect(implement.body).toMatch(/范围.*越界.*没有.*replan.*命令/su);
-    expect(implement.body).toMatch(/scope-change.*草案/u);
-    expect(implement.body).toMatch(/不.*非法.*反向.*transition/u);
+    expect(router.body).toContain("team-select-preview");
+    expect(router.body).toContain("不得直接提交专家 ID");
+    expect(spec.body).toContain("plan-preview");
+    expect(spec.body).toContain("与 Spec/Plan 一起确认");
+    expect(implement.body).toContain("platformSyncStatus");
+    expect(implement.body).toContain("ready");
+    expect(implement.body).toContain("replan-preview");
+    expect(review.body).toContain("不得审查自己参与实现的 Task");
   });
 
   test("detects the OS with cross-platform built-ins before checking Node separately", async () => {

@@ -1,6 +1,6 @@
 ---
 name: ezagent-review
-description: 审查 EZagent Spec Task 的实际交付与质量证据；失败返回实现，全部质量门通过后才完成并沉淀结构化知识。
+description: 由已批准团队中的独立审查专家验证 EZagent Spec Task 的实际交付和质量证据；失败返回实现，通过后沉淀结构化知识。
 ---
 
 # EZagent Review
@@ -21,7 +21,9 @@ description: 审查 EZagent Spec Task 的实际交付与质量证据；失败返
 {"stateGuard":{"kind":"task","statuses":["verifying"]}}
 ```
 
-安全模式只诊断。逐项运行 Task 定义的 `gates`，只记录实际执行的命令、环境、结果和必要摘要；未运行、无法运行或证据不足都不得记为 PASS。独立 review 专家只能只读审查，且委派必须绑定 `Requirement ID`、`Spec ID`、`Task ID`、`expert ID`、`delegation ID`、`scope`、`deliverables` 和 `gates`。
+安全模式只诊断。审查只能委派给当前已批准团队中 mode 为 review 的独立专家，且只能只读检查；不得审查自己参与实现的 Task，也不得临时换人规避角色隔离。委派必须绑定 `Requirement ID`、`Spec ID`、`Task ID`、`expert ID`、`delegation ID`、`scope`、`deliverables` 和 `gates`。
+
+逐项运行 Task 定义的 `gates`，只记录实际执行的命令、环境、结果和必要摘要；未运行、无法运行或证据不足都不得记为 PASS。
 
 任一质量门失败时不得把 Task 标成完成。重新执行 `context`，按以下返工契约使用最新 revision：
 

@@ -116,6 +116,7 @@ describe("mergeEzagentAgentsBlock", () => {
 
     expect(merged).toMatch(/仅当.*\.ezagent\/project\.yaml.*自动使用.*\$ezagent-router/su);
     expect(merged).toMatch(/先.*CLI.*context/su);
+    expect(merged).toContain("先恢复并核对已批准专家团队");
     expect(merged).toContain("不得直接编辑 `.ezagent/**`");
     expect(merged).toMatch(/批准.*任务状态.*质量门/su);
     expect(merged).toContain(

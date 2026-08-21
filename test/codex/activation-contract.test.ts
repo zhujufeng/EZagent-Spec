@@ -163,6 +163,26 @@ describe("Codex activation policy contract", () => {
     expect(initialize.body).toContain("integration-preview");
     expect(initialize.body).toContain("integration-init");
     expect(initialize.body).toContain("用户明确同意");
+    expect(agentsBlock).toContain("先恢复并核对已批准专家团队");
+  });
+
+  test("declares the automatic expert-team command order", async () => {
+    const router = await readSkill("ezagent-router");
+    const context = router.body.indexOf("context");
+    const structured = router.body.indexOf("结构化 Plan");
+    const select = router.body.indexOf("team-select-preview");
+    const preview = router.body.indexOf("plan-preview");
+    const apply = router.body.indexOf("plan-apply");
+    const reconcile = router.body.indexOf("experts-reconcile");
+    const implementing = router.body.lastIndexOf("implementing");
+
+    expect(context).toBeGreaterThanOrEqual(0);
+    expect(structured).toBeGreaterThan(context);
+    expect(select).toBeGreaterThan(structured);
+    expect(preview).toBeGreaterThan(select);
+    expect(apply).toBeGreaterThan(preview);
+    expect(reconcile).toBeGreaterThan(apply);
+    expect(implementing).toBeGreaterThan(reconcile);
   });
 
   test("defaults uncertain behavior changes to standard and fails closed in safe mode", async () => {

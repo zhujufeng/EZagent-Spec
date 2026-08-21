@@ -1,6 +1,6 @@
 ---
 name: ezagent-implement
-description: 在 EZagent Spec 项目中执行已批准且已规划的 Task，约束路径、依赖、交付物、专家委派和质量门，并在范围变化时返回 Spec。
+description: 使用已批准且已同步的项目级专家团队执行 EZagent Spec Task；约束范围、交付物和质量门，并在范围变化时发起重规划。
 ---
 
 # EZagent Implement
@@ -21,7 +21,15 @@ description: 在 EZagent Spec 项目中执行已批准且已规划的 Task，约
 {"stateGuard":{"kind":"task","statuses":["planned","implementing"]}}
 ```
 
-安全模式只诊断。仅继续本地核心已批准且已规划的 Task：最近上下文的 `state.activeWorkItem.status` 必须是 `planned` 或 `implementing`；`planned` 先走合法首次 transition，`implementing` 可继续实施。开始前核对 `allowedPaths`、依赖、`deliverables`、委派和 `gates`；状态或字段缺失就停止。
+安全模式只诊断。仅继续本地核心已批准的 Task：最近上下文的 `state.activeWorkItem.status` 必须是 `planned` 或 `implementing`；`planned` 先走合法首次 transition，`implementing` 可继续实施。开始前核对 `allowedPaths`、依赖、`deliverables`、委派和 `gates`；状态或字段缺失就停止。
+
+必须同时核对顶层 `platformSyncStatus`。只有其值为 `ready` 才可执行或继续执行 Task；若为 `pending`，先调用：
+
+```json
+["node", "<absolute-cli-path>", "experts-reconcile", "--root", "<absolute-project-root>"]
+```
+
+随后重新读取上下文并确认 `ready`。若为 inspection-required、同步失败或无法确认，关闭失败，不得进入 implementing。项目级 Agents 即当前已批准团队；不得自由替换、追加专家或让实现者兼任自己的审查者。
 
 每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。
 
@@ -39,11 +47,11 @@ description: 在 EZagent Spec 项目中执行已批准且已规划的 Task，约
 
 不得由模型或用户随意编造授权 ID；授权记录不存在或无法验证时视为能力缺失并停止。Spec 批准不能代替该 action 授权。
 
-## 受控实施
+## 受控实施与重规划
 
-只修改 `allowedPaths` 内的内容并产出约定交付物。范围越界或依赖、验收、风险变化时，当前打包 CLI 没有 `replan` 命令；立即停止，转 `$ezagent-spec` 形成结构化 `scope-change` 草案，不做非法反向 transition，也不得静默扩写范围。安装、联网和任何危险动作都必须在执行前获得对应的明确授权。
+只修改 `allowedPaths` 内的内容并产出约定交付物。按已批准团队委派少量合适专家，不固定专家数量。任何多 Agent 委派都必须绑定 `Requirement ID`、`Spec ID`、`Task ID`、`expert ID`、`delegation ID`、`scope`、`deliverables` 和 `gates`；子任务遵循相同范围和质量门，只保存结构化摘要，不得保存完整用户提示或完整专家提示。
 
-按任务能力动态选择少量合适专家，不固定专家数量。任何多 Agent 委派都必须绑定 `Requirement ID`、`Spec ID`、`Task ID`、`expert ID`、`delegation ID`、`scope`、`deliverables` 和 `gates`；子任务必须遵循相同范围与质量门，只保存结构化摘要，不得保存完整用户提示或完整专家提示。
+范围越界或依赖、验收、风险、能力需求变化时，立即停止编码并转 `$ezagent-spec`。由 Spec 先执行 `replan-preview` 展示 replacement Plan 与团队差异，用户批准后再执行 `replan-apply`；批准和同步完成前不得继续修改。安装、联网和任何危险动作都必须在执行前获得对应的明确授权。
 
 ## 交付审查
 
