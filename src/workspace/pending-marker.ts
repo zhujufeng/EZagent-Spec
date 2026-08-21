@@ -1,21 +1,31 @@
 import { randomUUID } from "node:crypto";
-import type { Stats } from "node:fs";
-import { link, lstat, open, readFile, rename, rm } from "node:fs/promises";
+import { link, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import {
+  boundedStatSize,
+  exactInteger,
+  lstatBigint,
+  openBigint,
+  stableFileIdentity,
+  statMtimeNanoseconds,
+  type PortableStats,
+} from "../filesystem/stats.js";
 import { WorkspaceCorruptError } from "./errors.js";
 import { hashBytes, parsePendingMutation, type PendingMutation } from "./mutation.js";
 
 const MAX_PENDING_MARKER_BYTES = 1024 * 1024;
 
 interface PendingFingerprint {
-  readonly dev: number;
-  readonly ino: number;
-  readonly nlink: number;
+  readonly dev: bigint;
+  readonly ino: bigint;
+  readonly nlink: bigint;
   readonly size: number;
-  readonly mtimeMs: number;
+  readonly mtimeNs: bigint;
   readonly contentHash: string;
 }
+
+type PendingFileSnapshot = Omit<PendingFingerprint, "contentHash">;
 
 export interface PendingMarkerObservation {
   readonly marker: PendingMutation;
@@ -26,11 +36,11 @@ export interface PendingMarkerFileHandle {
   readonly writeFile: (contents: string, encoding: "utf8") => Promise<void>;
   readonly sync: () => Promise<void>;
   readonly close: () => Promise<void>;
-  readonly stat: () => Promise<Stats>;
+  readonly stat: () => Promise<PortableStats>;
 }
 
 export interface PendingMarkerRuntime {
-  readonly lstat: (path: string) => Promise<Stats>;
+  readonly lstat: (path: string) => Promise<PortableStats>;
   readonly readFile: (path: string) => Promise<Buffer>;
   readonly rename: (source: string, destination: string) => Promise<void>;
   readonly link: (existingPath: string, newPath: string) => Promise<void>;
@@ -44,27 +54,36 @@ function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
-function stableUniqueFile(path: string, observed: Stats): void {
+function stableUniqueFile(
+  path: string,
+  observed: PortableStats,
+  expectedLinks: 1n | 2n = 1n,
+): PendingFileSnapshot {
+  const identity = stableFileIdentity(observed);
+  const nlink = exactInteger(observed.nlink);
+  const size = boundedStatSize(observed, MAX_PENDING_MARKER_BYTES);
+  const mtimeNs = statMtimeNanoseconds(observed);
   if (
     !observed.isFile()
-    || observed.nlink !== 1
-    || !Number.isSafeInteger(observed.dev) || observed.dev <= 0
-    || !Number.isSafeInteger(observed.ino) || observed.ino <= 0
-    || !Number.isSafeInteger(observed.size) || observed.size < 0 || observed.size > MAX_PENDING_MARKER_BYTES
+    || identity === undefined
+    || nlink !== expectedLinks
+    || size === undefined
+    || mtimeNs === undefined
   ) {
     throw new WorkspaceCorruptError(`pending mutation requires unique stable file identity: ${path}`, {
       cause: new Error("pending marker must be a bounded regular file with nlink=1 and stable dev/ino"),
     });
   }
+  return { ...identity, nlink, size, mtimeNs };
 }
 
 function sameFingerprint(left: PendingFingerprint, right: PendingFingerprint): boolean {
   return left.dev === right.dev
     && left.ino === right.ino
-    && left.nlink === 1
-    && right.nlink === 1
+    && left.nlink === 1n
+    && right.nlink === 1n
     && left.size === right.size
-    && left.mtimeMs === right.mtimeMs
+    && left.mtimeNs === right.mtimeNs
     && left.contentHash === right.contentHash;
 }
 
@@ -72,19 +91,13 @@ function sameObservation(left: PendingMarkerObservation, right: PendingMarkerObs
   return left.marker.token === right.marker.token && sameFingerprint(left.fingerprint, right.fingerprint);
 }
 
-function fingerprintFromStats(observed: Stats, contentHash: string): PendingFingerprint {
-  return {
-    dev: observed.dev,
-    ino: observed.ino,
-    nlink: observed.nlink,
-    size: observed.size,
-    mtimeMs: observed.mtimeMs,
-    contentHash,
-  };
-}
-
-function sameFileIdentity(left: Stats, right: Stats): boolean {
-  return left.dev === right.dev && left.ino === right.ino;
+function sameFileIdentity(left: PortableStats, right: PortableStats): boolean {
+  const leftIdentity = stableFileIdentity(left);
+  const rightIdentity = stableFileIdentity(right);
+  return leftIdentity !== undefined
+    && rightIdentity !== undefined
+    && leftIdentity.dev === rightIdentity.dev
+    && leftIdentity.ino === rightIdentity.ino;
 }
 
 function conflictError(canonical: string, quarantine: string, cause: unknown): WorkspaceCorruptError {
@@ -96,14 +109,14 @@ function conflictError(canonical: string, quarantine: string, cause: unknown): W
 
 export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
   async function observe(path: string): Promise<PendingMarkerObservation | undefined> {
-    let before: Stats;
+    let before: PortableStats;
     try {
       before = await runtime.lstat(path);
     } catch (error: unknown) {
       if (isMissing(error)) return undefined;
       throw new WorkspaceCorruptError(`pending mutation boundary is unreadable: ${path}`, { cause: error });
     }
-    stableUniqueFile(path, before);
+    const beforeSnapshot = stableUniqueFile(path, before);
 
     let bytes: Buffer;
     try {
@@ -112,19 +125,19 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
       throw new WorkspaceCorruptError(`pending mutation is unreadable: ${path}`, { cause: error });
     }
 
-    let after: Stats;
+    let after: PortableStats;
     try {
       after = await runtime.lstat(path);
     } catch (error: unknown) {
       throw new WorkspaceCorruptError(`pending mutation identity changed while reading: ${path}`, { cause: error });
     }
-    stableUniqueFile(path, after);
+    const afterSnapshot = stableUniqueFile(path, after);
     if (
-      before.dev !== after.dev
-      || before.ino !== after.ino
-      || before.size !== after.size
-      || before.mtimeMs !== after.mtimeMs
-      || bytes.byteLength !== after.size
+      beforeSnapshot.dev !== afterSnapshot.dev
+      || beforeSnapshot.ino !== afterSnapshot.ino
+      || beforeSnapshot.size !== afterSnapshot.size
+      || beforeSnapshot.mtimeNs !== afterSnapshot.mtimeNs
+      || bytes.byteLength !== afterSnapshot.size
     ) {
       throw new WorkspaceCorruptError(`pending mutation identity changed while reading: ${path}`, {
         cause: new Error("pending marker pre/post read identity differs"),
@@ -145,7 +158,7 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
     }
     return {
       marker,
-      fingerprint: fingerprintFromStats(after, hashBytes(bytes)),
+      fingerprint: { ...afterSnapshot, contentHash: hashBytes(bytes) },
     };
   }
 
@@ -167,11 +180,11 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
     await runtime.rm(cleanup, { force: true });
   }
 
-  async function cleanupUnpublishedStage(stage: string, expected: Stats): Promise<void> {
+  async function cleanupUnpublishedStage(stage: string, expected: PortableStats): Promise<void> {
     const cleanup = join(dirname(stage), `.${runtime.pid}.${runtime.randomUUID()}.pending-stage-cleanup`);
     await runtime.rename(stage, cleanup);
     const quarantined = await runtime.lstat(cleanup);
-    if (!quarantined.isFile() || quarantined.nlink !== 1 || !sameFileIdentity(quarantined, expected)) {
+    if (!quarantined.isFile() || exactInteger(quarantined.nlink) !== 1n || !sameFileIdentity(quarantined, expected)) {
       throw conflictError(stage, cleanup, new Error("pending marker stage ownership changed during cleanup"));
     }
     await runtime.rm(cleanup, { force: true });
@@ -186,8 +199,9 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
     }
     const stage = join(dirname(path), `.${runtime.pid}.${runtime.randomUUID()}.pending-stage`);
     let handle: PendingMarkerFileHandle | undefined;
-    let owned: Stats | undefined;
-    let opened: Stats | undefined;
+    let owned: PortableStats | undefined;
+    let opened: PortableStats | undefined;
+    let openedSnapshot: PendingFileSnapshot | undefined;
     let failure: unknown;
     try {
       handle = await runtime.open(stage, "wx", 0o600);
@@ -196,8 +210,8 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
       await handle.writeFile(contents, "utf8");
       await handle.sync();
       opened = await handle.stat();
-      stableUniqueFile(stage, opened);
-      if (opened.size !== contentsBytes.byteLength) {
+      openedSnapshot = stableUniqueFile(stage, opened);
+      if (openedSnapshot.size !== contentsBytes.byteLength) {
         throw new WorkspaceCorruptError(`pending marker stage was not durably written: ${stage}`, {
           cause: new Error("pending marker stage size differs from serialized bytes"),
         });
@@ -212,7 +226,7 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
         failure ??= error;
       }
     }
-    if (failure !== undefined || opened === undefined) {
+    if (failure !== undefined || opened === undefined || openedSnapshot === undefined) {
       if (owned !== undefined) {
         try {
           await cleanupUnpublishedStage(stage, owned);
@@ -226,7 +240,7 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
     const staged = await observe(stage);
     const expected: PendingMarkerObservation = {
       marker,
-      fingerprint: fingerprintFromStats(opened, hashBytes(contentsBytes)),
+      fingerprint: { ...openedSnapshot, contentHash: hashBytes(contentsBytes) },
     };
     if (staged === undefined || !sameObservation(staged, expected)) {
       throw conflictError(path, stage, new Error("pending marker stage identity changed before publication"));
@@ -263,8 +277,8 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
     } catch (error: unknown) {
       throw conflictError(path, publishedQuarantine, error);
     }
-    let linkedStage: Stats;
-    let linkedCanonical: Stats;
+    let linkedStage: PortableStats;
+    let linkedCanonical: PortableStats;
     try {
       [linkedStage, linkedCanonical] = await Promise.all([
         runtime.lstat(publishedQuarantine),
@@ -273,19 +287,21 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
     } catch (error: unknown) {
       throw conflictError(path, publishedQuarantine, error);
     }
+    const linkedStageSnapshot = stableUniqueFile(publishedQuarantine, linkedStage, 2n);
+    const linkedCanonicalSnapshot = stableUniqueFile(path, linkedCanonical, 2n);
     if (
       !linkedStage.isFile()
       || !linkedCanonical.isFile()
-      || linkedStage.dev !== opened.dev
-      || linkedStage.ino !== opened.ino
-      || linkedCanonical.dev !== opened.dev
-      || linkedCanonical.ino !== opened.ino
-      || linkedStage.nlink !== 2
-      || linkedCanonical.nlink !== 2
-      || linkedStage.size !== opened.size
-      || linkedCanonical.size !== opened.size
-      || linkedStage.mtimeMs !== opened.mtimeMs
-      || linkedCanonical.mtimeMs !== opened.mtimeMs
+      || linkedStageSnapshot.dev !== openedSnapshot.dev
+      || linkedStageSnapshot.ino !== openedSnapshot.ino
+      || linkedCanonicalSnapshot.dev !== openedSnapshot.dev
+      || linkedCanonicalSnapshot.ino !== openedSnapshot.ino
+      || exactInteger(linkedStage.nlink) !== 2n
+      || exactInteger(linkedCanonical.nlink) !== 2n
+      || linkedStageSnapshot.size !== openedSnapshot.size
+      || linkedCanonicalSnapshot.size !== openedSnapshot.size
+      || linkedStageSnapshot.mtimeNs !== openedSnapshot.mtimeNs
+      || linkedCanonicalSnapshot.mtimeNs !== openedSnapshot.mtimeNs
     ) {
       throw conflictError(path, publishedQuarantine, new Error("published pending marker identity changed"));
     }
@@ -368,12 +384,12 @@ export function createPendingMarkerStore(runtime: PendingMarkerRuntime) {
 }
 
 export const nodePendingMarkerStore = createPendingMarkerStore({
-  lstat,
+  lstat: lstatBigint,
   readFile,
   rename,
   link,
   rm,
-  open,
+  open: openBigint,
   randomUUID,
   pid: process.pid,
 });

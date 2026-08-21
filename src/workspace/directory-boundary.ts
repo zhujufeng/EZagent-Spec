@@ -1,11 +1,11 @@
-import { lstat, mkdir } from "node:fs/promises";
-import type { Stats } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { lstatBigint, type PortableStats } from "../filesystem/stats.js";
 import { WorkspaceCorruptError } from "./errors.js";
 
 export interface WorkspaceDirectoryRuntime {
-  readonly lstat: (path: string) => Promise<Stats>;
+  readonly lstat: (path: string) => Promise<PortableStats>;
   readonly mkdir: (path: string) => Promise<void>;
 }
 
@@ -18,7 +18,7 @@ function invalidDirectory(path: string): WorkspaceCorruptError {
   return new WorkspaceCorruptError(`workspace directory boundary is invalid: ${path}`, { cause });
 }
 
-async function observeDirectory(runtime: WorkspaceDirectoryRuntime, path: string): Promise<Stats | undefined> {
+async function observeDirectory(runtime: WorkspaceDirectoryRuntime, path: string): Promise<PortableStats | undefined> {
   try {
     return await runtime.lstat(path);
   } catch (error: unknown) {
@@ -117,6 +117,6 @@ export async function ensureWorkspaceDirectoryChains(
 }
 
 export const nodeWorkspaceDirectoryRuntime: WorkspaceDirectoryRuntime = {
-  lstat,
+  lstat: lstatBigint,
   mkdir: async (path) => { await mkdir(path); },
 };

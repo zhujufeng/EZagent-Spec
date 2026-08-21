@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, expectTypeOf, it, vi, type TestContext } from "vitest";
@@ -1242,7 +1242,7 @@ describe("lockCatalogSources", () => {
     const script = fileURLToPath(new URL("../../scripts/lock-catalog-sources.ts", import.meta.url));
     const tsxLoader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
 
-    const { stdout } = await execFileAsync(process.execPath, ["--import", tsxLoader, script], {
+    const { stdout } = await execFileAsync(process.execPath, ["--import", pathToFileURL(tsxLoader).href, script], {
       cwd: root,
       encoding: "utf8",
     });

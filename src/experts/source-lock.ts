@@ -494,7 +494,9 @@ function isolatedGitEnvironment(): NodeJS.ProcessEnv {
     }
   }
   environment.GIT_CONFIG_NOSYSTEM = "1";
-  environment.GIT_CONFIG_GLOBAL = devNull;
+  // Git for Windows rejects Node's extended-device spelling (`\\.\nul`) here;
+  // its native NUL alias is the portable way to disable the global config.
+  environment.GIT_CONFIG_GLOBAL = process.platform === "win32" ? "NUL" : devNull;
   environment.GIT_TERMINAL_PROMPT = "0";
   environment.GIT_NO_LAZY_FETCH = "1";
   environment.GIT_NO_REPLACE_OBJECTS = "1";

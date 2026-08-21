@@ -338,6 +338,35 @@ describe("withWorkspaceLock", () => {
     expect((await readdir(dirname(lock))).filter((entry) => entry.includes(".pending"))).toEqual([]);
   });
 
+  test("publishes a lock with bigint filesystem identities beyond the safe-number range", async () => {
+    const root = await temporaryProject();
+    const oversizedIdentity = BigInt(Number.MAX_SAFE_INTEGER) + 101n;
+    const lockWithBigintIdentity = createWorkspaceLock(lockRuntime({
+      stat: async (path) => ({
+        ...(await stat(path)),
+        dev: oversizedIdentity,
+        ino: oversizedIdentity + 1n,
+      }) as unknown as Awaited<ReturnType<typeof stat>>,
+      open: async (...args) => {
+        const handle = await open(...args);
+        return new Proxy(handle, {
+          get(target, property, receiver) {
+            if (property === "stat") {
+              return async () => ({
+                ...(await target.stat()),
+                dev: oversizedIdentity,
+                ino: oversizedIdentity + 1n,
+              });
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }) as Awaited<ReturnType<typeof open>>;
+      },
+    }));
+
+    await expect(lockWithBigintIdentity(root, async () => "published")).resolves.toBe("published");
+  });
+
   test("retains canonical and quarantine evidence when release changes after prevalidation", async () => {
     const root = await temporaryProject();
     const lock = workspacePaths(root).lock;

@@ -1,7 +1,15 @@
-import { constants, type Stats } from "node:fs";
-import { lstat, open } from "node:fs/promises";
+import { constants } from "node:fs";
 import { dirname } from "node:path";
 
+import {
+  boundedStatSize,
+  exactInteger,
+  lstatBigint,
+  openBigint,
+  stableFileIdentity,
+  statMtimeNanoseconds,
+  type PortableStats,
+} from "../filesystem/stats.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 import { WorkspaceCorruptError } from "../workspace/errors.js";
 import { parseWorkspaceState, type WorkspaceState } from "../workspace/schema.js";
@@ -32,11 +40,11 @@ export interface AuditFileHandle {
   readonly writeFile: (contents: string, encoding: "utf8") => Promise<void>;
   readonly sync: () => Promise<void>;
   readonly close: () => Promise<void>;
-  readonly stat: () => Promise<Stats>;
+  readonly stat: () => Promise<PortableStats>;
 }
 
 export interface AuditFileRuntime {
-  readonly lstat: (path: string) => Promise<Stats>;
+  readonly lstat: (path: string) => Promise<PortableStats>;
   readonly open: (path: string, flags: number, mode: number) => Promise<AuditFileHandle>;
 }
 
@@ -157,7 +165,7 @@ export function parseAuditEvent(value: unknown): AuditEvent {
   };
 }
 
-async function observe(runtime: AuditFileRuntime, path: string): Promise<Stats | undefined> {
+async function observe(runtime: AuditFileRuntime, path: string): Promise<PortableStats | undefined> {
   try {
     return await runtime.lstat(path);
   } catch (error: unknown) {
@@ -171,7 +179,7 @@ async function observe(runtime: AuditFileRuntime, path: string): Promise<Stats |
 async function assertAuditBoundary(
   runtime: AuditFileRuntime,
   path: string,
-): Promise<Stats> {
+): Promise<PortableStats> {
   const parent = dirname(path);
   const parentStat = await observe(runtime, parent);
   if (parentStat === undefined || !parentStat.isDirectory()) {
@@ -191,15 +199,14 @@ async function assertAuditBoundary(
     });
   }
   if (
-    fileStat.nlink !== 1
-    || !Number.isSafeInteger(fileStat.dev) || fileStat.dev <= 0
-    || !Number.isSafeInteger(fileStat.ino) || fileStat.ino <= 0
+    exactInteger(fileStat.nlink) !== 1n
+    || stableFileIdentity(fileStat) === undefined
   ) {
     throw new WorkspaceCorruptError(`workspace audit requires unique stable file identity: ${path}`, {
       cause: new Error("audit must have nlink=1 and stable dev/ino identity"),
     });
   }
-  if (!Number.isSafeInteger(fileStat.size) || fileStat.size < 0 || fileStat.size > MAX_AUDIT_BYTES) {
+  if (boundedStatSize(fileStat, MAX_AUDIT_BYTES) === undefined) {
     throw new WorkspaceCorruptError(`workspace audit exceeds size limit: ${path}`, {
       cause: new Error(`audit size limit is ${MAX_AUDIT_BYTES} bytes`),
     });
@@ -207,13 +214,23 @@ async function assertAuditBoundary(
   return fileStat;
 }
 
-function sameAuditIdentity(left: Stats, right: Stats): boolean {
-  return left.dev === right.dev
-    && left.ino === right.ino
-    && left.nlink === 1
-    && right.nlink === 1
-    && left.size === right.size
-    && left.mtimeMs === right.mtimeMs;
+function sameAuditIdentity(left: PortableStats, right: PortableStats): boolean {
+  const leftIdentity = stableFileIdentity(left);
+  const rightIdentity = stableFileIdentity(right);
+  const leftSize = boundedStatSize(left, MAX_AUDIT_BYTES);
+  const rightSize = boundedStatSize(right, MAX_AUDIT_BYTES);
+  const leftMtimeNs = statMtimeNanoseconds(left);
+  const rightMtimeNs = statMtimeNanoseconds(right);
+  return leftIdentity !== undefined
+    && rightIdentity !== undefined
+    && leftIdentity.dev === rightIdentity.dev
+    && leftIdentity.ino === rightIdentity.ino
+    && exactInteger(left.nlink) === 1n
+    && exactInteger(right.nlink) === 1n
+    && leftSize !== undefined
+    && leftSize === rightSize
+    && leftMtimeNs !== undefined
+    && leftMtimeNs === rightMtimeNs;
 }
 
 function auditIdentityError(path: string): WorkspaceCorruptError {
@@ -240,7 +257,7 @@ export function createAuditStore(runtime: AuditFileRuntime) {
   async function preflight(path: string, rawEvent: AuditEvent): Promise<void> {
     const lineBytes = Buffer.byteLength(auditLine(rawEvent), "utf8");
     const before = await assertAuditBoundary(runtime, path);
-    if (before.size + lineBytes > MAX_AUDIT_BYTES) {
+    if (boundedStatSize(before, MAX_AUDIT_BYTES)! + lineBytes > MAX_AUDIT_BYTES) {
       throw auditCapacityError(path);
     }
   }
@@ -249,7 +266,7 @@ export function createAuditStore(runtime: AuditFileRuntime) {
     const line = auditLine(rawEvent);
     const lineBytes = Buffer.byteLength(line, "utf8");
     const before = await assertAuditBoundary(runtime, path);
-    if (before.size + lineBytes > MAX_AUDIT_BYTES) {
+    if (boundedStatSize(before, MAX_AUDIT_BYTES)! + lineBytes > MAX_AUDIT_BYTES) {
       throw auditCapacityError(path);
     }
     let handle: AuditFileHandle | undefined;
@@ -303,7 +320,7 @@ export function createAuditStore(runtime: AuditFileRuntime) {
       if (
         !afterRead.isFile()
         || !sameAuditIdentity(opened, afterRead)
-        || bytes.byteLength !== afterRead.size
+        || bytes.byteLength !== boundedStatSize(afterRead, MAX_AUDIT_BYTES)
         || bytes.byteLength > MAX_AUDIT_BYTES
       ) {
         throw auditIdentityError(path);
@@ -326,7 +343,7 @@ export function createAuditStore(runtime: AuditFileRuntime) {
     if (
       !sameAuditIdentity(before, after)
       || bytes === undefined
-      || bytes.byteLength !== after.size
+      || bytes.byteLength !== boundedStatSize(after, MAX_AUDIT_BYTES)
       || bytes.byteLength > MAX_AUDIT_BYTES
     ) {
       throw auditIdentityError(path);
@@ -370,8 +387,8 @@ export function createAuditStore(runtime: AuditFileRuntime) {
 }
 
 const nodeAuditStore = createAuditStore({
-  lstat,
-  open,
+  lstat: lstatBigint,
+  open: openBigint,
 });
 
 export const appendAuditEvent = nodeAuditStore.appendAuditEvent;

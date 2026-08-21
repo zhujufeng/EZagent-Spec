@@ -1,8 +1,18 @@
-import { copyFile, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
-import { constants, type Stats } from "node:fs";
+import { constants } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
+import {
+  boundedStatSize,
+  lstatBigint,
+  openBigint,
+  stableFileIdentity,
+  statBigint,
+  statMtimeMilliseconds,
+  statMtimeNanoseconds,
+  type PortableStats,
+} from "../filesystem/stats.js";
 import { WorkspaceLockedError } from "./errors.js";
 import { ensureWorkspaceDirectoryChains, type WorkspaceDirectoryRuntime } from "./directory-boundary.js";
 import { workspacePaths } from "./layout.js";
@@ -11,7 +21,12 @@ const STALE_LOCK_MS = 30_000;
 const MAX_ACQUISITION_ATTEMPTS = 3;
 const MAX_PORTABLE_PID = 2_147_483_647;
 
-type LockFileHandle = Awaited<ReturnType<typeof open>>;
+interface LockFileHandle {
+  readonly writeFile: (contents: string, encoding: "utf8") => Promise<void>;
+  readonly sync: () => Promise<void>;
+  readonly close: () => Promise<void>;
+  readonly stat: () => Promise<PortableStats>;
+}
 
 export interface WorkspaceLockRuntime extends WorkspaceDirectoryRuntime {
   readonly copyFile: (source: string, destination: string, mode: number) => Promise<void>;
@@ -20,7 +35,7 @@ export interface WorkspaceLockRuntime extends WorkspaceDirectoryRuntime {
   readonly readFile: (path: string, encoding: "utf8") => Promise<string>;
   readonly rename: (oldPath: string, newPath: string) => Promise<void>;
   readonly rm: (path: string, options: { readonly force: true }) => Promise<void>;
-  readonly stat: (path: string) => Promise<Stats>;
+  readonly stat: (path: string) => Promise<PortableStats>;
   readonly randomUUID: () => string;
   readonly pid: number;
   readonly kill: (pid: number) => void;
@@ -33,10 +48,11 @@ interface LockMetadata {
 }
 
 interface FileFingerprint {
-  readonly dev: number;
-  readonly ino: number;
-  readonly size: number;
-  readonly mtimeMs: number;
+  readonly dev: bigint | undefined;
+  readonly ino: bigint | undefined;
+  readonly size: number | undefined;
+  readonly mtimeMs: number | undefined;
+  readonly mtimeNs: bigint | undefined;
   readonly contentHash: string;
 }
 
@@ -86,19 +102,23 @@ function contentHash(contents: string): string {
   return createHash("sha256").update(contents, "utf8").digest("hex");
 }
 
-function fingerprint(fileStat: Stats, contents: string): FileFingerprint {
+function fingerprint(fileStat: PortableStats, contents: string): FileFingerprint {
+  const identity = stableFileIdentity(fileStat);
   return {
-    dev: fileStat.dev,
-    ino: fileStat.ino,
-    size: fileStat.size,
-    mtimeMs: fileStat.mtimeMs,
+    dev: identity?.dev,
+    ino: identity?.ino,
+    size: boundedStatSize(fileStat, Buffer.byteLength(contents, "utf8")),
+    mtimeMs: statMtimeMilliseconds(fileStat),
+    mtimeNs: statMtimeNanoseconds(fileStat),
     contentHash: contentHash(contents),
   };
 }
 
 function hasStableIdentity(fingerprint: FileFingerprint): boolean {
-  return Number.isSafeInteger(fingerprint.dev) && fingerprint.dev > 0
-    && Number.isSafeInteger(fingerprint.ino) && fingerprint.ino > 0;
+  return fingerprint.dev !== undefined
+    && fingerprint.ino !== undefined
+    && fingerprint.size !== undefined
+    && fingerprint.mtimeNs !== undefined;
 }
 
 function sameFingerprint(left: FileFingerprint, right: FileFingerprint): boolean {
@@ -106,7 +126,8 @@ function sameFingerprint(left: FileFingerprint, right: FileFingerprint): boolean
     && left.dev === right.dev
     && left.ino === right.ino
     && left.size === right.size
-    && left.mtimeMs === right.mtimeMs
+    && left.mtimeNs !== undefined
+    && left.mtimeNs === right.mtimeNs
     && left.contentHash === right.contentHash;
 }
 
@@ -292,7 +313,11 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
       return undefined;
     }
 
-    if (!hasStableIdentity(observed.fingerprint) || Date.now() - observed.fingerprint.mtimeMs < STALE_LOCK_MS) {
+    if (
+      !hasStableIdentity(observed.fingerprint)
+      || observed.fingerprint.mtimeMs === undefined
+      || Date.now() - observed.fingerprint.mtimeMs < STALE_LOCK_MS
+    ) {
       return undefined;
     }
     if (observed.metadata !== undefined && ownerIsAlive(runtime, observed.metadata.pid)) {
@@ -391,13 +416,13 @@ export function createWorkspaceLock(runtime: WorkspaceLockRuntime) {
 const nodeRuntime: WorkspaceLockRuntime = {
   copyFile,
   link,
-  lstat,
+  lstat: lstatBigint,
   mkdir: async (path) => { await mkdir(path); },
-  open,
+  open: openBigint,
   readFile,
   rename,
   rm,
-  stat,
+  stat: statBigint,
   randomUUID,
   pid: process.pid,
   kill: (pid) => { process.kill(pid, 0); },

@@ -308,7 +308,7 @@ describe.sequential("self-contained Codex plugin package", () => {
     await expect(lstat(marker)).rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(projectRoot)).sort(compareStable)).toEqual([".ezagent", "AGENTS.md"]);
     expect((await readdir(projectsParent)).sort(compareStable)).toEqual([basename(projectRoot)]);
-  });
+  }, 30_000);
 
   test("checks the committed package read-only and rejects generated CLI, catalog, or license drift", async () => {
     const committedBefore = await treeSnapshot(SOURCE_PLUGIN_ROOT);

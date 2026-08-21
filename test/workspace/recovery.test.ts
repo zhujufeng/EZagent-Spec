@@ -67,6 +67,26 @@ function fakeStats(options: {
   } as Awaited<ReturnType<typeof lstat>>;
 }
 
+function fakeBigintStats(options: {
+  readonly directory?: boolean;
+  readonly dev?: bigint;
+  readonly ino?: bigint;
+  readonly nlink?: bigint;
+  readonly size?: bigint;
+  readonly mtimeMs?: bigint;
+} = {}): Awaited<ReturnType<typeof lstat>> {
+  const base = fakeStats(options.directory === undefined ? {} : { directory: options.directory });
+  return {
+    ...base,
+    dev: options.dev ?? BigInt(Number.MAX_SAFE_INTEGER) + 101n,
+    ino: options.ino ?? BigInt(Number.MAX_SAFE_INTEGER) + 102n,
+    nlink: options.nlink ?? 1n,
+    size: options.size ?? 0n,
+    mtimeMs: options.mtimeMs ?? 1n,
+    mtimeNs: (options.mtimeMs ?? 1n) * 1_000_000n,
+  } as unknown as Awaited<ReturnType<typeof lstat>>;
+}
+
 function state(revision: number, safeMode = false): WorkspaceState {
   return { ...initialState, revision, safeMode };
 }
@@ -243,6 +263,27 @@ describe("audit events", () => {
     expect(writeFile).not.toHaveBeenCalled();
   });
 
+  test("accepts bigint audit identities beyond the safe-number range", async () => {
+    const writeFile = vi.fn(async () => undefined);
+    const file = fakeBigintStats({ size: 0n, mtimeMs: 10n });
+    const runtime = {
+      lstat: vi.fn(async (path: string) => path === "/audit"
+        ? fakeBigintStats({ directory: true, ino: 10n })
+        : file),
+      open: vi.fn(async () => ({
+        stat: async () => file,
+        readFile: async () => Buffer.alloc(0),
+        writeFile,
+        sync: async () => undefined,
+        close: async () => undefined,
+      })),
+    } as unknown as AuditFileRuntime;
+
+    await expect(createAuditStore(runtime).appendAuditEvent("/audit/events.jsonl", event(1)))
+      .resolves.toBeUndefined();
+    expect(writeFile).toHaveBeenCalledOnce();
+  });
+
   test("rejects a path ABA that restores the canonical audit after a handle-bound read", async () => {
     const evil = Buffer.from(`${JSON.stringify(event(1, { type: "evil" }))}\n`, "utf8");
     const canonicalStats = fakeStats({ dev: 1, ino: 11, size: evil.byteLength, mtimeMs: 10 });
@@ -368,6 +409,35 @@ describe("recoverState", () => {
 });
 
 describe("pending marker ownership cleanup", () => {
+  test("reads a marker with bigint filesystem identities beyond the safe-number range", async () => {
+    const canonical = "/workspace/.ezagent/state/pending-mutation.json";
+    const marker = {
+      schemaVersion: 1 as const,
+      token: "bigint-token",
+      createdAt: "2026-08-20T08:00:00.000Z",
+      fromRevision: 0,
+      toRevision: 1,
+      stateHash: "0".repeat(64),
+      eventHash: "1".repeat(64),
+      writes: [],
+    };
+    const contents = `${JSON.stringify(marker)}\n`;
+    const observed = fakeBigintStats({ size: BigInt(Buffer.byteLength(contents)), mtimeMs: 10n });
+    const runtime = {
+      lstat: vi.fn(async () => observed),
+      readFile: vi.fn(async () => Buffer.from(contents, "utf8")),
+      rename: vi.fn(),
+      link: vi.fn(),
+      rm: vi.fn(),
+      open: vi.fn(),
+      randomUUID: () => "unused",
+      pid: 123,
+    } as unknown as PendingMarkerRuntime;
+
+    await expect(createPendingMarkerStore(runtime).readPendingMarker(canonical))
+      .resolves.toMatchObject({ marker });
+  });
+
   test.each(["write", "sync", "close"] as const)(
     "closes and cleans an unpublished stage while preserving the primary %s failure",
     async (failurePoint) => {
