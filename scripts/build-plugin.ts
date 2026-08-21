@@ -36,12 +36,14 @@ const GENERATED_ENTRIES = [
   "dist",
   "catalog",
   "licenses",
+  "LICENSE",
   "THIRD_PARTY_NOTICES.md",
   "RUNTIME_DEPENDENCIES.md",
 ] as const;
 const ALL_ENTRIES = [".codex-plugin", "skills", ...GENERATED_ENTRIES] as const;
 const PLUGIN_FILES = [
   ".codex-plugin/plugin.json",
+  "LICENSE",
   "RUNTIME_DEPENDENCIES.md",
   "THIRD_PARTY_NOTICES.md",
   "catalog/catalog.lock.json",
@@ -248,6 +250,13 @@ async function assembleStage(stage: string, options: BuildPluginOptions): Promis
     SOURCE_PLUGIN_ROOT,
     ".codex-plugin/plugin.json",
     join(stage, ".codex-plugin", "plugin.json"),
+    MAX_SMALL_SOURCE_BYTES,
+    hooks,
+  );
+  await copyStableFile(
+    REPOSITORY_ROOT,
+    "LICENSE",
+    join(stage, "LICENSE"),
     MAX_SMALL_SOURCE_BYTES,
     hooks,
   );

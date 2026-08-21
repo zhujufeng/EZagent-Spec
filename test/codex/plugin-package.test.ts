@@ -194,7 +194,8 @@ describe.sequential("self-contained Codex plugin package", () => {
     expect(await treeSnapshot(SOURCE_PLUGIN_ROOT)).toEqual(firstTree);
 
     const paths = firstTree.map((entry) => entry.path);
-    expect(paths).toHaveLength(16);
+    expect(paths).toHaveLength(17);
+    expect(paths).toContain("LICENSE");
     expect(paths).toContain(".codex-plugin/plugin.json");
     expect(paths.filter((path) => /^skills\/[^/]+\/SKILL\.md$/u.test(path))).toHaveLength(5);
     expect(paths).toContain("dist/ezagent-cli.mjs");
@@ -210,6 +211,9 @@ describe.sequential("self-contained Codex plugin package", () => {
 
     expect(await readFile(join(first, ".codex-plugin", "plugin.json"))).toEqual(
       await readFile(join(SOURCE_PLUGIN_ROOT, ".codex-plugin", "plugin.json")),
+    );
+    expect(await readFile(join(first, "LICENSE"))).toEqual(
+      await readFile(join(REPOSITORY_ROOT, "LICENSE")),
     );
     for (const skill of [
       "ezagent-router",
