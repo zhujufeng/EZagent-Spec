@@ -1,25 +1,19 @@
-# EZagent Spec MVP Roadmap Implementation Plan
+# EZagent Spec MVP Roadmap
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Goal:** 在 macOS 与 Windows 上交付公司内部使用、项目本地存储、初始化一次后自动路由的中文 Spec Coding Codex 插件；后续在同一 core 上增加 Claude Code adapter。
 
-**Goal:** Deliver a locally stored, automatically triggered Chinese Spec Coding workflow as a Codex plugin on macOS and Windows.
+**Architecture:** 一个 Node.js 22 / TypeScript 本地 core 负责工作区、恢复、状态机和质量权限；Codex 层采用 **Skills + managed AGENTS.md + bundled CLI**。`AGENTS.md` 负责让相关自然语言请求进入 Router，Router 每次通过打包 CLI 读取可信状态，core 对所有状态转换实行关闭失败。当前不依赖 Codex lifecycle Hook，也不运行 daemon、数据库、Web 服务或 MCP server。
 
-**Architecture:** Build one TypeScript codebase with strict internal module boundaries, then deliver it in four independently testable milestones: local core, expert catalog, Codex adapter, and end-to-end workflow/release. Each milestone has its own detailed plan and must pass its verification gate before the next begins.
+**Status truth (2026-08-21):** core 与专家目录已完成本地验证；Codex 插件里程碑已完成 macOS 本地 validator、离线 smoke 和仓库测试。Windows：pending first CI run，在本分支 push 并由真实 Windows runner 通过前不得称为已验证。完整 workflow/release 仍是下一里程碑。
 
-**Tech Stack:** Node.js LTS (minimum 22), TypeScript, npm, Zod, YAML, Vitest, esbuild, Codex Skills/Hooks/custom agents, GitHub Actions for product-repository CI.
+## Milestones
 
----
-
-## Scope decomposition
-
-The approved design spans four independent subsystems. Keeping them in separate plans prevents a partially working plugin from hiding an untested core and lets every milestone end in working, reviewable software.
-
-| Order | Detailed plan | Working outcome | Depends on |
+| Order | Detailed plan | Current outcome | Status |
 |---|---|---|---|
-| 1 | `2026-08-20-ezagent-core-workspace-implementation.md` | Cross-platform local workspace, state machine, recovery, audit, and internal CLI | Approved design |
-| 2 | `2026-08-20-ezagent-expert-catalog-implementation.md` | Reproducible offline Chinese expert snapshot and adaptive selector | Milestone 1 |
-| 3 | `2026-08-20-ezagent-codex-plugin-implementation.md` | Installable Codex plugin with automatic hooks and project agents | Milestones 1–2 |
-| 4 | `2026-08-20-ezagent-workflow-release-implementation.md` | Full light/standard/high-risk workflows, privacy checks, cross-platform CI, and MVP package | Milestones 1–3 |
+| 1 | `2026-08-20-ezagent-core-workspace-implementation.md` | 跨平台本地工作区、审计、恢复、状态机和内部 CLI | macOS locally verified |
+| 2 | `2026-08-20-ezagent-expert-catalog-implementation.md` | 可复现的 265 位离线中文专家目录与无总数硬上限的自适应选择 | macOS locally verified |
+| 3 | `2026-08-20-ezagent-codex-plugin-implementation.md` | 可验证的 Codex plugin、一次性初始化、自动 Router、项目专家文件和自足 CLI | macOS locally verified; Windows pending CI |
+| 4 | `2026-08-20-ezagent-workflow-release-implementation.md` | 完整工作流命令、高风险授权、知识沉淀、三条 E2E 与内部发布包 | next milestone |
 
 ## Target repository map
 
@@ -27,100 +21,73 @@ The approved design spans four independent subsystems. Keeping them in separate 
 EZagent-Spec/
 ├── package.json
 ├── package-lock.json
-├── tsconfig.json
 ├── src/
-│   ├── domain/               # IDs, work items, state machine, risk
-│   ├── workspace/            # Paths, schemas, locking, atomic persistence
-│   ├── audit/                # Append-only events and recovery projection
-│   ├── experts/              # Normalized catalog, selector, active experts
-│   ├── workflow/             # Capture/spec/task/gate/orchestration use cases
-│   ├── adapters/codex/       # Hooks, AGENTS.md, project agent TOML
-│   └── cli/                  # Internal command entrypoint
-├── catalog/
-│   ├── sources.yaml
-│   ├── sources.lock.json
-│   └── normalized/
-├── plugin/
+│   ├── domain/                  # IDs, work items, state machine, risk
+│   ├── workspace/               # layout, schemas, locking, persistence
+│   ├── audit/                   # append-only events and recovery projection
+│   ├── experts/                 # normalized catalog and adaptive selector
+│   ├── workflow/                # next milestone use cases
+│   ├── adapters/codex/          # managed AGENTS and project-agent safety
+│   └── cli/                     # deterministic local command boundary
+├── catalog/normalized/          # verified source-of-truth expert snapshot
+├── plugins/ezagent-spec/
 │   ├── .codex-plugin/plugin.json
-│   ├── hooks/hooks.json
-│   ├── skills/
-│   ├── dist/
-│   └── licenses/
-├── scripts/                  # Catalog import and plugin packaging
-├── test/
-│   ├── domain/
-│   ├── workspace/
-│   ├── experts/
-│   ├── codex/
-│   ├── workflow/
-│   ├── e2e/
-│   └── fixtures/
-└── docs/
+│   ├── skills/                  # Router, Initialize, Spec, Implement, Review
+│   ├── dist/ezagent-cli.mjs     # self-contained Node.js 22 CLI
+│   ├── catalog/                 # packaged normalized snapshot
+│   └── licenses/                # source and npm runtime licenses
+├── .agents/plugins/marketplace.json
+├── .github/workflows/ci.yml     # read-only macOS/Windows matrix
+├── scripts/                     # catalog and deterministic plugin packaging
+└── test/                        # core, experts, Codex, workflow and e2e
 ```
 
-## Global implementation rules
+项目初始化后只在用户确认的根目录管理三类路径：`.ezagent/**`、`AGENTS.md#EZAGENT` marker block 和 `.codex/agents/ezagent-*.toml`。已有用户内容必须保留；不确定发布结果必须保留 backup/recovery 证据并要求检查。
 
-- Before implementation, create a dedicated worktree on a `codex/` feature branch; planning commits remain on `main` until that worktree is created.
-- Use TDD for every behavior: failing test, observed failure, minimal implementation, passing test, commit.
-- Do not copy code, templates, prompts, or scripts from Trellis.
-- Do not read or migrate the old EZagent desktop repository.
-- Do not add a daemon, database, web service, telemetry, or runtime network dependency.
-- Runtime code must work with packaged JavaScript and Node.js; end users do not run `npm install`.
-- Tests may use temporary directories only; never initialize `.ezagent/` in this repository root.
-- Every generated Codex file must use the `ezagent-` namespace or a managed marker block.
-- No implementation task may run `git push`, publish a package, or contact upstream repositories without explicit user approval.
+## Global rules
 
-## Approved-design coverage
+- 不复制 Trellis 的代码、模板、提示或脚本，也不调用 Trellis runtime；只独立实现结构化 Spec Coding 原则。
+- 不读取、迁移或复用旧 EZagent 桌面仓库。
+- runtime 默认 Local-only：无 telemetry、自动网络、自动安装、Git 写操作、发布或上传。
+- 普通同事不运行 `npm install`；插件携带自足 CLI、目录和许可证，运行前置只有 Node.js 22+。
+- 所有测试项目状态只写入登记的临时目录，不得在仓库根创建 `.ezagent/`。
+- 初始化必须先预览精确写入范围并取得确认；预览到确认期间若 `AGENTS.md` token 变化则拒绝写入。
+- Router 和其他 Skills 只能通过 argv 数组调用打包 CLI，不能拼接 shell，也不能直接编辑 `.ezagent/**`。
+- 多 Agent 委派必须绑定 Requirement/Spec/Task/expert/delegation ID、范围、交付物和质量门；专家总数按能力需求动态确定。
+- 未经用户明确批准，不执行插件安装、Git push、发布或任何外部系统变更。
 
-| Approved requirement | Implementation coverage |
-|---|---|
-| TypeScript/Node.js local core, no daemon | Core Tasks 1–7 |
-| macOS/Windows support | Core Task 8; Codex Task 4; Release Task 11 |
-| Initialize once, then automatic activation | Codex Tasks 1–5; Release Task 8 |
-| Consult/light/standard/high classification | Release Tasks 1–3 and 8 |
-| Requirement → Spec → Task → Implement → Verify → Finish | Core Task 2; Release Tasks 2–7 and 9 |
-| Cross-session memory and recovery | Core Task 6; Release Tasks 8–9 |
-| Full offline Chinese expert directory | Expert Tasks 1–4 and 7 |
-| Adaptive expert count with no hard total cap | Expert Task 5; Release Task 4 |
-| Structured multi-Agent delegation | Release Task 4 |
-| Approval, high-risk authorization, and quality gates | Codex Task 5; Release Tasks 3, 5–6 |
-| Local-only, no telemetry/network/automatic Git | Release Tasks 9–10; package inspection |
-| Preserve existing AGENTS/custom agents | Codex Tasks 2 and 6 |
-| Agency Agents MIT provenance | Expert Tasks 2–4 and 7 |
-| No Trellis code/templates/dependency | Global rule; Codex Task 8; Release Task 10 |
-| Future Claude adapter boundary | Core has no Codex imports; Codex-only code stays under `src/adapters/codex/` |
+## Current Codex milestone gate
 
-## Milestone gates
+Codex 层必须同时通过 **官方插件 validator + offline activation smoke**：
 
-### Task 1: Local core gate
+- manifest 与 internal marketplace 能被当前官方 validator 读取，且不声明未验证的 Hooks、MCP 或 Apps。
+- smoke 只复制 `plugins/ezagent-spec/` 到临时目录，在剥离 proxy/npm/git/network 环境变量的子进程中运行打包 CLI。
+- `doctor`、三路径 `integration-preview`、token 绑定 `integration-init`、fresh-process `context` 与重复初始化均通过，且第二次运行 byte-identical。
+- 激活链闭合：managed `AGENTS.md` → `$ezagent-router` → `.ezagent/project.yaml` → argv-safe packaged `context`，并在分类前读取状态。
+- 包文件 allowlist、文件模式和 bundle built-in import allowlist 证明只有本地 CLI 可执行，且没有 runtime network/Git-write capability。
+- `npm run plugin:check`、`npm run plugin:verify` 与 `npm run verify` 在 macOS 本地通过。
+- `.github/workflows/ci.yml` 以 `contents: read` 权限在 `macos-latest` 和 `windows-latest`、Node.js 22 上运行同一套 gate；Windows pass 只有实际 workflow 运行后才能记录。
 
-- [ ] Execute every task in `2026-08-20-ezagent-core-workspace-implementation.md`.
-- [ ] Run `npm run check && npm run test:core`.
-- [ ] Confirm the CLI initializes and resumes a temporary project on the current OS.
-- [ ] Review the diff and tag the milestone locally as `mvp-core-ready` only if the user asks for a tag.
+这个 gate 证明当前插件能初始化、自动恢复上下文、正确路由并在能力缺失时关闭失败；它不等于完整 Spec 生命周期已经发布。
 
-### Task 2: Expert catalog gate
+## Next workflow/release milestone
 
-- [ ] Execute every task in `2026-08-20-ezagent-expert-catalog-implementation.md`.
-- [ ] Run `npm run catalog:verify && npm run test:experts`.
-- [ ] Confirm every normalized record has provenance, license, full source SHA, and content hash.
-- [ ] Confirm adaptive selection has no total-expert hard cap.
+下一里程碑必须补齐 `capture/plan/replan/Knowledge/高风险授权签发` 的核心命令和持久化协议，然后才可以闭合：
 
-### Task 3: Codex plugin gate
+```text
+Requirement capture → Spec approval → Task plan → Implement → Verify → Knowledge → Finish
+```
 
-- [ ] Execute every task in `2026-08-20-ezagent-codex-plugin-implementation.md`.
-- [ ] Run `npm run plugin:build && npm run test:codex`.
-- [ ] Install the unpacked plugin into a disposable Codex test environment.
-- [ ] Confirm initialization is manual once and later turns trigger automatically.
+具体 release gate：
 
-### Task 4: MVP release gate
+- 实现并测试 light / standard / high 三类工作流及合法状态转换。
+- 高风险动作使用绑定 action 的一次性本地授权，Spec 批准不能代替动作授权。
+- 范围、风险或依赖变化必须 replan，不能静默扩写 Task 或非法反向 transition。
+- Review 全部 gate 通过后，必须先持久化并读回 Knowledge，才允许 completed。
+- 用新的临时项目执行三条获批 E2E 场景，并验证跨会话恢复。
+- 推送后取得真实 macOS/Windows GitHub Actions 结果；当前 Windows：pending first CI run。
+- 生成本地内部安装包并核对 provenance、licenses、无 Trellis material、无 telemetry/network client；未经用户明确请求不 publish。
 
-- [ ] Execute every task in `2026-08-20-ezagent-workflow-release-implementation.md`.
-- [ ] Run `npm run verify` on macOS and Windows CI.
-- [ ] Run all three approved end-to-end scenarios in disposable repositories.
-- [ ] Inspect the package and prove it contains no Trellis material, telemetry, or runtime network client.
-- [ ] Produce a local package artifact; do not publish it until the user explicitly requests publication.
+## MVP definition of done
 
-## Definition of done
-
-The roadmap is complete only when all four milestone gates pass, the design acceptance criteria are traceable to automated tests, and a colleague can initialize once and complete a standard feature request in a fresh Codex conversation without typing an EZagent command.
+MVP 只有在四个里程碑全部通过、设计验收项可追溯到自动化测试，并且同事能在新 Codex 任务中初始化一次后仅用自然语言完成一条 standard 需求时才算完成。当前 Codex 插件里程碑不是这个最终完成声明：缺少 workflow verbs、Knowledge 或授权签发时必须诚实报告并关闭失败。

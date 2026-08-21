@@ -1,0 +1,33 @@
+{
+  "name": "ezagent-spec",
+  "version": "0.1.0",
+  "description": "中文、本地优先的 Spec Coding 工作流。",
+  "author": {
+    "name": "EZagent"
+  },
+  "repository": "https://github.com/zhujufeng/EZagent-Spec",
+  "license": "UNLICENSED",
+  "keywords": [
+    "spec-coding",
+    "chinese",
+    "multi-agent",
+    "local-first"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "EZagent Spec",
+    "shortDescription": "中文、本地优先的 Spec Coding",
+    "longDescription": "初始化一次后，通过项目规则和 Router Skill 自动恢复需求、任务、专家与质量上下文。",
+    "developerName": "EZagent",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Instructions",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "在这个项目启用 EZagent Spec。",
+      "帮我按 Spec 流程实现这个需求。"
+    ]
+  }
+}

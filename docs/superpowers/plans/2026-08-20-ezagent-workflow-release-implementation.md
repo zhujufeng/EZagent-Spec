@@ -4,7 +4,7 @@
 
 **Goal:** Complete the light, standard, and high-risk Spec Coding workflows, enforce structured expert delegation and verification, prove privacy and recovery behavior, and create an unpublished cross-platform MVP package.
 
-**Architecture:** Add workflow use cases above the already-tested local core, persist human-readable artifacts through one service, and expose structured CLI operations for plugin Skills. Every mutating use case commits artifact writes, audit, and state through `WorkspaceRepository.commitMutation` without nested locks. Treat every mutation as a revisioned command, every expert run as a delegation contract, every completion as a verified gate result, and every high-risk action as a one-time fingerprinted authorization.
+**Architecture:** Add workflow use cases above the already-tested local core, persist human-readable artifacts through one service, and expose structured CLI operations for plugin Skills. Every mutating use case commits artifact writes, audit, and state through `WorkspaceRepository.commitMutation` without nested locks. Treat every mutation as a revisioned command, every expert run as a delegation contract, every completion as a verified gate result, and every high-risk action as a one-time fingerprinted authorization. Codex integration continues to use Router Skills + managed project `AGENTS.md` + the bundled short-lived CLI; this plan must not introduce lifecycle Hooks or claim a `PreToolUse` interception contract.
 
 **Tech Stack:** TypeScript, Zod, YAML/Markdown frontmatter, Vitest, esbuild, GitHub Actions on macOS/Windows, local ZIP packaging.
 
@@ -22,10 +22,10 @@
 - `src/workflow/quality.ts`: gate definitions and verification runs.
 - `src/workflow/privacy.ts`: redacted audit payload construction.
 - `src/cli/main.ts`: structured workflow commands used by Skills.
-- `plugin/skills/**`: final command contracts and recovery instructions.
+- `plugins/ezagent-spec/skills/**`: final command contracts and recovery instructions.
 - `test/workflow/**`: workflow and policy tests.
 - `test/e2e/**`: approved product scenarios and restart recovery.
-- `.github/workflows/verify.yml`: product-repository macOS/Windows checks.
+- `.github/workflows/ci.yml`: product-repository macOS/Windows checks.
 - `scripts/package-plugin.ts`: local unpublished release archive.
 - `release/`: ignored local artifacts.
 
@@ -231,7 +231,7 @@ Use these body headings exactly:
 
 Before verification, implement `WorkflowService.resumeContext()` as a read-only projection. Starting from `workspace.activeWorkItem`, it must resolve and validate the parent chain (Task → Spec → Requirement), then return only bounded structured fields: IDs, titles, statuses, revisions, risk, Spec goal/scope/acceptance/verification, Task dependencies/allowed paths/deliverables/quality gate IDs, active expert IDs/reasons, safe mode, and recovery status. It must never return a raw prompt, chat transcript, environment variable, secret, full terminal output, or source-file contents.
 
-Define the return schema in `src/workflow/resume-context.ts`. Add a test that captures work, constructs a fresh `WorkflowService`, and receives the same Requirement → Spec chain. Update the Codex context adapter to format this projection into concise `SessionStart`/`UserPromptSubmit` context. If any referenced artifact is missing or fails schema validation, return safe mode instead of silently dropping the broken link.
+Define the return schema in `src/workflow/resume-context.ts`. Add a test that captures work, constructs a fresh `WorkflowService`, and receives the same Requirement → Spec chain. Extend the existing `context --root <project-root> --json` CLI response with this bounded projection; Router calls that command at the start of every relevant turn. If any referenced artifact is missing or fails schema validation, return safe mode instead of silently dropping the broken link.
 
 - [ ] **Step 6: Verify and commit**
 
@@ -240,7 +240,7 @@ Run: `npm test -- test/workflow/artifacts.test.ts test/workflow/resume-context.t
 Expected: PASS; light is approved, standard remains specified, artifacts are local, and a fresh service reconstructs the bounded context chain.
 
 ```bash
-git add src/workflow/frontmatter.ts src/workflow/artifacts.ts src/workflow/resume-context.ts src/workflow/service.ts src/adapters/codex/context.ts test/workflow/artifacts.test.ts test/workflow/resume-context.test.ts
+git add src/workflow/frontmatter.ts src/workflow/artifacts.ts src/workflow/resume-context.ts src/workflow/service.ts src/cli/main.ts test/workflow/artifacts.test.ts test/workflow/resume-context.test.ts
 git commit -m "feat: capture local requirements and specs"
 ```
 
@@ -430,20 +430,22 @@ export function consumeAuthorization(authorization: HighRiskAuthorization, finge
 
 - [ ] **Step 3: Persist and enforce authorizations**
 
-Store authorizations in `.ezagent/quality/authorizations/AUTH-*.json`. Add `WorkflowService.authorizeHighRisk(specId, expectedRevision, toolName, toolInput)` and update the PreToolUse gate so high-risk Specs require a matching unconsumed record. Consume the authorization atomically before returning `allow`; if no record matches, return `deny` with a specific reason.
+Store authorizations in `.ezagent/quality/authorizations/AUTH-*.json`. Add `WorkflowService.authorizeHighRisk(specId, expectedRevision, actionName, actionInput)` and a revisioned `consumeAuthorizedAction(...)` command. The command must require the active high-risk Task, match one exact unconsumed fingerprint, validate the declared target paths against the Task, and atomically consume the record before returning a structured authorization result; if no record matches, it fails closed with a specific reason. The Implement Skill must call this command immediately before the authorized action.
 
 The same authorization ID must be supplied as `highRiskAuthorizationId` when the high-risk work item first transitions to `implementing`; this satisfies the domain state-machine guard. The stored fingerprint remains bound to one exact tool name/input, so authorization of the phase does not authorize a different command. If the authorized tool fails after the gate consumes the record, require a new explicit authorization instead of replaying it.
 
-At the same integration point, extend the gate with the active Task's `allowedPaths`. For `apply_patch`, extract every `*** Add File`, `*** Update File`, and `*** Delete File` target and deny the call if any normalized project-relative path falls outside the allowed globs. For Bash, keep the read-only allowlist from the Codex plan and deny unrecognized mutating commands unless the current Task explicitly lists the command's target path.
+At the same core boundary, validate the active Task's `allowedPaths`. For an `apply_patch` action descriptor, extract every `*** Add File`, `*** Update File`, and `*** Delete File` target and reject the command if any normalized project-relative path falls outside the allowed globs. Other mutating action descriptors must carry an explicit normalized target-path list; unknown or unparseable actions fail closed.
+
+This is a deterministic authorization boundary for EZagent state and its supported action protocol, not a claim that Codex intercepts every arbitrary tool call. If Codex later exposes a stable native policy/Hook interface, adapt the same decision function without changing the workflow model.
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `npm test -- test/workflow/authorization.test.ts test/codex/pre-tool-gate.test.ts && npm run check`
+Run: `npm test -- test/workflow/authorization.test.ts test/workflow/action-policy.test.ts && npm run check`
 
 Expected: PASS; a second attempt with the same authorization is denied.
 
 ```bash
-git add src/workflow/authorization.ts src/workflow/service.ts src/adapters/codex/gate.ts test/workflow/authorization.test.ts test/codex/pre-tool-gate.test.ts
+git add src/workflow/authorization.ts src/workflow/service.ts src/workflow/action-policy.ts test/workflow/authorization.test.ts test/workflow/action-policy.test.ts
 git commit -m "feat: gate high-risk actions by authorization"
 ```
 
@@ -682,7 +684,7 @@ git commit -m "feat: persist project knowledge and safe upgrades"
 
 **Files:**
 - Create: `test/e2e/privacy.test.ts`
-- Create: `test/e2e/hook-performance.test.ts`
+- Create: `test/e2e/router-performance.test.ts`
 - Create: `scripts/package-plugin.ts`
 - Modify: `package.json`
 - Modify: `.gitignore`
@@ -693,15 +695,15 @@ The test must scan the runtime dependency graph and packaged JavaScript, reject 
 
 The same test must scan imports under `src/domain/`, `src/workspace/`, `src/audit/`, `src/experts/`, and `src/workflow/` and fail if any imports from `src/adapters/codex/`. Only the adapter may depend on core modules; the core must remain reusable by a future Claude Code adapter.
 
-- [ ] **Step 2: Add the Hook latency benchmark**
+- [ ] **Step 2: Add the packaged context latency benchmark**
 
-Build the plugin, initialize one temporary project, invoke `plugin/dist/ezagent-hook.mjs` 100 times with a `UserPromptSubmit` JSON payload, sort durations, and assert the p95 duration is at most 250ms. Print min, median, p95, and max for macOS/Windows CI diagnosis.
+Build the plugin, initialize one temporary project, invoke `node plugins/ezagent-spec/dist/ezagent-cli.mjs context --root <temp-project> --json` in 100 fresh processes with argv-safe execution, sort durations, and assert the p95 duration is at most 250ms. Print min, median, p95, and max for macOS/Windows CI diagnosis. The benchmark measures the real automatic Router context path and does not simulate a nonexistent Hook.
 
 - [ ] **Step 3: Add local ZIP packaging**
 
 Run: `npm install --save-dev archiver @types/archiver`
 
-`scripts/package-plugin.ts` must build first, create `release/ezagent-spec-codex-plugin-0.1.0.zip`, include only `plugin/**`, normalize archive paths to `/`, and print the archive SHA-256. Add `release/` to `.gitignore`.
+`scripts/package-plugin.ts` must run the deterministic plugin build/check first, create `release/ezagent-spec-codex-plugin-0.1.0.zip`, include only `plugins/ezagent-spec/**`, normalize archive paths to `/`, and print the archive SHA-256. Add `release/` to `.gitignore`.
 
 Add scripts:
 
@@ -714,59 +716,33 @@ Add scripts:
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `npm test -- test/e2e/privacy.test.ts test/e2e/hook-performance.test.ts && npm run package:plugin`
+Run: `npm test -- test/e2e/privacy.test.ts test/e2e/router-performance.test.ts && npm run package:plugin`
 
-Expected: privacy checks pass, Hook p95 is at most 250ms, and one ignored ZIP with a printed SHA-256 exists under `release/`.
+Expected: privacy checks pass, packaged context p95 is at most 250ms, and one ignored ZIP with a printed SHA-256 exists under `release/`.
 
 ```bash
-git add package.json package-lock.json .gitignore scripts/package-plugin.ts test/e2e/privacy.test.ts test/e2e/hook-performance.test.ts
+git add package.json package-lock.json .gitignore scripts/package-plugin.ts test/e2e/privacy.test.ts test/e2e/router-performance.test.ts
 git commit -m "build: verify private local plugin package"
 ```
 
 ### Task 11: Add cross-platform product CI and final release gate
 
 **Files:**
-- Create: `.github/workflows/verify.yml`
+- Modify: `.github/workflows/ci.yml`
 - Modify: `README.md`
 - Create: `docs/mvp-verification.md`
 
 - [ ] **Step 1: Add macOS and Windows CI**
 
-```yaml
-# .github/workflows/verify.yml
-name: verify
-on:
-  pull_request:
-  push:
-    branches: [main]
-jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-        node: [22, 24]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npm run verify
-      - run: npm run catalog:verify
-      - run: npm run plugin:verify
-      - run: npm run test:workflow
-```
+Extend the existing `.github/workflows/ci.yml` without creating a second competing workflow. Keep the read-only `contents: read` permission, `persist-credentials: false`, macOS/Windows matrix, Node.js 22, `npm ci`, `plugin:check`, and repository verification. Pin every third-party Action to a reviewed full 40-hex commit SHA with a version comment; do not reference mutable major tags. Add `test:workflow` and the release verification command only after those scripts exist, and do not add secrets or publishing permissions.
 
 - [ ] **Step 2: Document initialization and privacy truthfully**
 
-README must state: Node.js is required but TypeScript/npm install is not required for end users; initialization is explicit once; later turns auto-trigger; Hook trust may reappear after updates; Local-only applies to EZagent rather than changing Codex data handling; no automatic Git/network/telemetry occurs.
+README must state: Node.js is required but TypeScript/npm install is not required for end users; initialization is explicit once; later turns auto-trigger through Router Skill + managed `AGENTS.md`; no lifecycle Hook or tool-level interception is claimed; Local-only applies to EZagent rather than changing Codex data handling; no automatic Git/network/telemetry occurs.
 
 - [ ] **Step 3: Create the verification report template with concrete evidence fields**
 
-`docs/mvp-verification.md` must list the three scenario names, macOS and Windows CI run links, catalog count and lock SHAs, package SHA-256, Hook p95 for both OS families, privacy scan result, license result, and known limitations. Populate every field from actual command output before calling the MVP complete.
+`docs/mvp-verification.md` must list the three scenario names, macOS and Windows CI run links, catalog count and lock SHAs, package SHA-256, packaged context p95 for both OS families, privacy scan result, license result, and known limitations. Populate every field from actual command output before calling the MVP complete.
 
 - [ ] **Step 4: Run the complete local release gate**
 
@@ -777,7 +753,7 @@ Expected: all commands exit `0`, a local ZIP is produced, and no publish/push op
 - [ ] **Step 5: Commit CI and verification documentation**
 
 ```bash
-git add .github/workflows/verify.yml README.md docs/mvp-verification.md
+git add .github/workflows/ci.yml README.md docs/mvp-verification.md
 git commit -m "ci: verify EZagent MVP across platforms"
 ```
 

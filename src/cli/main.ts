@@ -5,11 +5,17 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 import { transitionWorkItem } from "../domain/state-machine.js";
+import {
+  initializeCodexIntegration,
+  nodeCodexIntegrationRuntime,
+  previewCodexIntegration,
+  type CodexIntegrationRuntime,
+} from "../adapters/codex/integration.js";
 import type { WorkItemStatus } from "../domain/work-item.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 import { WorkspaceRepository } from "../workspace/repository.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const AUTHORIZATION_ID = /^AUTH-(\d{4})(\d{2})(\d{2})-(\d{3})$/u;
@@ -25,7 +31,13 @@ const WORK_ITEM_STATUSES = [
   "cancelled",
 ] as const satisfies readonly WorkItemStatus[];
 
-type Command = "doctor" | "init" | "context" | "transition";
+type Command =
+  | "doctor"
+  | "init"
+  | "context"
+  | "transition"
+  | "integration-preview"
+  | "integration-init";
 
 interface CommandSpec {
   readonly valueOptions: readonly string[];
@@ -54,6 +66,16 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     booleanOptions: [],
     requiredOptions: ["--root", "--to", "--revision"],
   },
+  "integration-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "integration-init": {
+    valueOptions: ["--root", "--name", "--agents-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--name", "--agents-token"],
+  },
 };
 
 interface ParsedCommand {
@@ -71,6 +93,7 @@ export interface CliRuntime {
   readonly lstat: (path: string) => Promise<{ readonly isDirectory: () => boolean }>;
   readonly access: (path: string, mode: number) => Promise<void>;
   readonly createRepository: (root: string) => WorkspaceRepository;
+  readonly codexIntegrationRuntime: CodexIntegrationRuntime;
 }
 
 const defaultRuntime: CliRuntime = {
@@ -79,6 +102,7 @@ const defaultRuntime: CliRuntime = {
   lstat,
   access,
   createRepository: (root) => new WorkspaceRepository(root),
+  codexIntegrationRuntime: nodeCodexIntegrationRuntime,
 };
 
 function isCommand(value: string | undefined): value is Command {
@@ -231,6 +255,23 @@ export async function runCli(
   if (parsed.command === "doctor") {
     await assertDoctorRoot(runtime, root);
     writeJson(io, { ok: true, node: runtime.nodeVersion, root });
+    return;
+  }
+
+  if (parsed.command === "integration-preview") {
+    writeJson(io, await previewCodexIntegration(root, runtime.codexIntegrationRuntime));
+    return;
+  }
+
+  if (parsed.command === "integration-init") {
+    const name = projectName(requiredValueOption(parsed, "--name"));
+    const expectedToken = requiredValueOption(parsed, "--agents-token");
+    writeJson(io, await initializeCodexIntegration(
+      root,
+      name,
+      expectedToken,
+      runtime.codexIntegrationRuntime,
+    ));
     return;
   }
 

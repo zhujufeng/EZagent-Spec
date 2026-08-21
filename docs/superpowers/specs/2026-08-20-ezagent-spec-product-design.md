@@ -8,6 +8,8 @@
 - 运行环境：macOS、Windows
 - 核心技术：TypeScript、Node.js
 
+> **实施状态（2026-08-21）：** 本文描述的是获批的产品目标和完整 MVP，而不是当前分支已经全部交付的能力。当前 Codex 插件里程碑已在 macOS 本地验证初始化、上下文恢复、专家生成、自动 Router 和离线分发；`capture/plan/replan/Knowledge` 的完整持久化命令、高风险授权签发和无 Node.js 时的安装辅助仍属于后续 workflow/release 里程碑。Windows 已纳入 CI，但在首次 push 后的真实 Windows runner 通过前保持“待验证”。缺少这些能力时实现必须关闭失败，不得伪造产物、命令或授权。
+
 ## 1. 摘要
 
 EZagent Spec 是面向中文团队的 Spec Coding 插件。它把自然语言开发请求转化为可追踪的 Requirement、Spec、Task、Knowledge 和 Quality Gate，并从完整的中文专家目录中为当前项目动态选择合适的专家参与工作。
@@ -66,15 +68,15 @@ EZagent Spec 要把临时、依赖聊天记忆的 Vibe Coding 升级为中文 Sp
   → 必要时在用户同意后辅助安装 Node.js LTS
   → 预览将写入的项目文件
   → 初始化 .ezagent/ 与 Codex 项目集成
-  → 首次确认 Hook 信任
+  → 写入受控 AGENTS.md 区块并完成插件自检
 ```
 
 后续使用：
 
 ```text
 用户自然语言消息
-  → Hook 自动加载当前项目状态
-  → Skill 判断意图和流程等级
+  → 项目 AGENTS.md 要求自动使用 Router Skill
+  → Router Skill 调用打包 CLI 恢复状态并判断流程等级
   → 本地核心校验状态转换
   → 选择并编排所需专家
   → Plan → Implement → Verify → Finish
@@ -89,7 +91,7 @@ EZagent Spec 要把临时、依赖聊天记忆的 Vibe Coding 升级为中文 Sp
 ```text
 Codex Plugin
   ├── Skills：意图识别与可重复工作流
-  ├── Hooks：每轮激活、恢复上下文、执行前质量门
+  ├── 打包 CLI：短生命周期上下文读取与确定性状态命令
   └── AGENTS.md：项目级持久规则
           ↓
 Codex Adapter / CLI
@@ -114,14 +116,13 @@ EZagent Core（TypeScript）
 
 ### 5.1 Codex 插件层
 
-插件层负责对话触发、工作流说明、Codex 生命周期接入和结果展示，不保存业务状态，也不复制核心规则。
+插件层负责对话触发、工作流说明、Codex 项目规则接入和结果展示，不保存业务状态，也不复制核心规则。
 
 - Node.js 可用前的启动检测由无 Node 依赖的系统脚本完成：macOS 使用系统 Shell，Windows 使用 PowerShell。检测只读取环境，不联网；只有用户同意安装后才允许调用系统安装机制。
-- `UserPromptSubmit` Hook 在每次用户消息提交时运行。
-- `SessionStart` Hook 在新会话、恢复和上下文压缩后重新注入当前工作状态。
-- `PreToolUse` Hook 在受保护阶段对写入类工具调用执行质量门。
-- Skills 分别覆盖需求、轻量变更、正式 Spec、实现、审查和恢复等可识别目标。
-- 项目根 `AGENTS.md` 保存简短、稳定的 EZagent 项目规则。
+- 一个宽触发面的 Router Skill 处理已初始化项目中的开发、修改、修复、重构、审查和验证请求，并在开始工作时调用打包 CLI 读取当前状态。
+- 初始化、Spec、实现和审查 Skills 提供边界清晰、可重复的子流程；它们只通过本地核心改变 `.ezagent/**`。
+- 项目根 `AGENTS.md` 保存简短、稳定的 EZagent 项目规则，要求发现 `.ezagent/project.yaml` 后自动使用 Router Skill，因此新会话和上下文压缩后仍能恢复流程。
+- 当前 Codex 插件契约没有稳定、可验证的每轮 Hook 或 `PreToolUse` 拦截接口；MVP 不声明不存在的工具级 Hook 能力。未来只有在 Codex 发布并可自动化验证该契约后才增加 Hook 适配层。
 
 Node.js 缺失时，启动脚本应安全退出并向 Codex 返回可操作提示，不能使普通对话失败。Node.js 安装完成后必须重新检测，验证通过后才能调用 TypeScript 核心。
 
@@ -138,7 +139,7 @@ Node.js 缺失时，启动脚本应安全退出并向 Codex 返回可操作提�
 - 校验状态转换和审批条件。
 - 筛选、去重和记录专家选择。
 - 验证委派契约与质量门。
-- 原子写入、审计、恢复和迁移。
+- 对工作区事实文件执行原子写入，并对外部集成文件执行可恢复发布、审计和迁移。
 - 生成 Codex 项目级专家适配文件。
 
 核心不负责：
@@ -154,19 +155,19 @@ Node.js 缺失时，启动脚本应安全退出并向 Codex 返回可操作提�
 
 ## 6. 自动触发与安全兜底
 
-自动触发不能只依赖模型是否主动想起某个 Skill，因此采用三层机制。
+自动触发采用当前 Codex 可安装、可验证的两层机制：插件 Skill 负责语义路由，项目 `AGENTS.md` 负责跨会话持久激活。确定性规则仍由本地核心验证，不能由提示词绕过。
 
-### 6.1 每轮 Hook
+### 6.1 Router Skill
 
-`UserPromptSubmit` Hook 对每条用户消息执行以下逻辑：
+Router Skill 对已初始化项目中的相关自然语言请求执行以下逻辑：
 
-1. 向上定位项目根。
-2. 不存在 `.ezagent/project.yaml` 时立即成功退出，不产生副作用。
-3. 存在工作区时读取当前阶段、活动工作项、质量门和专家摘要。
-4. 将简短上下文作为额外 developer context 注入本轮。
-5. 不保存完整用户提示。
+1. 从当前目录向上定位项目根。
+2. 不存在 `.ezagent/project.yaml` 时退出 EZagent 流程，不产生副作用。
+3. 存在工作区时调用插件内打包 CLI，读取当前阶段、活动工作项、质量门和专家摘要。
+4. 把请求分类为 `consult`、`light`、`standard` 或 `high`，但不保存完整用户提示。
+5. 把结构化分类结果交给核心校验，不能直接编辑状态文件。
 
-Hook 本身不调用模型，也不进行复杂语义分类。语义分类由 Codex Skill 完成，核心只接受结构化分类结果并验证其是否合法。
+Skill 不复制状态机、审批或质量门逻辑；这些规则只存在于核心。
 
 ### 6.2 项目规则
 
@@ -179,18 +180,16 @@ Hook 本身不调用模型，也不进行复杂语义分类。语义分类由 Co
 
 初始化只管理自己的标记区块，必须保留所有用户已有内容。重复初始化不得产生重复区块。
 
-### 6.3 工具调用兜底
+### 6.3 核心失败关闭
 
-当正式或高风险工作项尚未获批时，`PreToolUse` Hook 以失败关闭策略处理项目写入：
+当前 Codex 插件层不声称能够拦截每一次工具调用。安全兜底由以下可验证边界组成：
 
-- 明确只读的检查可以执行。
-- 未能静态确认只读的写入型 Shell 命令或文件编辑被拒绝。
-- 获批后只允许当前 Task 范围内的变更。
-- 高风险操作还必须具备单独授权记录。
+- `AGENTS.md` 与 Skills 要求修改前先取得有效工作项、Task 范围和质量门。
+- 所有 `.ezagent/**` 状态变化只能通过打包 CLI；核心拒绝非法状态跳转、过期 revision、缺少审批和缺少高风险单次授权的命令。
+- 生成的实现专家仅获得已批准 Task 的范围；分析与审查专家保持只读。
+- 外部终端或其他应用中的操作不在 EZagent 控制范围内。
 
-该约束只覆盖活动 Codex 会话中 Hook 可见的工具调用。EZagent 不试图控制用户在外部终端或其他应用中进行的操作。
-
-非托管 Hook 首次启用或定义发生变化时需要用户重新确认信任；正常对话不重复询问。
+这不是工具级强制隔离。若未来 Codex 提供稳定的原生 Hook 或策略接口，可把同一核心决策函数接入该接口，而不改变领域模型。
 
 ## 7. 意图分级与工作流
 
@@ -378,7 +377,6 @@ quality_gates:
 - `.ezagent/**`
 - `AGENTS.md` 中 EZagent 标记区块
 - `.codex/agents/ezagent-*.toml`
-- 必要的项目级 `.codex` Hook 配置，前提是插件内 Hook 无法满足当前 Codex 版本
 
 初始化必须先展示写入预览。EZagent 不执行 `git add`、`commit`、`push` 或 PR 操作。
 
@@ -394,7 +392,10 @@ quality_gates:
 
 ### 11.1 写入规则
 
-- 使用临时文件、完整校验后原子替换。
+- `.ezagent/**` 事实文件使用临时文件、完整校验后原子替换。
+- `AGENTS.md` 属于用户拥有的外部集成文件。初始化先做 preview token 比对，再创建独立、耐久的 `.bak` 与 `.next` 恢复副本；缺失目标仅以 no-clobber 方式创建，既有目标通过 no-follow 文件句柄更新。
+- Node.js 在 macOS 与 Windows 上没有统一的“按 inode 比较后原子替换且绝不覆盖新目标”原语，因此 MVP 不宣称 `AGENTS.md` 更新对并发读者不可见，也不宣称所有 I/O 失败会自动回滚。写入失败时目标可能处于部分更新状态，但恢复副本必须完整保留并在错误中报告路径。
+- 项目初始化应在项目静默期执行；初始化期间不得由编辑器、脚本或其他 Agent 同时修改 `AGENTS.md`、新增 hard link，或替换项目根、`.ezagent`、`backups` 祖先目录。
 - 每次状态变更检查 `revision`。
 - 使用工作区内短期锁串行化状态写入。
 - 专家可以并行读取，只有主协调 Agent 可以写状态。
@@ -407,11 +408,16 @@ quality_gates:
 - 缓存损坏时从事实来源重建。
 - 事实来源无法解析时进入只读安全模式，运行 `doctor` 给出定位信息。
 - schema 升级前创建本地备份，迁移失败则保留原文件并停止写入。
+- `AGENTS.md` 发布失败后不自动删除目标或恢复证据；用户按错误中报告的 `.bak`、`.next` 或 recovery 路径检查并恢复。
+- 初始化拒绝符号链接、初始 hard link、非普通文件、超限文件、BOM 和非法 UTF-8。纯 Node.js MVP 会检测祖先替换与并发 hard link，但无法用 dirfd 在恶意同用户竞态下保证零越界写入；并发新增的 hard link 还可能在事后检测前观察到句柄写入。检测到异常后失败关闭并保留证据。
+- macOS 与 Windows 的目录 sync 是 best-effort；不支持或权限拒绝时可能跳过。成功返回表示进程内身份与内容校验通过，不保证断电或系统崩溃后的目录项持久性。
 - 不使用静默重置、批量删除或不可恢复修复。
 
 ### 11.3 生成文件
 
-Codex Agent TOML 是可重建适配文件。EZagent 只创建、更新或移除 `ezagent-*` 文件，不修改用户定义的其他 Agent。
+Codex Agent TOML 是可重建适配文件。EZagent 只拥有 `.ezagent/experts/generated-codex.json` 中记录了文件名与精确哈希的 `ezagent-*` 文件；未知的 `ezagent-*` 与所有其他 Agent 均视为用户文件，不按前缀擅自处理。
+
+更新或停用已拥有文件时，EZagent 先将原字节移动到唯一恢复目录，再以 no-clobber 方式发布独立新副本；不得用按路径删除作为回滚。多文件同步和最终所有权清单不是一个跨文件原子事务：失败时保留 recovery、backup 和 next 证据并报告路径，重试只接纳哈希等于目标内容的已发布文件或已经缺失的过期文件。同步应在项目静默期执行。
 
 ## 12. 隐私与安全边界
 
@@ -427,7 +433,7 @@ Local-only 对 EZagent 的含义是：
 
 EZagent 的 Local-only 不改变 Codex 本身的模型处理、账号、组织策略或数据保留方式。公司仍应按自己的 Codex 管理策略使用产品。
 
-Hook 输出不得包含秘密或大段项目内容。注入上下文只包含当前阶段、工作项摘要、允许动作、质量门和专家 ID。
+Router Skill 从 CLI 读取的摘要不得包含秘密或大段项目内容，只包含当前阶段、工作项摘要、允许动作、质量门和专家 ID。
 
 ## 13. 第三方许可证边界
 
@@ -466,7 +472,7 @@ Trellis 使用 AGPL-3.0。EZagent 不通过“内部使用”或“非商业”�
 - macOS 与 Windows 环境检测。
 - Node.js LTS 检查及经用户同意的安装辅助。
 - 一次性项目初始化和重复初始化幂等性。
-- 自动触发 Hooks、项目规则和 Skills。
+- 自动触发 Router Skill、项目规则和打包 CLI 上下文恢复。
 - `.ezagent/` 工作区和状态机。
 - 咨询、轻量、标准、高风险四级分类。
 - Requirement、Spec、Task、Knowledge、Quality Gate 和 Audit。
@@ -513,17 +519,18 @@ Trellis 使用 AGPL-3.0。EZagent 不通过“内部使用”或“非商业”�
 - 专家目录解析、去重、评分、扩展和软阈值。
 - 委派契约与质量门。
 - revision 冲突、原子写入、短期锁和事件记录。
+- `AGENTS.md` preview token、no-follow 有界读取、独立恢复副本、部分写入、竞争发布和人工恢复路径。
 - Windows 与 macOS 路径行为。
 - 网络、Git 和路径边界策略。
 
 ### 16.2 插件契约测试
 
-- Hook 在初始化和未初始化项目中的行为。
+- Router Skill 在初始化和未初始化项目中的行为。
 - `AGENTS.md` 标记区块幂等合并。
 - 只管理 `ezagent-*` Agent 文件。
 - Skills 的直接、间接、模糊和负向触发用例。
-- 新会话、恢复和上下文压缩后的状态注入。
-- 未批准阶段对写入工具的失败关闭行为。
+- 新会话、恢复和上下文压缩后通过项目规则重新读取状态。
+- 未批准阶段的核心命令失败关闭行为。
 
 ### 16.3 集成与端到端测试
 
@@ -536,6 +543,7 @@ Trellis 使用 AGPL-3.0。EZagent 不通过“内部使用”或“非商业”�
 - 验证失败回到 Implement。
 - 动态增加专家和多批次执行。
 - 已有 `AGENTS.md`、`.codex/agents/` 和用户配置保护。
+- 初始化静默期约束、并发 hard link/祖先替换检测，以及失败后 `.bak/.next` 人工恢复。
 
 ### 16.4 隐私与许可证测试
 
@@ -564,7 +572,7 @@ Trellis 使用 AGPL-3.0。EZagent 不通过“内部使用”或“非商业”�
 - macOS 与 Windows 通过同一核心测试套件。
 - 默认离线、不上传、不遥测、不自动操作 Git。
 - 重复初始化不覆盖或重复用户配置。
-- 日常 Hook 附加延迟的本地目标为 p95 不超过 250ms。
+- 日常本地上下文命令的目标为 p95 不超过 250ms。
 - 专家目录、来源和第三方许可证检查全部通过。
 
 ## 18. 后续演进
@@ -588,6 +596,5 @@ MVP 完成后优先考虑：
 - [Agency Agents 中文项目 License](https://github.com/jnMetaCode/agency-agents-zh/blob/main/LICENSE)
 - [Agency Agents 中文项目上游映射](https://github.com/jnMetaCode/agency-agents-zh/blob/main/UPSTREAM.md)
 - [OpenAI：Build skills](https://developers.openai.com/plugins/build/skills)
-- [OpenAI：Hooks](https://learn.chatgpt.com/docs/hooks)
 - [OpenAI：AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - [OpenAI：Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)

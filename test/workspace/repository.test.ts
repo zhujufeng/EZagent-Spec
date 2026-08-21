@@ -544,7 +544,9 @@ describe("WorkspaceRepository.initialize", () => {
         await winner.completed;
       }
     });
-    const safetyRelease = setTimeout(winner.release, 2_000);
+    // This timer is only a deadlock escape hatch. It must not become the normal
+    // release path when a loaded CI runner makes the real filesystem loop slow.
+    const safetyRelease = setTimeout(winner.release, 20_000);
 
     try {
       await expect(repository.initialize({ ...demoConfig })).resolves.toBeUndefined();
@@ -556,7 +558,7 @@ describe("WorkspaceRepository.initialize", () => {
       winner.release();
       await winner.completed;
     }
-  }, 10_000);
+  }, 30_000);
 
   test("waits for a gated winner before rejecting a different configuration", async () => {
     const root = await temporaryProject();

@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, type Stats } from "node:fs";
 import { chmod, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -8,6 +8,7 @@ import { execa } from "execa";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
 
 import { readAuditEvents } from "../../src/audit/events.js";
+import type { CodexIntegrationRuntime } from "../../src/adapters/codex/integration.js";
 import { WorkspaceRepository } from "../../src/workspace/repository.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
 import type { WorkItemState } from "../../src/domain/work-item.js";
@@ -228,6 +229,85 @@ describe.sequential("ezagent CLI", () => {
     });
   });
 
+  test("previews Codex integration as one-line JSON without creating project state", async () => {
+    const root = await temporaryProject();
+
+    expect(expectJsonSuccess(await runCli(["integration-preview", "--root", root]))).toEqual({
+      paths: [".ezagent/**", "AGENTS.md#EZAGENT", ".codex/agents/ezagent-*.toml"],
+      agentsToken: "missing",
+    });
+    expect((await readdir(root)).sort()).toEqual([]);
+  });
+
+  test("uses the injected Codex runtime for integration commands", async () => {
+    const writes: string[] = [];
+    const virtualRoot = resolve("/virtual", "project");
+    const missing = Object.assign(new Error("missing"), { code: "ENOENT" });
+    const rootStat = {
+      dev: 1,
+      ino: 2,
+      mode: 0o40700,
+      nlink: 1,
+      size: 0,
+      isDirectory: () => true,
+      isFile: () => false,
+      isSymbolicLink: () => false,
+    } as Stats;
+    const observedPaths: string[] = [];
+    const codexIntegrationRuntime: CodexIntegrationRuntime = {
+      lstat: async (path) => {
+        observedPaths.push(path);
+        if (path === virtualRoot) return rootStat;
+        throw missing;
+      },
+      open: async () => { throw new Error("unexpected open"); },
+      mkdir: async () => { throw new Error("unexpected mkdir"); },
+      createRepository: () => { throw new Error("unexpected repository"); },
+      randomId: () => { throw new Error("unexpected random id"); },
+    };
+    const runtime = {
+      cwd: () => "/virtual",
+      nodeVersion: process.version,
+      lstat: async () => rootStat,
+      access: async () => undefined,
+      createRepository: (root: string) => new WorkspaceRepository(root),
+      codexIntegrationRuntime,
+    } as unknown as CliRuntime;
+
+    await runCliInProcess(
+      ["integration-preview", "--root", "project"],
+      { stdout: { write: (contents) => writes.push(contents) } },
+      runtime,
+    );
+
+    expect(JSON.parse(writes[0]!)).toEqual({
+      paths: [".ezagent/**", "AGENTS.md#EZAGENT", ".codex/agents/ezagent-*.toml"],
+      agentsToken: "missing",
+    });
+    expect(observedPaths).toContain(virtualRoot);
+    expect(observedPaths).toContain(join(virtualRoot, "AGENTS.md"));
+  });
+
+  test("initializes Codex integration from its preview token", async () => {
+    const root = await temporaryProject();
+    await writeFile(join(root, "AGENTS.md"), "# User rules\n", "utf8");
+    const preview = expectJsonSuccess(await runCli(["integration-preview", "--root", root])) as {
+      readonly agentsToken: string;
+    };
+
+    expect(expectJsonSuccess(await runCli([
+      "integration-init", "--root", root, "--name", " Demo ",
+      "--agents-token", preview.agentsToken,
+    ]))).toEqual({ initialized: true, root });
+
+    const agents = await readFile(join(root, "AGENTS.md"), "utf8");
+    expect(agents.startsWith("# User rules\n")).toBe(true);
+    expect(agents.match(/EZAGENT:START/gu)).toHaveLength(1);
+    expect(expectJsonSuccess(await runCli(["context", "--root", root, "--json"]))).toMatchObject({
+      project: { name: "Demo", gitTracking: "none" },
+    });
+  });
+
   test.each([
     ["unknown flag", ["doctor", "--root", ".", "--wat", "value"], "unknown option"],
     ["duplicate flag", ["doctor", "--root", ".", "--root", "."], "duplicate option"],
@@ -242,7 +322,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 

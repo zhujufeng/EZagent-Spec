@@ -1,0 +1,20 @@
+{
+  "name": "ezagent-spec-internal",
+  "interface": {
+    "displayName": "EZagent Internal"
+  },
+  "plugins": [
+    {
+      "name": "ezagent-spec",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ezagent-spec"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
