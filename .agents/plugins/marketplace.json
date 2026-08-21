@@ -1,7 +1,7 @@
 {
-  "name": "ezagent-spec-internal",
+  "name": "ezagent",
   "interface": {
-    "displayName": "EZagent Internal"
+    "displayName": "EZagent"
   },
   "plugins": [
     {

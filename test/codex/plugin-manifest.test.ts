@@ -19,6 +19,7 @@ describe("EZagent Spec Codex plugin metadata", () => {
     expect(manifest).toMatchObject({
       name: "ezagent-spec",
       version: "0.1.0",
+      license: "MIT",
       skills: "./skills/",
       interface: {
         displayName: "EZagent Spec",
@@ -30,13 +31,13 @@ describe("EZagent Spec Codex plugin metadata", () => {
     expect(manifest).not.toHaveProperty("apps");
   });
 
-  test("publishes the plugin through the internal marketplace", async () => {
+  test("publishes the plugin through the public ezagent marketplace", async () => {
     const marketplace = await readJson(".agents/plugins/marketplace.json");
 
     expect(marketplace).toEqual({
-      name: "ezagent-spec-internal",
+      name: "ezagent",
       interface: {
-        displayName: "EZagent Internal",
+        displayName: "EZagent",
       },
       plugins: [
         {
