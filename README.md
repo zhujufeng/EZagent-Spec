@@ -2,14 +2,14 @@
 
 面向中文团队的 Local-only Spec Coding Codex 插件。EZagent Spec 在项目内保存结构化需求、Spec、任务、专家、知识和质量证据，降低纯 vibe coding 的不确定性，并让上下文可以跨会话恢复。
 
-> 当前为 `0.1.0` MVP。初始化、上下文恢复、Router、265 位中文专家目录、自动专家组队、Plan 原子批准与 replan 已可用；Knowledge 持久化和高风险授权签发仍在开发中，缺少能力时会关闭失败。
+> 当前为 `0.1.0`。初始化、上下文恢复、Router、265 位中文专家目录、自动专家组队、Plan/replan、结构化 Knowledge 和 Task Finish 已形成闭环。当前版本有意关闭高风险 Task 实施，其余 `light` / `standard` 工作流可完整执行。
 
 ## 安装
 
 要求 Codex 和 Node.js 22+：
 
 ```bash
-codex plugin marketplace add zhujufeng/EZagent-Spec --ref main
+codex plugin marketplace add zhujufeng/EZagent-Spec --ref v0.1.0
 codex plugin add ezagent-spec@ezagent
 ```
 
@@ -98,13 +98,15 @@ Plan: 实现用户资料输入校验
 
 只有用户批准 replacement Plan 后才更新团队并继续；取消 Task 时当前团队会退出 active 列表，但不可变团队历史仍保留用于恢复和审计。
 
+质量门全部通过后，Review Skill 会把决策、约束、验证证据和后续事项整理成有界结构化 Knowledge。本地核心在一次原子事务中写入 `.ezagent/knowledge/decisions/`、完成 Task 并清退当前专家；新会话通过 `context` 恢复最近五条 Knowledge 摘要和内容哈希，不保存聊天全文。
+
 ## 能力与边界
 
 解释和只读咨询不会创建工作项。行为变化按 `light`、`standard` 或 `high` 分类；专家数量按任务能力动态选择，不固定为三位。所有多 Agent 委派都必须携带 Requirement、Spec、Task、expert、delegation、范围、交付物和质量门标识。
 
-当前插件可以完成环境检测、集成预览、一次性初始化、上下文恢复、结构化 Plan 预览和原子批准、自动专家组队、项目专家生成、replan 差异与批准、受限状态转换、Skills 路由和失败关闭。
+当前插件可以完成环境检测、集成预览、一次性初始化、上下文恢复、结构化 Plan 预览和原子批准、自动专家组队、项目专家生成、replan 差异与批准、受限状态转换、结构化 Knowledge、Task Finish、Skills 路由和失败关闭。
 
-Knowledge 持久化和高风险授权签发仍在开发中。高风险 Task 没有有效的 action 授权就不能进入实现；即使所有质量门通过，在结构化 Knowledge 能够写入、读回和验证之前，Task 仍会保持 `verifying`，`completed` 会被本地核心阻止。插件不会伪造尚未支持的产物或授权。
+当前版本不支持高风险 Task 实施：risk 为 `high` 的 Task 不能进入或返回 `implementing`，也不存在可由调用方填写的授权编号绕过入口。高风险需求可以被分析和规划，但实际实施应拆分、降险或交由人工流程处理。`light` / `standard` Task 只有在 verifying 状态提交合法 Knowledge 后才能进入 `completed`。
 
 当前没有经过本项目验证的 `PreToolUse` interception contract。提示规则负责路由，本地核心的确定性状态转换负责关闭失败：revision、状态、批准或安全条件不满足时不会推进。
 
@@ -118,7 +120,7 @@ Local-only 只描述 EZagent runtime，不改变 Codex 的模型处理、账号�
 
 ## 平台与验证
 
-Windows 与 macOS GitHub Actions 已通过。运行时要求 Node.js 22+，CI 对两个平台运行相同的类型检查、测试、确定性插件检查和构建门。
+运行时要求 Node.js 22+。GitHub Actions 对 Windows 与 macOS 运行相同的类型检查、测试、确定性插件检查和构建门；正式 tag 只在两个平台均通过后发布。
 
 ## 开源与来源
 

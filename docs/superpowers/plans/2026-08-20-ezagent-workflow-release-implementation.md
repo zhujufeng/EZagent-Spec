@@ -1,5 +1,7 @@
 # EZagent Structured Workflow and MVP Release Implementation Plan
 
+> **v0.1.0 scope update (2026-08-22):** 本文保留早期完整方案作为历史记录。实际首版已经交付标准 Task 的结构化 Knowledge/Finish；一次性高风险授权方案被有意取消，高风险 Task 实施由核心统一关闭失败。以当前 README、MVP Roadmap 和代码测试为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Complete the light, standard, and high-risk Spec Coding workflows, enforce structured expert delegation and verification, prove privacy and recovery behavior, and create an unpublished cross-platform MVP package.

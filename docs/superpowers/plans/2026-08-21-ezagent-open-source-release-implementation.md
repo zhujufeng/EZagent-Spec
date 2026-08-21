@@ -1,5 +1,7 @@
 # EZagent Spec Open-Source Release Implementation Plan
 
+> **Release update (2026-08-22):** v0.1.0 adds the standard Knowledge/Finish loop, removes the caller-supplied high-risk authorization path, and installs from an immutable tag. Earlier milestone caveats remain historical context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Publish EZagent Spec under MIT as a public GitHub-backed Codex repo marketplace that an authorized Agent can install from `zhujufeng/EZagent-Spec`.

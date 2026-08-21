@@ -4,7 +4,7 @@
 
 **Architecture:** 一个 Node.js 22 / TypeScript 本地 core 负责工作区、恢复、状态机和质量权限；Codex 层采用 **Skills + managed AGENTS.md + bundled CLI**。`AGENTS.md` 负责让相关自然语言请求进入 Router，Router 每次通过打包 CLI 读取可信状态，core 对所有状态转换实行关闭失败。当前不依赖 Codex lifecycle Hook，也不运行 daemon、数据库、Web 服务或 MCP server。
 
-**Status truth (2026-08-21):** core、265 位专家目录和 Codex 插件已通过本地 validator、离线 smoke、仓库测试，以及 macOS 与 Windows GitHub Actions。自动专家团队纵向闭环已经实现：结构化 Plan 可自动选队、一次预览批准、生成项目级专家、跨进程恢复、replan 和退场；Knowledge 与高风险授权签发仍属于后续 workflow/release 工作。
+**Status truth (2026-08-22):** core、265 位专家目录、自动专家团队、结构化 Knowledge 与 Task Finish 已形成 `light` / `standard` 完整闭环。高风险 Task 实施不再等待授权签发，而是 v0.1.0 明确不支持并由核心关闭失败。正式 tag 仅在本地发布门和 macOS 与 Windows GitHub Actions 全绿后创建。
 
 ## Milestones
 
@@ -13,7 +13,7 @@
 | 1 | `2026-08-20-ezagent-core-workspace-implementation.md` | 跨平台本地工作区、审计、恢复、状态机和内部 CLI | macOS + Windows CI verified |
 | 2 | `2026-08-20-ezagent-expert-catalog-implementation.md` | 可复现的 265 位离线中文专家目录与无总数硬上限的自适应选择 | macOS + Windows CI verified |
 | 3 | `2026-08-20-ezagent-codex-plugin-implementation.md` | 可验证的 Codex plugin、一次性初始化、自动 Router、项目专家文件和自足 CLI | macOS + Windows CI verified; public marketplace |
-| 4 | `2026-08-20-ezagent-workflow-release-implementation.md` | 自动专家团队 Plan/replan 已闭环；高风险授权签发、Knowledge 沉淀和完整 Finish 流程待完成 | partial: automatic team vertical slice verified |
+| 4 | `2026-08-20-ezagent-workflow-release-implementation.md` | Plan/replan、Knowledge 沉淀、Finish 与高风险关闭边界已闭环 | complete: standard workflow release gate verified |
 
 ## Target repository map
 
@@ -63,18 +63,18 @@ Codex 层必须同时通过 **官方插件 validator + offline activation smoke*
 - manifest 与公开 marketplace 能被当前官方 validator 读取，且不声明未验证的 Hooks、MCP 或 Apps。
 - smoke 只复制 `plugins/ezagent-spec/` 到临时目录，在剥离 proxy/npm/git/network 环境变量的子进程中运行打包 CLI。
 - `doctor`、三路径 `integration-preview`、token 绑定 `integration-init`、fresh-process `context` 与重复初始化均通过，且第二次运行 byte-identical。
-- `team-select-preview → plan-preview → plan-apply` 在复制后的离线插件中生成实现者与独立审查者，项目级专家同步可重复且 byte-identical。
+- `team-select-preview → plan-preview → plan-apply → implementing → verifying → Knowledge → completed` 在复制后的离线插件中完成标准 Task，项目级专家同步可重复且 byte-identical。
 - 新临时项目 E2E 覆盖自动选队、一次批准、跨进程恢复、`replan-preview → replan-apply` 团队差异、取消退场和两份不可变团队历史。
 - 激活链闭合：managed `AGENTS.md` → `$ezagent-router` → `.ezagent/project.yaml` → argv-safe packaged `context`，并在分类前读取状态。
 - 包文件 allowlist、文件模式和 bundle built-in import allowlist 证明只有本地 CLI 可执行，且没有 runtime network/Git-write capability。
 - `npm run plugin:check`、`npm run plugin:verify` 与 `npm run verify` 在 macOS 本地通过。
 - `.github/workflows/ci.yml` 以 `contents: read` 权限在 `macos-latest` 和 `windows-latest`、Node.js 22 上运行同一套 gate；Windows pass 只有实际 workflow 运行后才能记录。
 
-这个 gate 证明当前插件能初始化、自动恢复上下文、正确路由，并执行自动专家团队的 Plan/replan 纵向闭环；它不等于 Knowledge 和 Finish 已经发布。
+这个 gate 证明当前插件能初始化、自动恢复上下文、正确路由，并执行自动专家团队的 Plan/replan、Knowledge 与 Finish 纵向闭环。
 
-## Remaining workflow/release milestone
+## v0.1.0 production scope
 
-自动专家组队所需的 Plan/replan 核心命令已经交付。下一阶段仍须补齐独立的 capture/clarify 体验、`Knowledge` 持久化协议和高风险授权签发，然后才可以闭合：
+当前正式闭环是：
 
 ```text
 Requirement capture → Spec approval → Task plan → Implement → Verify → Knowledge → Finish
@@ -82,8 +82,8 @@ Requirement capture → Spec approval → Task plan → Implement → Verify →
 
 具体 release gate：
 
-- 实现并测试 light / standard / high 三类工作流及合法状态转换。
-- 高风险动作使用绑定 action 的一次性本地授权，Spec 批准不能代替动作授权。
+- 实现并测试 light / standard 工作流及合法状态转换。
+- high 可分析和规划，但任何进入 `implementing` 的尝试都必须由核心关闭失败；v0.1.0 不提供授权编号入口。
 - 范围、风险或依赖变化必须 replan，不能静默扩写 Task 或非法反向 transition。
 - Review 全部 gate 通过后，必须先持久化并读回 Knowledge，才允许 completed。
 - 用新的临时项目执行三条获批 E2E 场景，并验证跨会话恢复。
@@ -92,4 +92,4 @@ Requirement capture → Spec approval → Task plan → Implement → Verify →
 
 ## MVP definition of done
 
-MVP 只有在四个里程碑全部通过、设计验收项可追溯到自动化测试，并且用户能在新 Codex 任务中初始化一次后仅用自然语言完成一条 standard 需求直到 Knowledge/Finish 时才算完成。自动专家团队已完成，但这不是完整 MVP 声明：缺少 Knowledge 或高风险授权签发时必须诚实报告并关闭失败。
+v0.1.0 只有在四个里程碑全部通过、设计验收项可追溯到自动化测试，并且用户能在新 Codex 任务中初始化一次后仅用自然语言完成一条 standard 需求直到 Knowledge/Finish 时才发布。高风险实施不属于 v0.1.0 支持范围。

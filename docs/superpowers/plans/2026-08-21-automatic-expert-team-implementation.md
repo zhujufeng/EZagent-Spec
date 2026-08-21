@@ -1,5 +1,7 @@
 # EZagent Automatic Expert Team Implementation Plan
 
+> **Completion update (2026-08-22):** The vertical slice now continues through structured Knowledge and Task Finish. High-risk implementation is intentionally unsupported in v0.1.0; legacy authorization-planning notes are historical only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the shortest real vertical slice in which a Chinese Requirement/Spec produces a deterministic, approved, persisted, recoverable, and actually materialized Codex expert team without user-entered expert commands.
