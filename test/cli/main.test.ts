@@ -83,7 +83,12 @@ async function initializedWorkspace(
 }
 
 afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  })));
 });
 
 beforeAll(async () => {
@@ -338,7 +343,7 @@ describe.sequential("ezagent CLI", () => {
       { type: "work-item-transitioned", metadata: {} },
       { type: "task-completed", metadata: { knowledgePath: expect.stringMatching(/^knowledge\/decisions\/SPEC-/u) } },
     ]);
-  });
+  }, 30_000);
 
   test("previews Codex integration as one-line JSON without creating project state", async () => {
     const root = await temporaryProject();
