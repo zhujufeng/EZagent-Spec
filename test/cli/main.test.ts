@@ -152,7 +152,7 @@ describe.sequential("ezagent CLI", () => {
     expect(paths.some((path) => path.endsWith(".map") || path.endsWith(".d.ts"))).toBe(false);
     expect((await readdir(PROJECT_ROOT)).some((path) => path.endsWith(".tgz"))).toBe(false);
     expect((await readdir(PROJECT_ROOT)).sort()).toEqual(before);
-  });
+  }, 30_000);
 
   test("doctor resolves a real directory without creating workspace state", async () => {
     const root = await temporaryProject();

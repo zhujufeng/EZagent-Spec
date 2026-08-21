@@ -719,20 +719,22 @@ describe("Codex integration initialization", () => {
         return nodeCodexIntegrationRuntime.lstat(path);
       },
       open: async (path, flags) => {
+        if (path === root && targetSynced) {
+          return {
+            stat: async () => nodeCodexIntegrationRuntime.lstat(root),
+            read: async () => ({ bytesRead: 0 }),
+            write: async () => ({ bytesWritten: 0 }),
+            truncate: async () => undefined,
+            sync: async () => { rootSynced = true; },
+            close: async () => undefined,
+          };
+        }
         const handle = await nodeCodexIntegrationRuntime.open(path, flags);
         if (path === agentsPath && typeof flags === "number" && (flags & constants.O_RDWR) !== 0) {
           return proxyHandle(handle, {
             sync: async () => {
               await handle.sync();
               targetSynced = true;
-            },
-          });
-        }
-        if (path === root && targetSynced) {
-          return proxyHandle(handle, {
-            sync: async () => {
-              await handle.sync();
-              rootSynced = true;
             },
           });
         }

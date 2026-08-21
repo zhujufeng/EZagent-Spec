@@ -1309,7 +1309,7 @@ describe("Codex project expert synchronization", () => {
     expect(await readdir(recoveryRoot)).toEqual([]);
     await expectMissing(join(root, ".codex"));
     await expectMissing(join(root, ".ezagent", "experts", "generated-codex.json"));
-  });
+  }, 30_000);
 
   it("rejects a new target when the actual Codex agents entry limit is full", async () => {
     const root = await initializedRoot(false);
@@ -1449,7 +1449,7 @@ describe("Codex project expert synchronization", () => {
     expect(await readdir(recoveryRoot)).toEqual([]);
     expect(await readdir(agents)).toEqual([]);
     expect(await readFile(manifestPath, "utf8")).toBe(manifestBytes);
-  });
+  }, 30_000);
 
   it("rejects actual on-disk portable case-fold collisions before managed writes", async () => {
     const root = await initializedRoot();

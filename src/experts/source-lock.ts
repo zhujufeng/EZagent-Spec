@@ -16,6 +16,14 @@ import { types as nodeTypes } from "node:util";
 import { parseDocument } from "yaml";
 
 import {
+  boundedStatSize,
+  exactInteger,
+  lstatBigint,
+  openBigint,
+  stableFileIdentity,
+  type PortableStats,
+} from "../filesystem/stats.js";
+import {
   assertAttestedSourceLockTextBudget,
   attestedPathCollisionKey,
   createAttestedLicenseEntry,
@@ -127,16 +135,16 @@ export interface SourceConfigReadRuntime {
 export interface SourceLockTemporaryHandle {
   readonly writeText: (content: string) => Promise<void>;
   readonly sync: () => Promise<void>;
-  readonly stat: () => Promise<Stats>;
+  readonly stat: () => Promise<PortableStats>;
   readonly close: () => Promise<void>;
 }
 
 export interface SourceLockPublishRuntime {
-  readonly lstat: (path: string) => Promise<Stats>;
+  readonly lstat: (path: string) => Promise<PortableStats>;
   readonly inspectFileNoFollow: (
     path: string,
     maxBytes: number,
-  ) => Promise<{ readonly stat: Stats; readonly content: string }>;
+  ) => Promise<{ readonly stat: PortableStats; readonly content: string }>;
   readonly openTemporary: (path: string) => Promise<SourceLockTemporaryHandle>;
   readonly link: (existingPath: string, newPath: string) => Promise<void>;
   readonly remove: (path: string, options: { readonly force: boolean }) => Promise<void>;
@@ -569,8 +577,8 @@ function localCheckoutErrorMessage(code: LocalCheckoutErrorCode, sourceId: strin
 }
 
 interface DirectoryIdentity {
-  readonly dev: number;
-  readonly ino: number;
+  readonly dev: number | bigint;
+  readonly ino: number | bigint;
 }
 
 function sameIdentity(left: DirectoryIdentity, right: DirectoryIdentity): boolean {
@@ -1363,23 +1371,34 @@ function isUnsupportedDirectorySync(error: unknown): boolean {
 }
 
 export const nodeSourceLockPublishRuntime: SourceLockPublishRuntime = {
-  lstat,
+  lstat: lstatBigint,
   inspectFileNoFollow: async (path, maxBytes) => {
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let handle: Awaited<ReturnType<typeof openBigint>> | undefined;
     try {
       const noFollow = process.platform === "win32" || typeof fsConstants.O_NOFOLLOW !== "number"
         ? 0
         : fsConstants.O_NOFOLLOW;
-      handle = await open(path, fsConstants.O_RDONLY | noFollow);
+      handle = await openBigint(path, fsConstants.O_RDONLY | noFollow);
       const stat = await handle.stat();
-      if (!stat.isFile() || stat.size < 0 || stat.size > maxBytes) {
+      const size = boundedStatSize(stat, maxBytes);
+      if (!stat.isFile() || size === undefined) {
         throw new Error("Published source lock is not a bounded regular file");
       }
-      const bytes = await readBoundedFileHandle(handle, stat, maxBytes);
-      const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      const allocation = Buffer.alloc(size + 1);
+      let length = 0;
+      while (length < allocation.length) {
+        const result = await handle.read(allocation, length, allocation.length - length, length);
+        if (result.bytesRead === 0) break;
+        length += result.bytesRead;
+      }
+      const after = await handle.stat();
+      if (length !== size || !samePublishedFile(stat, after)) {
+        throw new Error("Published source lock changed during bounded read");
+      }
+      const content = new TextDecoder("utf-8", { fatal: true }).decode(allocation.subarray(0, length));
       await handle.close();
       handle = undefined;
-      return { stat, content };
+      return { stat: after, content };
     } finally {
       if (handle !== undefined) {
         try { await handle.close(); } catch { /* preserve the primary inspection error */ }
@@ -1387,7 +1406,7 @@ export const nodeSourceLockPublishRuntime: SourceLockPublishRuntime = {
     }
   },
   openTemporary: async (path) => {
-    const handle = await open(path, "wx");
+    const handle = await openBigint(path, "wx");
     return {
       writeText: async (content) => handle.writeFile(content, "utf8"),
       sync: async () => handle.sync(),
@@ -1418,8 +1437,8 @@ export const nodeSourceLockPublishRuntime: SourceLockPublishRuntime = {
 async function observeLockParent(
   runtime: SourceLockPublishRuntime,
   parentPath: string,
-): Promise<Stats> {
-  let observed: Stats;
+): Promise<PortableStats> {
+  let observed: PortableStats;
   try {
     observed = await runtime.lstat(parentPath);
   } catch (error: unknown) {
@@ -1431,11 +1450,19 @@ async function observeLockParent(
   return observed;
 }
 
-function samePublishedFile(left: Stats, right: Stats): boolean {
+function samePublishedFile(left: PortableStats, right: PortableStats): boolean {
+  const leftIdentity = stableFileIdentity(left);
+  const rightIdentity = stableFileIdentity(right);
+  const leftSize = exactInteger(left.size);
+  const rightSize = exactInteger(right.size);
   return left.isFile()
     && right.isFile()
-    && sameIdentity(left, right)
-    && left.size === right.size;
+    && leftIdentity !== undefined
+    && rightIdentity !== undefined
+    && leftIdentity.dev === rightIdentity.dev
+    && leftIdentity.ino === rightIdentity.ino
+    && leftSize !== undefined
+    && leftSize === rightSize;
 }
 
 export async function writeSourceLockFile(
@@ -1467,14 +1494,14 @@ export async function writeSourceLockFile(
       throw new SourceLockWriteError("LOCK_PARENT_CHANGED", "not-published");
     }
 
-    let temporaryBeforeLink: Stats;
+    let temporaryBeforeLink: PortableStats;
     try {
       temporaryBeforeLink = await runtime.lstat(temporary);
     } catch (error: unknown) {
       throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "not-published", { cause: error });
     }
     if (!samePublishedFile(temporaryIdentity, temporaryBeforeLink)
-      || temporaryIdentity.size !== Buffer.byteLength(content, "utf8")) {
+      || exactInteger(temporaryIdentity.size) !== BigInt(Buffer.byteLength(content, "utf8"))) {
       throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "not-published");
     }
 
@@ -1482,7 +1509,7 @@ export async function writeSourceLockFile(
     await runtime.link(temporary, target);
     targetLinkAttempted = false;
     linkSucceeded = true;
-    let targetAfterLink: Stats | undefined;
+    let targetAfterLink: PortableStats | undefined;
     let targetInspection: Awaited<ReturnType<SourceLockPublishRuntime["inspectFileNoFollow"]>> | undefined;
     try {
       targetAfterLink = await runtime.lstat(target);
@@ -1500,7 +1527,7 @@ export async function writeSourceLockFile(
       || targetInspection.content !== content) {
       throw new SourceLockWriteError("LOCK_STAGING_CHANGED", "unknown");
     }
-    let parentAfterLink: Stats;
+    let parentAfterLink: PortableStats;
     try {
       parentAfterLink = await observeLockParent(runtime, parentPath);
     } catch (error: unknown) {

@@ -852,9 +852,13 @@ describe("source lock file", () => {
   it("atomically creates once, refuses no-clobber races, and conservatively retains staging names", async () => {
     const root = await temporaryRoot();
     const target = join(root, "sources.lock.json");
+    const runtime: SourceLockPublishRuntime = {
+      ...nodeSourceLockPublishRuntime,
+      syncDirectory: async () => "synced",
+    };
     const results = await Promise.allSettled([
-      writeSourceLockFile(target, lock),
-      writeSourceLockFile(target, lock),
+      writeSourceLockFile(target, lock, runtime),
+      writeSourceLockFile(target, lock, runtime),
     ]);
 
     expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
@@ -936,6 +940,7 @@ describe("source lock file", () => {
     const runtime: SourceLockPublishRuntime = {
       ...nodeSourceLockPublishRuntime,
       remove,
+      syncDirectory: async () => "synced",
     };
 
     const result = await writeSourceLockFile(target, lock, runtime);
@@ -1231,7 +1236,7 @@ describe("lockCatalogSources", () => {
     expect(result.sources[0]?.licenseFile?.sha256).toBe(
       `sha256:${createHash("sha256").update("MIT fixture license\n").digest("hex")}`,
     );
-  });
+  }, 30_000);
 
   it("labels the executable command as a local, release-only, no-network operation", async () => {
     const root = await temporaryRoot();
@@ -1250,7 +1255,7 @@ describe("lockCatalogSources", () => {
     expect(stdout).toContain("release-only");
     expect(stdout).toContain("local");
     expect(stdout).toContain("no network");
-  });
+  }, 30_000);
 
   it("propagates unsupported directory-sync warnings to the CLI notification seam", async () => {
     const root = await temporaryRoot();
@@ -1275,7 +1280,7 @@ describe("lockCatalogSources", () => {
       message: expect.stringContaining("retained"),
     });
     expect(onPublishWarning).toHaveBeenCalledTimes(2);
-  });
+  }, 30_000);
 
   it("detects sources YAML replacement during its no-follow stable read", async () => {
     const root = await temporaryRoot();

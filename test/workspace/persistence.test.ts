@@ -1,4 +1,4 @@
-import { copyFile, link, lstat, mkdtemp, mkdir, open, readFile, readlink, readdir, rename, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { copyFile, link, lstat, mkdtemp, mkdir, readFile, readlink, readdir, rename, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { lstatBigint, openBigint, statBigint } from "../../src/filesystem/stats.js";
 import { atomicWriteText } from "../../src/workspace/atomic-write.js";
 import { WorkspaceCorruptError, WorkspaceLockedError } from "../../src/workspace/errors.js";
 import { workspacePaths } from "../../src/workspace/layout.js";
@@ -47,13 +48,13 @@ function lockRuntime(overrides: Partial<WorkspaceLockRuntime> = {}): WorkspaceLo
   return {
     copyFile,
     link,
-    lstat,
+    lstat: lstatBigint,
     mkdir: async (path) => { await mkdir(path); },
-    open,
+    open: openBigint,
     readFile,
     rename,
     rm,
-    stat,
+    stat: statBigint,
     randomUUID,
     pid: process.pid,
     kill: (pid) => { process.kill(pid, 0); },
@@ -318,17 +319,17 @@ describe("withWorkspaceLock", () => {
     const root = await temporaryProject();
     const lock = workspacePaths(root).lock;
     const lockWithUnavailableIdentity = createWorkspaceLock(lockRuntime({
-      stat: async (path) => ({ ...(await stat(path)), dev: 0, ino: 0 }),
+      stat: async (path) => ({ ...(await statBigint(path)), dev: 0n, ino: 0n }),
       open: async (...args) => {
-        const handle = await open(...args);
+        const handle = await openBigint(...args);
         return new Proxy(handle, {
           get(target, property, receiver) {
             if (property === "stat") {
-              return async () => ({ ...(await target.stat()), dev: 0, ino: 0 });
+              return async () => ({ ...(await target.stat()), dev: 0n, ino: 0n });
             }
             return Reflect.get(target, property, receiver);
           },
-        }) as Awaited<ReturnType<typeof open>>;
+        }) as Awaited<ReturnType<typeof openBigint>>;
       },
     }));
 
@@ -343,12 +344,12 @@ describe("withWorkspaceLock", () => {
     const oversizedIdentity = BigInt(Number.MAX_SAFE_INTEGER) + 101n;
     const lockWithBigintIdentity = createWorkspaceLock(lockRuntime({
       stat: async (path) => ({
-        ...(await stat(path)),
+        ...(await statBigint(path)),
         dev: oversizedIdentity,
         ino: oversizedIdentity + 1n,
-      }) as unknown as Awaited<ReturnType<typeof stat>>,
+      }) as unknown as Awaited<ReturnType<typeof statBigint>>,
       open: async (...args) => {
-        const handle = await open(...args);
+        const handle = await openBigint(...args);
         return new Proxy(handle, {
           get(target, property, receiver) {
             if (property === "stat") {
@@ -360,7 +361,7 @@ describe("withWorkspaceLock", () => {
             }
             return Reflect.get(target, property, receiver);
           },
-        }) as Awaited<ReturnType<typeof open>>;
+        }) as Awaited<ReturnType<typeof openBigint>>;
       },
     }));
 
@@ -500,7 +501,7 @@ describe("withWorkspaceLock", () => {
           });
           await thirdEntered;
         }
-        return open(...args);
+        return openBigint(...args);
       },
     }));
 
@@ -522,7 +523,7 @@ describe("withWorkspaceLock", () => {
     const allowMetadataWrite = new Promise<void>((resolve) => { allowWrite = resolve; });
     const writer = createWorkspaceLock(lockRuntime({
       open: async (...args) => {
-        const handle = await open(...args);
+        const handle = await openBigint(...args);
         return new Proxy(handle, {
           get(target, property, receiver) {
             if (property === "writeFile") {
@@ -534,7 +535,7 @@ describe("withWorkspaceLock", () => {
             }
             return Reflect.get(target, property, receiver);
           },
-        }) as Awaited<ReturnType<typeof open>>;
+        }) as Awaited<ReturnType<typeof openBigint>>;
       },
     }));
 
@@ -637,7 +638,7 @@ describe("withWorkspaceLock", () => {
     const publisher = createWorkspaceLock(lockRuntime({
       link: async () => { throw Object.assign(new Error("link failed"), { code: "EIO" }); },
       open: async (...args) => {
-        const handle = await open(...args);
+        const handle = await openBigint(...args);
         return new Proxy(handle, {
           get(target, property, receiver) {
             if (property === "close") {
@@ -648,7 +649,7 @@ describe("withWorkspaceLock", () => {
             }
             return Reflect.get(target, property, receiver);
           },
-        }) as Awaited<ReturnType<typeof open>>;
+        }) as Awaited<ReturnType<typeof openBigint>>;
       },
     }));
 
