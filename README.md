@@ -2,7 +2,7 @@
 
 面向中文团队的 Local-only Spec Coding Codex 插件。EZagent Spec 在项目内保存结构化需求、Spec、任务、专家、知识和质量证据，降低纯 vibe coding 的不确定性，并让上下文可以跨会话恢复。
 
-> 当前为 `0.1.0` MVP。初始化、上下文恢复、Router、265 位中文专家目录和安全状态转换已经可用；完整 `capture/plan/replan/Knowledge` 生命周期仍在开发中，缺少能力时会关闭失败。
+> 当前为 `0.1.0` MVP。初始化、上下文恢复、Router、265 位中文专家目录、自动专家组队、Plan 原子批准与 replan 已可用；Knowledge 持久化和高风险授权签发仍在开发中，缺少能力时会关闭失败。
 
 ## 安装
 
@@ -69,11 +69,42 @@ codex plugin marketplace remove ezagent
 3. Router 通过插件内自足 CLI 读取可信上下文，再路由到 Spec、Implement 或 Review Skill。
 4. `.ezagent/**` 只能由本地核心修改，Skill 不能直接编辑状态文件。
 
+## 自动专家团队
+
+用户不需要查看目录或手动挑选 Agent。Router 会先把需求整理成结构化 Plan，再由本地核心根据 capabilities、domains、project signals 和风险等级，从 265 位中文专家中确定一个尽量小的候选团队。`standard` 和 `high` 任务还必须包含一位没有参与实现的独立审查者；团队人数不是固定三位，超过软阈值时才额外请求确认。
+
+Plan 和团队只确认一次。例如用户提出“给用户资料 API 增加输入校验”时，合并预览会类似：
+
+```text
+Plan: 实现用户资料输入校验
+风险: standard
+验收: 非法输入返回结构化错误；API 测试通过
+团队:
+  [implement] 工程实现专家 — 实现校验与回归测试
+  [review] API 测试专家 — 独立只读审查失败路径
+质量门: API 测试通过；实现者不得自审
+```
+
+用户批准后，本地核心会原子写入 Requirement、Spec、Task、团队历史和审计记录，并生成当前项目需要的 `.codex/agents/ezagent-*.toml`。后续新会话自动从 `context` 恢复同一个已批准团队，不会再次要求初始化或选专家。
+
+如果实施中范围、风险、依赖或能力需求变化，Agent 必须停止编码并给出 replan 差异，例如：
+
+```text
+团队差异:
+  added:   安全工程专家
+  changed: 工程实现专家（新增安全校验交付物）
+  removed: 无
+```
+
+只有用户批准 replacement Plan 后才更新团队并继续；取消 Task 时当前团队会退出 active 列表，但不可变团队历史仍保留用于恢复和审计。
+
 ## 能力与边界
 
 解释和只读咨询不会创建工作项。行为变化按 `light`、`standard` 或 `high` 分类；专家数量按任务能力动态选择，不固定为三位。所有多 Agent 委派都必须携带 Requirement、Spec、Task、expert、delegation、范围、交付物和质量门标识。
 
-当前插件可以完成环境检测、集成预览、一次性初始化、上下文恢复、受限状态转换、Skills 路由和失败关闭。完整 `capture/plan/replan/Knowledge` 持久化命令和高风险授权签发仍在开发中。因此当前版本可以形成结构化 Spec 草案并执行已存在的合法 Task 流转，但不会伪造尚未支持的产物、命令或授权。
+当前插件可以完成环境检测、集成预览、一次性初始化、上下文恢复、结构化 Plan 预览和原子批准、自动专家组队、项目专家生成、replan 差异与批准、受限状态转换、Skills 路由和失败关闭。
+
+Knowledge 持久化和高风险授权签发仍在开发中。高风险 Task 没有有效的 action 授权就不能进入实现；即使所有质量门通过，在结构化 Knowledge 能够写入、读回和验证之前，Task 仍会保持 `verifying`，`completed` 会被本地核心阻止。插件不会伪造尚未支持的产物或授权。
 
 当前没有经过本项目验证的 `PreToolUse` interception contract。提示规则负责路由，本地核心的确定性状态转换负责关闭失败：revision、状态、批准或安全条件不满足时不会推进。
 

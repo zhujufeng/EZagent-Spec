@@ -161,10 +161,11 @@ async function runPackagedCli(
   cliPath: string,
   cwd: string,
   args: readonly string[],
+  input?: unknown,
 ): Promise<unknown> {
   const argv = [cliPath, ...args];
   return new Promise((fulfill, reject) => {
-    execFile(process.execPath, argv, {
+    const child = execFile(process.execPath, argv, {
       cwd,
       encoding: "utf8",
       env: offlineEnvironment(),
@@ -183,6 +184,7 @@ async function runPackagedCli(
         reject(parseError);
       }
     });
+    child.stdin?.end(input === undefined ? undefined : `${JSON.stringify(input)}\n`);
   });
 }
 
@@ -260,7 +262,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(bundle).not.toMatch(
       /process\s*\.\s*(?:getBuiltinModule|binding|_linkedBinding)|\bmodule\s*\.\s*(?:createRequire|_load)|\b(?:eval|Function)\s*\(|\b(?:WebSocket|EventSource)\s*\(|navigator\s*\.\s*sendBeacon/u,
     );
-    expect(bundle).not.toMatch(/\bfetch\s*\(|\bgit\s+(?:commit|push)|(?:telemetry|sentry|opentelemetry)/iu);
+    expect(bundle).not.toMatch(/\bfetch\s*\(|\bgit\s+(?:commit|push)|\b(?:telemetry|sentry|opentelemetry)\b/iu);
 
     const cliPath = join(installedPlugin, "dist", "ezagent-cli.mjs");
     await expect(runPackagedCli(cliPath, projectRoot, ["doctor", "--root", projectRoot])).resolves.toMatchObject({
@@ -320,6 +322,13 @@ describe.sequential("Codex plugin offline release smoke", () => {
       project: { schemaVersion: 1, name: "Demo ; $literal", gitTracking: "none" },
       state: { schemaVersion: 1, revision: 0, activeWorkItem: null, safeMode: false },
       recovered: false,
+      requirement: null,
+      spec: null,
+      task: null,
+      team: null,
+      blockers: [],
+      recoveryStatus: "ready",
+      platformSyncStatus: "none",
     });
     const afterFirstInitialization = await treeSnapshot(projectRoot);
     const secondPreview = await runPackagedCli(cliPath, projectRoot, [
@@ -346,6 +355,71 @@ describe.sequential("Codex plugin offline release smoke", () => {
       projectRoot,
       "--json",
     ])).resolves.toEqual(firstContext);
+
+    const draft = {
+      schemaVersion: 1,
+      requirement: { title: "离线资料校验", summary: "验证复制插件的自动专家闭环" },
+      spec: {
+        goal: "校验资料 API 输入",
+        scope: ["资料更新接口"],
+        nonGoals: ["不改变登录"],
+        acceptance: ["非法输入返回错误"],
+        verification: ["运行 API 测试"],
+      },
+      task: {
+        title: "实现资料校验",
+        risk: "standard",
+        allowedPaths: ["src/users/**", "test/users/**"],
+        deliverables: ["实现和测试"],
+        qualityGates: ["API 测试通过", "独立审查"],
+      },
+      selection: {
+        capabilities: ["production-implementation"],
+        domains: ["engineering"],
+        projectSignals: ["api"],
+        reviewAfter: 6,
+      },
+    };
+    const selection = await runPackagedCli(cliPath, projectRoot, [
+      "team-select-preview", "--root", projectRoot,
+    ], draft) as {
+      readonly members: readonly { readonly expertId: string; readonly mode: string }[];
+      readonly selectionFingerprint: string;
+    };
+    expect(selection.members.some(({ mode }) => mode === "implement")).toBe(true);
+    expect(selection.members.some(({ mode }) => mode === "review")).toBe(true);
+    const planInput = {
+      draft,
+      selectionFingerprint: selection.selectionFingerprint,
+      assignments: selection.members.map((member) => ({
+        expertId: member.expertId,
+        scope: [member.mode === "review" ? "独立只读审查" : "实现资料校验"],
+        deliverables: [member.mode === "review" ? "审查结论" : "实现与测试"],
+        qualityGates: [member.mode === "review" ? "不得自审" : "API 测试通过"],
+      })),
+    };
+    const planPreview = await runPackagedCli(cliPath, projectRoot, [
+      "plan-preview", "--root", projectRoot,
+    ], planInput) as { readonly approvalToken: string };
+    const applied = await runPackagedCli(cliPath, projectRoot, [
+      "plan-apply", "--root", projectRoot, "--approval-token", planPreview.approvalToken,
+    ], planInput) as { readonly platformSyncStatus: string };
+    expect(applied.platformSyncStatus).toBe("ready");
+
+    const restored = await runPackagedCli(cliPath, projectRoot, [
+      "context", "--root", projectRoot, "--json",
+    ]);
+    expect(restored).toMatchObject({
+      state: { activeWorkItem: { status: "planned" } },
+      team: { teamRevision: 1 },
+      platformSyncStatus: "ready",
+    });
+    const beforeReconcile = await treeSnapshot(join(projectRoot, ".codex", "agents"));
+    await runPackagedCli(cliPath, projectRoot, ["experts-reconcile", "--root", projectRoot]);
+    expect(await treeSnapshot(join(projectRoot, ".codex", "agents"))).toEqual(beforeReconcile);
+    await expect(runPackagedCli(cliPath, projectRoot, [
+      "context", "--root", projectRoot, "--json",
+    ])).resolves.toEqual(restored);
   });
 
   test("defines read-only cross-platform CI and LF checkout contracts structurally", async () => {
@@ -440,7 +514,11 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(readme).toContain("初始化一次");
     expect(readme).toContain("自然语言");
     expect(readme).toContain("Local-only");
-    expect(readme).toContain("capture/plan/replan/Knowledge");
+    expect(readme).toContain("自动专家组队");
+    expect(readme).toContain("Plan 和团队只确认一次");
+    expect(readme).toContain("团队差异:");
+    expect(readme).toContain("Task 仍会保持 `verifying`");
+    expect(readme).toContain("`completed` 会被本地核心阻止");
     expect(readme).toContain("高风险授权签发");
     expect(readme).toContain("关闭失败");
     expect(readme).toContain("MIT License");
@@ -455,7 +533,10 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(roadmap).toContain("plugins/ezagent-spec/");
     expect(roadmap).toContain("Skills + managed AGENTS.md + bundled CLI");
     expect(roadmap).toContain("官方插件 validator + offline activation smoke");
-    expect(roadmap).toContain("capture/plan/replan/Knowledge/高风险授权签发");
+    expect(roadmap).toContain("partial: automatic team vertical slice verified");
+    expect(roadmap).toContain("team-select-preview → plan-preview → plan-apply");
+    expect(roadmap).toContain("Knowledge");
+    expect(roadmap).toContain("高风险授权签发");
     expect(roadmap).toContain("macOS 与 Windows GitHub Actions");
     expect(roadmap).toContain("公开 marketplace");
     expect(roadmap).not.toContain("Windows：pending first CI run");

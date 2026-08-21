@@ -10,7 +10,7 @@
 - 运行环境：macOS、Windows
 - 核心技术：TypeScript、Node.js
 
-> **实施状态（2026-08-21）：** 本文描述的是获批的产品目标和完整 MVP，而不是当前分支已经全部交付的能力。当前 Codex 插件里程碑已通过 macOS 与 Windows GitHub Actions，验证初始化、上下文恢复、专家生成、自动 Router 和离线分发；`capture/plan/replan/Knowledge` 的完整持久化命令、高风险授权签发和无 Node.js 时的安装辅助仍属于后续 workflow/release 里程碑。缺少这些能力时实现必须关闭失败，不得伪造产物、命令或授权。
+> **实施状态（2026-08-21）：** 本文描述的是获批的产品目标和完整 MVP，而不是当前分支已经全部交付的能力。当前 Codex 插件已验证初始化、自动 Router、265 位离线目录，以及“结构化 Plan → 自动选队 → Plan/团队一次批准 → 项目专家生成 → 跨进程恢复 → replan 差异 → 退场”的纵向闭环。独立 capture/clarify 体验、Knowledge 持久化、高风险授权签发和无 Node.js 时的安装辅助仍属于后续 workflow/release 工作；缺少这些能力时实现必须关闭失败，不得伪造产物、命令或授权。
 
 ## 1. 摘要
 
@@ -311,7 +311,7 @@ content_hash: sha256:...
 
 `.ezagent/experts/active.yaml` 是当前项目专家选择的事实来源。Codex 适配器只为实际启用的专家生成 `.codex/agents/ezagent-*.toml`，不会把完整目录注入上下文。
 
-专家可以在执行中动态追加。当新增能力缺口得到证明时，核心记录选择理由并生成新的适配文件；不再需要的专家退出当前工作项，但仍保留审计记录。
+专家团队不能在执行中静默追加。当新增能力缺口得到证明时，必须停止实现并生成 replacement Plan；本地核心展示成员 added、removed、changed、unchanged 差异，用户批准后才写入新团队 revision 并重新生成适配文件。不再需要的专家退出当前 active 列表，但不可变团队历史与审计记录继续保留。
 
 ### 9.3 委派契约
 

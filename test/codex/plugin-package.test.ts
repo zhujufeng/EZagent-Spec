@@ -268,9 +268,19 @@ describe.sequential("self-contained Codex plugin package", () => {
     expect(bundle.startsWith("#!/usr/bin/env node\n")).toBe(true);
     expect(bundle).not.toMatch(/[ \t]+$/mu);
     expect(bundle).not.toMatch(/\bfetch\s*\(/u);
-    expect(bundle).not.toMatch(/(?:opentelemetry|sentry|telemetry sdk)/iu);
+    expect(bundle).not.toMatch(/\b(?:opentelemetry|sentry|telemetry sdk)\b/iu);
     expect(bundle).not.toMatch(/\bgit\s+(?:commit|push)\b/iu);
     expect(bundle).not.toContain("Trellis");
+    for (const command of [
+      "team-select-preview",
+      "plan-preview",
+      "plan-apply",
+      "replan-preview",
+      "replan-apply",
+      "experts-reconcile",
+    ]) {
+      expect(bundle).toContain(command);
+    }
     const importSpecifiers = [...bundle.matchAll(
       /\b(?:import|export)(?:[^"'`;]*?\bfrom)?\s*["']([^"']+)["']/gu,
     )]
