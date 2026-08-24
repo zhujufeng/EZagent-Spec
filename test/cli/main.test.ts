@@ -478,6 +478,9 @@ describe.sequential("ezagent CLI", () => {
       workSpec: { workSpec: { mode: "brief" } },
       workItem: { status: "planned" },
     });
+    expect(expectJsonSuccess(await runCli([
+      "work-start", "--root", root, "--slice", "slice-tracer",
+    ]))).toMatchObject({ status: "implementing", slices: [{ status: "executing" }] });
     expectJsonSuccess(await runCli(
       ["journal-append", "--root", root],
       PROJECT_ROOT,
@@ -648,7 +651,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 

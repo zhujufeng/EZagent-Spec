@@ -98,6 +98,28 @@ describe("Agent Work Harness service", () => {
     });
   });
 
+  test("starts one unblocked Slice and exposes executing state for session recovery", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+
+    const started = await fixture.service.workStartSlice("slice-tracer");
+
+    expect(started).toMatchObject({
+      status: "implementing",
+      revision: 1,
+      slices: [{ id: "slice-tracer", status: "executing" }],
+    });
+    expect((await fixture.service.resumeContext()).task).toMatchObject({
+      status: "implementing",
+      slices: [{ status: "executing" }],
+    });
+    expect(started.id).toBe(applied.workItem.id);
+  });
+
   test("returns an incomplete Slice to revise instead of treating partial Evidence as done", async () => {
     const fixture = await createWorkflowTeamFixture();
     const preview = await fixture.service.workPreview(genericWorkContractDraft);

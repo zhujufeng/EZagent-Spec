@@ -1086,7 +1086,7 @@ export class ExpertTeamWorkflowService {
     }
     const sliceIndex = records.workItem.slices.findIndex(({ id }) => id === bundle.sliceId);
     const currentSlice = records.workItem.slices[sliceIndex];
-    if (currentSlice === undefined || !["pending", "executing", "revise"].includes(currentSlice.status)) {
+    if (currentSlice === undefined || !["pending", "executing", "accepted", "revise"].includes(currentSlice.status)) {
       throw new Error("Slice is not ready for Evidence review");
     }
     if (currentSlice.blockedBy.some((id) => (
@@ -1145,6 +1145,55 @@ export class ExpertTeamWorkflowService {
       evidencePath: path,
       workspaceRevision: nextState.revision,
     });
+  }
+
+  async workStartSlice(sliceId: string): Promise<WorkItemArtifactV2> {
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan cannot use the v2 Slice lifecycle");
+    const sliceIndex = records.workItem.slices.findIndex(({ id }) => id === sliceId);
+    const currentSlice = records.workItem.slices[sliceIndex];
+    if (currentSlice === undefined || !["pending", "revise"].includes(currentSlice.status)) {
+      throw new Error("Slice is not ready to start");
+    }
+    if (currentSlice.blockedBy.some((id) => (
+      records.workItem.slices.find((slice) => slice.id === id)?.status !== "accepted"
+    ))) {
+      throw new Error("Slice dependencies must be accepted before execution");
+    }
+    const workItem: WorkItemArtifactV2 = {
+      ...records.workItem,
+      status: "implementing",
+      revision: records.workItem.revision + 1,
+      slices: records.workItem.slices.map((slice, index) => (
+        index === sliceIndex ? { ...slice, status: "executing" } : slice
+      )),
+    };
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+      activeWorkItem: {
+        id: workItem.id,
+        kind: "task",
+        status: workItem.status,
+        risk: workModeRisk(records.workSpec.workSpec.mode),
+        revision: workItem.revision,
+      },
+    };
+    await repository.commitMutation(
+      nextState,
+      context.state.revision,
+      "slice-started",
+      [{ relativePath: `tasks/${workItem.id}.yaml`, content: serializeWorkItemArtifactV2(workItem) }],
+      {
+        workItemId: workItem.id,
+        workSpecId: records.workSpec.id,
+        workItemRevision: workItem.revision,
+        sliceId,
+      },
+    );
+    return Object.freeze(workItem);
   }
 
   async workJournalAppend(inputValue: unknown): Promise<WorkJournalAppendResult> {

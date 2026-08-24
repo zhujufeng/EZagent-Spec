@@ -27,7 +27,7 @@ import {
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const WORK_ITEM_STATUSES = [
@@ -51,6 +51,7 @@ type Command =
   | "integration-init"
   | "work-preview"
   | "work-apply"
+  | "work-start"
   | "work-review"
   | "work-complete"
   | "journal-append"
@@ -114,6 +115,11 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     valueOptions: ["--root", "--approval-token"],
     booleanOptions: [],
     requiredOptions: ["--root", "--approval-token"],
+  },
+  "work-start": {
+    valueOptions: ["--root", "--slice"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--slice"],
   },
   "work-review": {
     valueOptions: ["--root"],
@@ -411,6 +417,11 @@ export async function runCli(
       draft: await readBoundedJsonInput(runtime.stdin),
       approvalToken: requiredValueOption(parsed, "--approval-token"),
     }));
+    return;
+  }
+
+  if (parsed.command === "work-start") {
+    writeJson(io, await workflow.workStartSlice(requiredValueOption(parsed, "--slice")));
     return;
   }
 
