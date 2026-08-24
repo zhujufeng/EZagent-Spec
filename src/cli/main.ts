@@ -27,7 +27,7 @@ import {
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const WORK_ITEM_STATUSES = [
@@ -49,6 +49,12 @@ type Command =
   | "transition"
   | "integration-preview"
   | "integration-init"
+  | "work-preview"
+  | "work-apply"
+  | "work-review"
+  | "journal-append"
+  | "side-effect-preview"
+  | "side-effect-apply"
   | "team-select-preview"
   | "plan-preview"
   | "plan-apply"
@@ -97,6 +103,36 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     valueOptions: ["--root", "--name", "--agents-token"],
     booleanOptions: [],
     requiredOptions: ["--root", "--name", "--agents-token"],
+  },
+  "work-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "work-apply": {
+    valueOptions: ["--root", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-token"],
+  },
+  "work-review": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "journal-append": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "side-effect-preview": {
+    valueOptions: ["--root", "--approval-point"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-point"],
+  },
+  "side-effect-apply": {
+    valueOptions: ["--root", "--approval-point", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-point", "--approval-token"],
   },
   "team-select-preview": {
     valueOptions: ["--root"],
@@ -359,6 +395,42 @@ export async function runCli(
 
   const workflow = runtime.createWorkflowService(root);
 
+  if (parsed.command === "work-preview") {
+    writeJson(io, await workflow.workPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "work-apply") {
+    writeJson(io, await workflow.workApply({
+      draft: await readBoundedJsonInput(runtime.stdin),
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    }));
+    return;
+  }
+
+  if (parsed.command === "work-review") {
+    writeJson(io, await workflow.workReviewSlice(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "journal-append") {
+    writeJson(io, await workflow.workJournalAppend(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "side-effect-preview") {
+    writeJson(io, await workflow.sideEffectPreview(requiredValueOption(parsed, "--approval-point")));
+    return;
+  }
+
+  if (parsed.command === "side-effect-apply") {
+    writeJson(io, await workflow.sideEffectApply({
+      approvalPointId: requiredValueOption(parsed, "--approval-point"),
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    }));
+    return;
+  }
+
   if (parsed.command === "sharing-preview") {
     writeJson(io, await workflow.sharingPreview(await readBoundedJsonInput(runtime.stdin)));
     return;
@@ -447,6 +519,7 @@ export async function runCli(
       spec: resumed.spec,
       task: resumed.task,
       team: resumed.team,
+      journal: resumed.journal,
       projectContext: resumed.projectContext,
       knowledge: resumed.knowledge,
       blockers: resumed.blockers,

@@ -19,6 +19,11 @@ import {
   knowledgeRecordPath,
   serializeKnowledgeRecord,
 } from "../../src/workflow/knowledge.js";
+import {
+  controlledActionDraft,
+  genericEvidenceBundle,
+  genericWorkContractDraft,
+} from "../fixtures/work-contract-fixture.js";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 const CLI_PATH = join(PROJECT_ROOT, "dist", "src", "cli", "main.js");
@@ -245,6 +250,7 @@ describe.sequential("ezagent CLI", () => {
       spec: null,
       task: null,
       team: null,
+      journal: null,
       projectContext: null,
       knowledge: [],
       blockers: [],
@@ -455,6 +461,85 @@ describe.sequential("ezagent CLI", () => {
     ]);
   }, 30_000);
 
+  test("starts, journals, and reviews domain-neutral work through bounded JSON stdin", async () => {
+    const root = await temporaryProject();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "General Work"]));
+    const preview = expectJsonSuccess(await runCli(
+      ["work-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericWorkContractDraft)}\n` },
+    )) as { readonly approvalToken: string };
+    const applied = expectJsonSuccess(await runCli(
+      ["work-apply", "--root", root, "--approval-token", preview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericWorkContractDraft)}\n` },
+    )) as { readonly workItem: { readonly id: string }; readonly workSpec: { readonly id: string } };
+    expect(applied).toMatchObject({
+      workSpec: { workSpec: { mode: "brief" } },
+      workItem: { status: "planned" },
+    });
+    expectJsonSuccess(await runCli(
+      ["journal-append", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify({
+        schemaVersion: 1,
+        workItemId: applied.workItem.id,
+        sliceId: "slice-tracer",
+        summary: "已完成小样本复现。",
+        observations: ["偏差可以稳定复现。"],
+        decisions: ["继续使用当前口径。"],
+        failedApproaches: [],
+        nextStep: "提交证据审查。",
+        contextPointers: [],
+      })}\n` },
+    ));
+    const reviewed = expectJsonSuccess(await runCli(
+      ["work-review", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericEvidenceBundle(applied.workItem.id, applied.workSpec.id))}\n` },
+    ));
+    expect(reviewed).toMatchObject({
+      coverage: { complete: true },
+      workItem: { status: "verifying", slices: [{ status: "accepted" }] },
+    });
+    expect(expectJsonSuccess(await runCli(["context", "--root", root, "--json"]))).toMatchObject({
+      spec: { sourceSchemaVersion: 2, mode: "brief" },
+      task: { sourceSchemaVersion: 2, slices: [{ status: "accepted" }] },
+      team: null,
+      journal: { sequence: 1, nextStep: "提交证据审查。" },
+      platformSyncStatus: "none",
+    });
+  }, 30_000);
+
+  test("keeps external execution off after a Side Effect approval command", async () => {
+    const root = await temporaryProject();
+    const draft = controlledActionDraft();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Controlled Work"]));
+    const workPreview = expectJsonSuccess(await runCli(
+      ["work-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    )) as { readonly approvalToken: string };
+    expectJsonSuccess(await runCli(
+      ["work-apply", "--root", root, "--approval-token", workPreview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    ));
+    const sideEffect = expectJsonSuccess(await runCli([
+      "side-effect-preview", "--root", root, "--approval-point", "approval-publish",
+    ])) as { readonly approvalToken: string };
+
+    expect(expectJsonSuccess(await runCli([
+      "side-effect-apply", "--root", root,
+      "--approval-point", "approval-publish",
+      "--approval-token", sideEffect.approvalToken,
+    ]))).toMatchObject({
+      status: "approved",
+      approvalPointId: "approval-publish",
+      externalActionExecuted: false,
+    });
+  }, 30_000);
+
   test("previews Codex integration as one-line JSON without creating project state", async () => {
     const root = await temporaryProject();
 
@@ -548,7 +633,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 
