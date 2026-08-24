@@ -18,7 +18,11 @@ import { transitionWorkItem } from "../domain/state-machine.js";
 import type { WorkItemStatus } from "../domain/work-item.js";
 import { workspacePaths } from "../workspace/layout.js";
 import { WorkspaceRepository } from "../workspace/repository.js";
-import type { WorkspaceState } from "../workspace/schema.js";
+import {
+  serializeProjectConfig,
+  type ProjectConfig,
+  type WorkspaceState,
+} from "../workspace/schema.js";
 import {
   finalizeExpertTeam,
   diffExpertTeams,
@@ -77,6 +81,8 @@ import {
   PROJECT_CONTEXT_MAX_BYTES,
   PROJECT_CONTEXT_PATH,
   parseProjectContextYaml,
+  parseProjectContext,
+  serializeProjectContext,
   type ProjectContext,
 } from "./project-context.js";
 
@@ -133,6 +139,27 @@ export interface KnowledgeCaptureResult {
   readonly knowledgeHash: `sha256:${string}`;
 }
 
+export interface SharingPreview {
+  readonly currentGitTracking: "none" | "artifacts";
+  readonly targetGitTracking: "artifacts";
+  readonly writePaths: readonly string[];
+  readonly sharedPaths: readonly string[];
+  readonly excludedPaths: readonly string[];
+  readonly approvalToken: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
+export interface SharingApplyInput {
+  readonly projectContext: ProjectContext;
+  readonly approvalToken: `sha256:${string}`;
+}
+
+export interface SharingApplyResult {
+  readonly gitTracking: "artifacts";
+  readonly projectContext: ProjectContext;
+  readonly workspaceRevision: number;
+}
+
 export interface ReplanPreview {
   readonly requirement: RequirementArtifact;
   readonly spec: SpecArtifact;
@@ -165,6 +192,33 @@ interface PreparedReplan extends ReplanPreview {
   readonly state: WorkspaceState;
   readonly activeExperts: ActiveExperts;
 }
+
+interface PreparedSharing extends SharingPreview {
+  readonly canonicalRoot: string;
+  readonly repository: WorkspaceRepository;
+  readonly state: WorkspaceState;
+  readonly project: ProjectConfig;
+  readonly projectContext: ProjectContext;
+}
+
+const SHARING_WRITE_PATHS = Object.freeze(["project.yaml", PROJECT_CONTEXT_PATH]);
+const SHARED_ARTIFACT_PATHS = Object.freeze([
+  "project.yaml",
+  "requirements/*.yaml",
+  "specs/*.yaml",
+  "tasks/*.yaml",
+  PROJECT_CONTEXT_PATH,
+  "knowledge/decisions/SPEC-*.md",
+  "knowledge/patterns/SPEC-*.md",
+]);
+const EXCLUDED_LOCAL_PATHS = Object.freeze([
+  "audit/**",
+  "backups/**",
+  "quality/runs/**",
+  "state/**",
+  "experts/active.yaml",
+  "experts/teams/**",
+]);
 
 function portableCompare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -482,6 +536,39 @@ function replanToken(
   })).digest("hex")}`;
 }
 
+function sharingToken(
+  canonicalRoot: string,
+  workspaceRevision: number,
+  project: ProjectConfig,
+  existingProjectContext: ProjectContext | null,
+  projectContext: ProjectContext,
+): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    schemaVersion: 1,
+    operation: "artifact-sharing",
+    canonicalRoot,
+    workspaceRevision,
+    project,
+    existingProjectContext,
+    projectContext,
+  })).digest("hex")}`;
+}
+
+function parseSharingApplyInput(value: unknown): SharingApplyInput {
+  const record = exactObject(
+    value,
+    ["projectContext", "approvalToken"],
+    ["projectContext", "approvalToken"],
+  );
+  if (typeof record.approvalToken !== "string" || !HASH.test(record.approvalToken)) {
+    throw new TypeError("sharing approval token is invalid");
+  }
+  return Object.freeze({
+    projectContext: parseProjectContext(record.projectContext),
+    approvalToken: record.approvalToken as `sha256:${string}`,
+  });
+}
+
 async function assertMissing(root: string, relativePaths: readonly string[]): Promise<void> {
   for (const relativePath of relativePaths) {
     const path = join(workspacePaths(root).root, ...relativePath.split("/"));
@@ -593,6 +680,85 @@ export class ExpertTeamWorkflowService {
       ...proposal,
       vocabularyMismatches: vocabularyMismatches(draft, catalog),
       catalogFingerprint: catalog.fingerprint,
+    });
+  }
+
+  private async prepareSharing(projectContextValue: unknown): Promise<PreparedSharing> {
+    const projectContext = parseProjectContext(projectContextValue);
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    if (context.project.gitTracking !== "none" && context.project.gitTracking !== "artifacts") {
+      throw new Error("artifact sharing requires current gitTracking to be none or artifacts");
+    }
+    const existingProjectContext = await readProjectContext(canonicalRoot);
+    return Object.freeze({
+      currentGitTracking: context.project.gitTracking,
+      targetGitTracking: "artifacts",
+      writePaths: SHARING_WRITE_PATHS,
+      sharedPaths: SHARED_ARTIFACT_PATHS,
+      excludedPaths: EXCLUDED_LOCAL_PATHS,
+      approvalToken: sharingToken(
+        canonicalRoot,
+        context.state.revision,
+        context.project,
+        existingProjectContext,
+        projectContext,
+      ),
+      workspaceRevision: context.state.revision,
+      canonicalRoot,
+      repository,
+      state: context.state,
+      project: context.project,
+      projectContext,
+    });
+  }
+
+  async sharingPreview(projectContextValue: unknown): Promise<SharingPreview> {
+    const prepared = await this.prepareSharing(projectContextValue);
+    return Object.freeze({
+      currentGitTracking: prepared.currentGitTracking,
+      targetGitTracking: prepared.targetGitTracking,
+      writePaths: prepared.writePaths,
+      sharedPaths: prepared.sharedPaths,
+      excludedPaths: prepared.excludedPaths,
+      approvalToken: prepared.approvalToken,
+      workspaceRevision: prepared.workspaceRevision,
+    });
+  }
+
+  async sharingApply(inputValue: unknown): Promise<SharingApplyResult> {
+    const input = parseSharingApplyInput(inputValue);
+    const prepared = await this.prepareSharing(input.projectContext);
+    if (prepared.approvalToken !== input.approvalToken) {
+      throw new Error("sharing approval token no longer matches the current workspace or project context");
+    }
+    const project: ProjectConfig = { ...prepared.project, gitTracking: "artifacts" };
+    const projectContextContents = serializeProjectContext(prepared.projectContext);
+    const nextState: WorkspaceState = {
+      ...prepared.state,
+      revision: prepared.state.revision + 1,
+    };
+    await prepared.repository.commitMutation(
+      nextState,
+      prepared.state.revision,
+      "artifact-sharing-approved",
+      [
+        { relativePath: "project.yaml", content: serializeProjectConfig(project) },
+        { relativePath: PROJECT_CONTEXT_PATH, content: projectContextContents },
+      ],
+      {
+        previousGitTracking: prepared.project.gitTracking,
+        targetGitTracking: "artifacts",
+        projectContextHash: knowledgeContentHash(projectContextContents),
+        termCount: prepared.projectContext.terms.length,
+        constraintCount: prepared.projectContext.constraints.length,
+        sourceCount: prepared.projectContext.sources.length,
+      },
+    );
+    return Object.freeze({
+      gitTracking: "artifacts",
+      projectContext: prepared.projectContext,
+      workspaceRevision: nextState.revision,
     });
   }
 

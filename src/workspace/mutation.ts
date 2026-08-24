@@ -91,15 +91,16 @@ function assertCanonicalTimestamp(value: unknown, label: string): asserts value 
 
 function isAllowedArtifactPath(components: readonly string[]): boolean {
   const root = components[0];
-  return components.length >= 2 && (
+  return (components.length === 1 && root === "project.yaml") || (components.length >= 2 && (
     root === "requirements"
     || root === "specs"
     || root === "tasks"
     || root === "experts"
     || (root === "knowledge" && components.length >= 3
       && (components[1] === "decisions" || components[1] === "patterns"))
+    || (root === "knowledge" && components.length === 2 && components[1] === "project.yaml")
     || (root === "quality" && components.length >= 3 && components[1] === "runs")
-  );
+  ));
 }
 
 export function validateArtifactRelativePath(value: unknown): string {
@@ -205,7 +206,9 @@ export function targetPath(workspaceRoot: string, relativePath: string): string 
 }
 
 function parentDirectories(writes: readonly { readonly relativePath: string }[]): readonly string[] {
-  return [...new Set(writes.map(({ relativePath }) => posix.dirname(relativePath)))];
+  return [...new Set(writes
+    .map(({ relativePath }) => posix.dirname(relativePath))
+    .filter((directory) => directory !== "."))];
 }
 
 async function observeTarget(path: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
