@@ -69,7 +69,13 @@ import {
 } from "./knowledge.js";
 import {
   KNOWLEDGE_PATTERN_MAX_BYTES,
+  createKnowledgePattern,
+  knowledgePatternPath,
+  parseKnowledgePromotionDraft,
   parseKnowledgePatternMarkdown,
+  serializeKnowledgePattern,
+  type KnowledgePattern,
+  type KnowledgePromotionDraft,
 } from "./knowledge-pattern.js";
 import {
   parseKnowledgeContextQuery,
@@ -160,6 +166,25 @@ export interface SharingApplyResult {
   readonly workspaceRevision: number;
 }
 
+export interface KnowledgePromotionPreview {
+  readonly pattern: KnowledgePattern;
+  readonly targetPath: string;
+  readonly approvalToken: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
+export interface KnowledgePromotionApplyInput {
+  readonly draft: KnowledgePromotionDraft;
+  readonly approvalToken: `sha256:${string}`;
+}
+
+export interface KnowledgePromotionApplyResult {
+  readonly pattern: KnowledgePattern;
+  readonly targetPath: string;
+  readonly patternHash: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
 export interface ReplanPreview {
   readonly requirement: RequirementArtifact;
   readonly spec: SpecArtifact;
@@ -199,6 +224,13 @@ interface PreparedSharing extends SharingPreview {
   readonly state: WorkspaceState;
   readonly project: ProjectConfig;
   readonly projectContext: ProjectContext;
+}
+
+interface PreparedPromotion extends KnowledgePromotionPreview {
+  readonly canonicalRoot: string;
+  readonly repository: WorkspaceRepository;
+  readonly state: WorkspaceState;
+  readonly sourceKnowledgeHash: `sha256:${string}`;
 }
 
 const SHARING_WRITE_PATHS = Object.freeze(["project.yaml", PROJECT_CONTEXT_PATH]);
@@ -569,6 +601,39 @@ function parseSharingApplyInput(value: unknown): SharingApplyInput {
   });
 }
 
+function promotionToken(
+  canonicalRoot: string,
+  workspaceRevision: number,
+  project: ProjectConfig,
+  pattern: KnowledgePattern,
+  targetPath: string,
+): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    schemaVersion: 1,
+    operation: "knowledge-promotion",
+    canonicalRoot,
+    workspaceRevision,
+    project,
+    pattern,
+    targetPath,
+  })).digest("hex")}`;
+}
+
+function parsePromotionApplyInput(value: unknown): KnowledgePromotionApplyInput {
+  const record = exactObject(
+    value,
+    ["draft", "approvalToken"],
+    ["draft", "approvalToken"],
+  );
+  if (typeof record.approvalToken !== "string" || !HASH.test(record.approvalToken)) {
+    throw new TypeError("Knowledge promotion approval token is invalid");
+  }
+  return Object.freeze({
+    draft: parseKnowledgePromotionDraft(record.draft),
+    approvalToken: record.approvalToken as `sha256:${string}`,
+  });
+}
+
 async function assertMissing(root: string, relativePaths: readonly string[]): Promise<void> {
   for (const relativePath of relativePaths) {
     const path = join(workspacePaths(root).root, ...relativePath.split("/"));
@@ -758,6 +823,90 @@ export class ExpertTeamWorkflowService {
     return Object.freeze({
       gitTracking: "artifacts",
       projectContext: prepared.projectContext,
+      workspaceRevision: nextState.revision,
+    });
+  }
+
+  private async prepareKnowledgePromotion(draftValue: unknown): Promise<PreparedPromotion> {
+    const draft = parseKnowledgePromotionDraft(draftValue);
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    if (context.project.gitTracking !== "artifacts") {
+      throw new Error("Knowledge promotion requires gitTracking artifacts");
+    }
+    const sourcePath = knowledgeRecordPath(draft.sourceSpecId);
+    const sourceContents = await readBoundedText(
+      join(workspacePaths(canonicalRoot).root, ...sourcePath.split("/")),
+      256 * 1024,
+    );
+    const source = parseKnowledgeRecordMarkdown(sourceContents);
+    if (source.specId !== draft.sourceSpecId) {
+      throw new Error("Knowledge promotion source identity does not match its filename");
+    }
+    const sourceKnowledgeHash = knowledgeContentHash(sourceContents);
+    const pattern = createKnowledgePattern(draft, source.taskId, sourceKnowledgeHash);
+    const targetPath = knowledgePatternPath(pattern.sourceSpecId);
+    await assertMissing(canonicalRoot, [targetPath]);
+    return Object.freeze({
+      pattern,
+      targetPath,
+      approvalToken: promotionToken(
+        canonicalRoot,
+        context.state.revision,
+        context.project,
+        pattern,
+        targetPath,
+      ),
+      workspaceRevision: context.state.revision,
+      canonicalRoot,
+      repository,
+      state: context.state,
+      sourceKnowledgeHash,
+    });
+  }
+
+  async knowledgePromotionPreview(draftValue: unknown): Promise<KnowledgePromotionPreview> {
+    const prepared = await this.prepareKnowledgePromotion(draftValue);
+    return Object.freeze({
+      pattern: prepared.pattern,
+      targetPath: prepared.targetPath,
+      approvalToken: prepared.approvalToken,
+      workspaceRevision: prepared.workspaceRevision,
+    });
+  }
+
+  async knowledgePromotionApply(inputValue: unknown): Promise<KnowledgePromotionApplyResult> {
+    const input = parsePromotionApplyInput(inputValue);
+    const prepared = await this.prepareKnowledgePromotion(input.draft);
+    if (prepared.approvalToken !== input.approvalToken) {
+      throw new Error("Knowledge promotion approval token no longer matches the source or workspace");
+    }
+    const contents = serializeKnowledgePattern(prepared.pattern);
+    const patternHash = knowledgeContentHash(contents);
+    const nextState: WorkspaceState = {
+      ...prepared.state,
+      revision: prepared.state.revision + 1,
+    };
+    await prepared.repository.commitMutation(
+      nextState,
+      prepared.state.revision,
+      "knowledge-pattern-approved",
+      [{ relativePath: prepared.targetPath, content: contents }],
+      {
+        sourceSpecId: prepared.pattern.sourceSpecId,
+        sourceTaskId: prepared.pattern.sourceTaskId,
+        sourceKnowledgeHash: prepared.sourceKnowledgeHash,
+        targetPath: prepared.targetPath,
+        patternHash,
+        tagCount: prepared.pattern.tags.length,
+        guidanceCount: prepared.pattern.guidance.length,
+        constraintCount: prepared.pattern.constraints.length,
+      },
+    );
+    return Object.freeze({
+      pattern: prepared.pattern,
+      targetPath: prepared.targetPath,
+      patternHash,
       workspaceRevision: nextState.revision,
     });
   }
