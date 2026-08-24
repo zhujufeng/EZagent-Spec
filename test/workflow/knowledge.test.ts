@@ -22,6 +22,35 @@ interface KnowledgeCompleter {
   completeActiveTask(expectedTaskRevision: number, input: unknown): Promise<KnowledgeCaptureResult>;
 }
 
+function knowledgeInput(qualityGateReceipts: readonly Record<string, unknown>[]) {
+  return {
+    schemaVersion: 2,
+    title: "用户资料校验完成",
+    summary: "资料 API 已拒绝非法输入并通过回归测试。",
+    decisions: ["在 API 边界统一执行结构化校验。"],
+    constraints: ["保持现有登录流程不变。"],
+    verificationEvidence: ["API 单元测试与独立审查通过。"],
+    qualityGateReceipts,
+    followUps: ["后续复用同一套字段错误结构。"],
+  };
+}
+
+const apiReceipt = {
+  gate: "API 测试通过",
+  command: "npm run test:api",
+  outcome: "passed",
+  exitCode: 0,
+  summary: "API tests passed.",
+} as const;
+
+const reviewReceipt = {
+  gate: "独立审查失败路径",
+  command: "npm run review:failures",
+  outcome: "passed",
+  exitCode: 0,
+  summary: "Failure-path review passed.",
+} as const;
+
 describe("minimal Knowledge completion", () => {
   test("atomically completes a verified Task and restores bounded Knowledge in a fresh session", async () => {
     const fixture = await createAppliedWorkflowTeamFixture();
@@ -29,31 +58,10 @@ describe("minimal Knowledge completion", () => {
     await fixture.service.transitionActiveTask("verifying", 1);
 
     expect(fixture.service).toHaveProperty("completeActiveTask");
-    const result = await (fixture.service as unknown as KnowledgeCompleter).completeActiveTask(2, {
-      schemaVersion: 2,
-      title: "用户资料校验完成",
-      summary: "资料 API 已拒绝非法输入并通过回归测试。",
-      decisions: ["在 API 边界统一执行结构化校验。"],
-      constraints: ["保持现有登录流程不变。"],
-      verificationEvidence: ["API 单元测试与独立审查通过。"],
-      qualityGateReceipts: [
-        {
-          gate: "API 测试通过",
-          command: "npm run test:api",
-          outcome: "passed",
-          exitCode: 0,
-          summary: "API tests passed.",
-        },
-        {
-          gate: "独立审查失败路径",
-          command: "npm run review:failures",
-          outcome: "passed",
-          exitCode: 0,
-          summary: "Failure-path review passed.",
-        },
-      ],
-      followUps: ["后续复用同一套字段错误结构。"],
-    });
+    const result = await (fixture.service as unknown as KnowledgeCompleter).completeActiveTask(
+      2,
+      knowledgeInput([apiReceipt, reviewReceipt]),
+    );
 
     expect(result).toMatchObject({
       knowledgePath: `knowledge/decisions/${fixture.applied.spec.id}.md`,
@@ -117,6 +125,26 @@ describe("minimal Knowledge completion", () => {
       followUps: [],
       chatTranscript: "不应持久化的聊天内容",
     })).rejects.toThrow();
+    expect(await fixture.snapshot()).toEqual(before);
+  });
+
+  test.each([
+    { name: "missing", receipts: [apiReceipt] },
+    {
+      name: "unknown",
+      receipts: [apiReceipt, { ...reviewReceipt, gate: "额外检查" }],
+    },
+    { name: "duplicate", receipts: [apiReceipt, { ...apiReceipt }] },
+  ])("rejects $name quality gate receipts without changing project state", async ({ receipts }) => {
+    const fixture = await createAppliedWorkflowTeamFixture();
+    await fixture.service.transitionActiveTask("implementing", 0);
+    await fixture.service.transitionActiveTask("verifying", 1);
+    const before = await fixture.snapshot();
+
+    await expect((fixture.service as unknown as KnowledgeCompleter).completeActiveTask(
+      2,
+      knowledgeInput(receipts),
+    )).rejects.toThrow();
     expect(await fixture.snapshot()).toEqual(before);
   });
 

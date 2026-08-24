@@ -314,12 +314,28 @@ describe.sequential("ezagent CLI", () => {
       "--revision", "1",
     ]));
     const knowledgeInput = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       title: "用户资料校验完成",
       summary: "资料 API 已拒绝非法输入。",
       decisions: ["统一在 API 边界校验。"],
       constraints: ["不改变登录流程。"],
       verificationEvidence: ["单元测试和独立审查通过。"],
+      qualityGateReceipts: [
+        {
+          gate: "测试通过",
+          command: "npm run test:workflow",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "Workflow tests passed.",
+        },
+        {
+          gate: "独立审查",
+          command: "npm run test:codex",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "Independent review contract passed.",
+        },
+      ],
       followUps: [],
     };
     const completed = expectJsonSuccess(await runCli(
@@ -341,7 +357,13 @@ describe.sequential("ezagent CLI", () => {
       { type: "plan-approved" },
       { type: "work-item-transitioned", metadata: {} },
       { type: "work-item-transitioned", metadata: {} },
-      { type: "task-completed", metadata: { knowledgePath: expect.stringMatching(/^knowledge\/decisions\/SPEC-/u) } },
+      {
+        type: "task-completed",
+        metadata: {
+          knowledgePath: expect.stringMatching(/^knowledge\/decisions\/SPEC-/u),
+          qualityGateReceiptCount: 2,
+        },
+      },
     ]);
   }, 30_000);
 

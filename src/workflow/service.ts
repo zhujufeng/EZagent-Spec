@@ -61,6 +61,7 @@ import {
   parseKnowledgeRecordMarkdown,
   serializeKnowledgeRecord,
   type KnowledgeRecord,
+  type QualityGateReceipt,
 } from "./knowledge.js";
 
 const HASH = /^sha256:[0-9a-f]{64}$/u;
@@ -270,6 +271,19 @@ function assertKnownSelectionContext(mismatches: VocabularyMismatches): void {
     unknown.push(`unknown project signals: ${mismatches.projectSignals.join(", ")}`);
   }
   if (unknown.length > 0) throw new Error(unknown.join("; "));
+}
+
+function assertQualityGateReceipts(
+  qualityGates: readonly string[],
+  receipts: readonly QualityGateReceipt[],
+): void {
+  const expected = new Set(qualityGates);
+  const actual = new Set(receipts.map(({ gate }) => gate));
+  const missing = qualityGates.filter((gate) => !actual.has(gate));
+  const unknown = receipts.map(({ gate }) => gate).filter((gate) => !expected.has(gate));
+  if (missing.length > 0 || unknown.length > 0 || actual.size !== receipts.length) {
+    throw new Error("quality gate receipts must match the active Task exactly");
+  }
 }
 
 function requestFor(draft: PlanDraft) {
@@ -862,6 +876,7 @@ export class ExpertTeamWorkflowService {
     if (active === null || active.kind !== "task") throw new Error("no active Task to complete");
     const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
     const records = await readActiveRecords(canonicalRoot, context.state, activeExperts);
+    assertQualityGateReceipts(records.task.qualityGates, input.qualityGateReceipts);
     const activeWorkItem = transitionWorkItem(active, {
       to: "completed",
       expectedRevision: expectedTaskRevision,
@@ -901,6 +916,7 @@ export class ExpertTeamWorkflowService {
         knowledgePath,
         knowledgeHash,
         verificationEvidenceCount: knowledge.verificationEvidence.length,
+        qualityGateReceiptCount: knowledge.qualityGateReceipts.length,
       },
     );
     return Object.freeze({ state: nextState, task, knowledge, knowledgePath, knowledgeHash });
