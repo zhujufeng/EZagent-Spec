@@ -37,6 +37,7 @@ const EXPECTED_PLUGIN_FILES = [
   "licenses/npm/zod@4.4.3/LICENSE",
   "skills/ezagent-implement/SKILL.md",
   "skills/ezagent-initialize/SKILL.md",
+  "skills/ezagent-light/SKILL.md",
   "skills/ezagent-review/SKILL.md",
   "skills/ezagent-router/SKILL.md",
   "skills/ezagent-spec/SKILL.md",
@@ -436,12 +437,28 @@ describe.sequential("Codex plugin offline release smoke", () => {
     const completed = await runPackagedCli(cliPath, projectRoot, [
       "transition", "--root", projectRoot, "--to", "completed", "--revision", "2",
     ], {
-      schemaVersion: 1,
+      schemaVersion: 2,
       title: "资料校验完成",
       summary: "复制后的离线插件完成了标准任务。",
       decisions: ["在 API 边界执行结构化校验。"],
       constraints: ["不改变登录流程。"],
       verificationEvidence: ["离线端到端验证通过。"],
+      qualityGateReceipts: [
+        {
+          gate: "API 测试通过",
+          command: "npm run test:workflow",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "Offline workflow tests passed.",
+        },
+        {
+          gate: "独立审查",
+          command: "npm run test:codex",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "Offline review contract passed.",
+        },
+      ],
       followUps: [],
     }) as { readonly task: { readonly status: string }; readonly knowledgePath: string };
     expect(completed.task.status).toBe("completed");

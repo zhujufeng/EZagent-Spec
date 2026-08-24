@@ -10,6 +10,7 @@ const SKILLS_ROOT = fileURLToPath(
 const EXPECTED_SKILLS = [
   "ezagent-router",
   "ezagent-initialize",
+  "ezagent-light",
   "ezagent-spec",
   "ezagent-implement",
   "ezagent-review",
@@ -79,7 +80,7 @@ function option(argv: readonly string[], name: string): string | undefined {
 }
 
 describe("Codex Skill contracts", () => {
-  test("ships exactly the five concise, implicitly discoverable workflow Skills", async () => {
+  test("ships exactly the six concise, implicitly discoverable workflow Skills", async () => {
     const directories = (await readdir(SKILLS_ROOT, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)

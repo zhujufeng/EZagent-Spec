@@ -28,6 +28,7 @@ const SOURCE_PLUGIN_ROOT = join(REPOSITORY_ROOT, "plugins", "ezagent-spec");
 const SKILLS = [
   "ezagent-router",
   "ezagent-initialize",
+  "ezagent-light",
   "ezagent-spec",
   "ezagent-implement",
   "ezagent-review",

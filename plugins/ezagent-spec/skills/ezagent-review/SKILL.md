@@ -37,10 +37,10 @@ description: 由已批准团队中的独立审查专家验证 EZagent Spec Task 
 
 只有 `light` 和 `standard` Task 可以按此路径返工。若上下文中的 risk 为 `high`，返工也必须关闭失败，不得转入 Implement 或修改代码。transition 失败时必须关闭失败，不得转入 Implement；成功后才转 `$ezagent-implement`。
 
-全部质量门通过后，把结构化 Knowledge 作为单个 JSON 文档从 stdin 传入。内容只包含标题、摘要、决策、约束、验证证据与后续事项；不保存聊天全文、完整用户提示或完整专家提示：
+全部质量门通过后，把结构化 Knowledge 作为单个 JSON 文档从 stdin 传入。`qualityGateReceipts` 必须与 active Task 的 `qualityGates` 一一对应，每项只记录实际命令、PASS 结果、退出码 0 和必要摘要。内容只包含标题、摘要、决策、约束、验证证据、质量门回执与后续事项；不保存聊天全文、完整用户提示或完整专家提示：
 
 ```json
-{"schemaVersion":1,"title":"<knowledge-title>","summary":"<bounded-summary>","decisions":["<decision>"],"constraints":["<constraint>"],"verificationEvidence":["<actual-evidence>"],"followUps":[]}
+{"schemaVersion":2,"title":"<knowledge-title>","summary":"<bounded-summary>","decisions":["<decision>"],"constraints":["<constraint>"],"verificationEvidence":["<human-readable-summary>"],"qualityGateReceipts":[{"gate":"<exact-task-gate>","command":"<actual-command>","outcome":"passed","exitCode":0,"summary":"<bounded-result-summary>"}],"followUps":[]}
 ```
 
 ```json

@@ -23,7 +23,11 @@ description: 在已初始化 EZagent Spec 的项目中，自动处理开发、�
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
-安全模式只做诊断，不修改项目，不推进状态。`consult` 直接回答；已有已批准 Task 时按状态转 `$ezagent-implement` 或 `$ezagent-review`；新行为变更由 `$ezagent-spec` 进入以下自动规划流程。
+安全模式只做诊断，不修改项目，不推进状态。`consult` 直接回答；已有已批准 Task 时按状态转 `$ezagent-implement` 或 `$ezagent-review`。
+
+没有 active Task 的新行为变更按风险分流：确认是 `light` 时直接转 `$ezagent-light`；涉及依赖、数据模型、迁移、鉴权、安全边界、部署基础设施、公共 API 兼容性或跨模块架构时按 `standard` 转 `$ezagent-spec`。任一边界不确定也按 `standard` 处理。`high` 仍转 `$ezagent-spec`，由后续状态门关闭失败。
+
+以下自动规划流程只适用于 `standard` 和 `high`，不得让已确认的 `light` 请求进入组队或持久化 Plan。
 
 ## 自动规划与选队
 

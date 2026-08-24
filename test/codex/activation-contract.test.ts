@@ -111,6 +111,7 @@ describe("Codex activation policy contract", () => {
     expect(router.body).toContain('"<absolute-cli-path>"');
     expect(router.body).toContain('"context"');
     expect(router.body).toContain(".ezagent/project.yaml");
+    expect(router.body).toContain("$ezagent-light");
     expect(router.body).toContain("$ezagent-spec");
     expect(router.body).toContain("$ezagent-implement");
     expect(router.body).toContain("$ezagent-review");
@@ -118,6 +119,21 @@ describe("Codex activation policy contract", () => {
     expect(initialize.body).toContain("integration-init");
     expect(initialize.body).toContain("用户明确同意");
     expect(agentsBlock).toContain("先恢复并核对已批准专家团队");
+  });
+
+  test("routes bounded light work without creating the standard persisted workflow", async () => {
+    const router = await readSkill("ezagent-router");
+    const light = await readSkill("ezagent-light");
+
+    expect(router.body).toMatch(/light.*\$ezagent-light/su);
+    expect(router.body).toMatch(/依赖.*数据模型.*迁移.*鉴权.*安全边界.*部署基础设施.*公共 API.*跨模块架构.*standard/su);
+    expect(light.description).toMatch(/低风险.*局部.*可逆/u);
+    expect(light.body).toMatch(/最多 5 项/u);
+    expect(light.body).toMatch(/不.*再次.*批准/u);
+    expect(light.body).toMatch(/不得.*\.ezagent\/\*\*/u);
+    expect(light.body).toMatch(/不调用.*team-select-preview.*plan-preview.*plan-apply.*transition/su);
+    expect(light.body).toMatch(/不得.*虚构.*结果/u);
+    expect(light.body).toMatch(/范围扩大.*停止.*写入.*standard/su);
   });
 
   test("declares the automatic expert-team command order", async () => {
