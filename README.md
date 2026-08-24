@@ -2,7 +2,7 @@
 
 面向中文团队的 Local-only Spec Coding Codex 插件。EZagent Spec 在项目内保存结构化需求、Spec、任务、专家、知识和质量证据，降低纯 vibe coding 的不确定性，并让上下文可以跨会话恢复。
 
-> 当前为 `0.1.0`。初始化、上下文恢复、Router、265 位中文专家目录、自动专家组队、Plan/replan、结构化 Knowledge 和 Task Finish 已形成闭环。当前版本有意关闭高风险 Task 实施，其余 `light` / `standard` 工作流可完整执行。
+> 当前为 `0.1.0`。初始化、上下文恢复、Router、265 位中文专家目录、自动专家组队、Plan/replan、结构化 Knowledge 和 Task Finish 已形成闭环。当前版本有意关闭高风险 Task 实施；`light` 使用非持久化快速通道，`standard` 使用完整闭环。
 
 ## 安装
 
@@ -66,8 +66,14 @@ codex plugin marketplace remove ezagent
 
 1. `.ezagent/project.yaml` 标识项目已经启用。
 2. 受管 `AGENTS.md` 要求相关请求自动使用 `$ezagent-router`。
-3. Router 通过插件内自足 CLI 读取可信上下文，再路由到 Spec、Implement 或 Review Skill。
+3. Router 通过插件内自足 CLI 读取可信上下文，再路由到 Light、Spec、Implement 或 Review Skill。
 4. `.ezagent/**` 只能由本地核心修改，Skill 不能直接编辑状态文件。
+
+### Light 与 standard
+
+局部、低风险、可逆，并且不涉及依赖、数据模型、迁移、鉴权或安全边界、部署基础设施、公共 API 兼容性或跨模块架构的修改走 `light` 快速通道。Light 使用最多 5 项内部微计划，直接完成请求范围内的修改和聚焦验证，不创建 Requirement、Spec、Task、Knowledge 或专家团队，也不会再次请求流程批准。执行中发现范围扩大时会停止后续写入并升级为 `standard`。
+
+`standard` 保留完整的持久化 Spec、自动组队、一次批准、独立 Review 和 Knowledge 闭环。不确定的行为变化默认按 `standard` 处理。
 
 ## 自动专家团队
 
@@ -98,7 +104,7 @@ Plan: 实现用户资料输入校验
 
 只有用户批准 replacement Plan 后才更新团队并继续；取消 Task 时当前团队会退出 active 列表，但不可变团队历史仍保留用于恢复和审计。
 
-质量门全部通过后，Review Skill 会把决策、约束、验证证据和后续事项整理成有界结构化 Knowledge。本地核心在一次原子事务中写入 `.ezagent/knowledge/decisions/`、完成 Task 并清退当前专家；新会话通过 `context` 恢复最近五条 Knowledge 摘要和内容哈希，不保存聊天全文。
+质量门全部通过后，Review Skill 会把决策、约束、验证摘要、逐门 PASS 回执和后续事项整理成有界 Knowledge v2。每个回执包含与 active Task 精确匹配的 gate、实际命令、PASS 结果、退出码 0 和必要摘要；缺失、重复或未知 gate 都不能完成 Task。本地核心在一次原子事务中写入 `.ezagent/knowledge/decisions/`、完成 Task 并清退当前专家；新会话通过 `context` 恢复最近五条 Knowledge 摘要和内容哈希，不保存聊天全文。历史 Knowledge v1 保持可读，但新的完成请求必须使用 v2。
 
 ## 能力与边界
 
@@ -106,7 +112,7 @@ Plan: 实现用户资料输入校验
 
 当前插件可以完成环境检测、集成预览、一次性初始化、上下文恢复、结构化 Plan 预览和原子批准、自动专家组队、项目专家生成、replan 差异与批准、受限状态转换、结构化 Knowledge、Task Finish、Skills 路由和失败关闭。
 
-当前版本不支持高风险 Task 实施：risk 为 `high` 的 Task 不能进入或返回 `implementing`，也不存在可由调用方填写的授权编号绕过入口。高风险需求可以被分析和规划，但实际实施应拆分、降险或交由人工流程处理。`light` / `standard` Task 只有在 verifying 状态提交合法 Knowledge 后才能进入 `completed`。
+当前版本不支持高风险 Task 实施：risk 为 `high` 的 Task 不能进入或返回 `implementing`，也不存在可由调用方填写的授权编号绕过入口。高风险需求可以被分析和规划，但实际实施应拆分、降险或交由人工流程处理。持久化的 `standard` Task 只有在 verifying 状态提交包含完整质量门回执的 Knowledge v2 后才能进入 `completed`；非持久化 light 通道不创建 Task 状态。
 
 当前没有经过本项目验证的 `PreToolUse` interception contract。提示规则负责路由，本地核心的确定性状态转换负责关闭失败：revision、状态、批准或安全条件不满足时不会推进。
 
