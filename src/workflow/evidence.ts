@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { isWorkItemId } from "../domain/id.js";
+import { containsSensitiveContent } from "../text/sensitive-content.js";
 import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 import { parseWorkSpecV2, type EvidenceKind, type WorkSpecV2 } from "./work-contract.js";
@@ -18,7 +19,8 @@ function boundedText(label: string, maximum = 4_096) {
       .min(1, `${label} must not be blank`)
       .max(maximum, `${label} is too long`)
       .refine(isWellFormedUnicode, `${label} must be well-formed Unicode`)
-      .refine((value) => !CONTROL.test(value), `${label} contains control characters`));
+      .refine((value) => !CONTROL.test(value), `${label} contains control characters`)
+      .refine((value) => !containsSensitiveContent(value), `${label} contains sensitive content`));
 }
 
 function uniqueTextList(label: string, minimum = 1, maximum = 128) {

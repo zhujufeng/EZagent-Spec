@@ -63,6 +63,13 @@ describe("Evidence", () => {
         status: "covered",
       }],
     });
+    const sensitive = {
+      ...bundle,
+      entries: bundle.entries.map((entry, index) => (
+        index === 0 ? { ...entry, summary: "原始联系人 somebody@example.com" } : entry
+      )),
+    };
+    expect(() => parseEvidenceBundle(sensitive)).toThrow(/sensitive/iu);
   });
 
   test("binds human approval Evidence to the declared Approval Point content", () => {

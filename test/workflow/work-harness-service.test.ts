@@ -170,4 +170,52 @@ describe("Agent Work Harness service", () => {
     })).rejects.toThrow("approval token");
     expect(await fixture.snapshot()).toEqual(before);
   });
+
+  test("resumes from a bounded Work Journal and rejects sensitive summaries", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+
+    const appended = await fixture.service.workJournalAppend({
+      schemaVersion: 1,
+      workItemId: applied.workItem.id,
+      sliceId: "slice-tracer",
+      summary: "已复现一个偏差样本。",
+      observations: ["当前口径遗漏了一个业务状态。"],
+      decisions: ["下一步只验证建议口径，不扩展数据范围。"],
+      failedApproaches: ["按全部数据聚合会掩盖单个偏差。"],
+      nextStep: "对照当前口径和建议口径。",
+      contextPointers: [{
+        kind: "dataset",
+        locator: "business-alerts:sample",
+        purpose: "继续复现",
+      }],
+    });
+
+    expect(appended).toMatchObject({
+      journalPath: `journals/${applied.workItem.id}.jsonl`,
+      entry: { sequence: 1, sliceId: "slice-tracer" },
+    });
+    expect((await fixture.service.resumeContext()).journal).toMatchObject({
+      sequence: 1,
+      nextStep: "对照当前口径和建议口径。",
+    });
+
+    const beforeSensitiveAttempt = await fixture.snapshot();
+    await expect(fixture.service.workJournalAppend({
+      schemaVersion: 1,
+      workItemId: applied.workItem.id,
+      sliceId: "slice-tracer",
+      summary: "候选人联系方式 somebody@example.com",
+      observations: [],
+      decisions: [],
+      failedApproaches: [],
+      nextStep: "继续处理",
+      contextPointers: [],
+    })).rejects.toThrow(/sensitive/iu);
+    expect(await fixture.snapshot()).toEqual(beforeSensitiveAttempt);
+  });
 });

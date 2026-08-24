@@ -98,6 +98,7 @@ function isAllowedArtifactPath(components: readonly string[], allowSharing: bool
     root === "requirements"
     || root === "specs"
     || root === "tasks"
+    || root === "journals"
     || root === "experts"
     || (root === "knowledge" && components.length >= 3
       && (components[1] === "decisions" || components[1] === "patterns"))

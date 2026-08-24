@@ -64,6 +64,13 @@ export interface ResumeKnowledge {
   readonly contentHash: `sha256:${string}`;
 }
 
+export interface ResumeWorkJournal {
+  readonly sequence: number;
+  readonly sliceId: string;
+  readonly summary: string;
+  readonly nextStep: string;
+}
+
 export interface WorkflowResumeContext {
   readonly workspaceRevision: number;
   readonly safeMode: boolean;
@@ -74,6 +81,7 @@ export interface WorkflowResumeContext {
   readonly spec: ResumeSpec | null;
   readonly task: ResumeTask | null;
   readonly team: ResumeExpertTeam | null;
+  readonly journal: ResumeWorkJournal | null;
   readonly knowledge: readonly ResumeKnowledge[];
   readonly blockers: readonly string[];
 }
@@ -95,6 +103,7 @@ export function freezeWorkflowResumeContext(value: WorkflowResumeContext): Workf
         reasons: Object.freeze([...member.reasons]),
       }))),
     }),
+    journal: value.journal === null ? null : Object.freeze({ ...value.journal }),
     knowledge: Object.freeze(value.knowledge.map((record) => Object.freeze({ ...record }))),
     blockers: Object.freeze([...value.blockers]),
   });

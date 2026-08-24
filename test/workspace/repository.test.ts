@@ -181,6 +181,7 @@ describe("WorkspaceRepository.initialize", () => {
       "audit",
       "backups",
       "experts",
+      "journals",
       "knowledge",
       "knowledge/decisions",
       "knowledge/patterns",

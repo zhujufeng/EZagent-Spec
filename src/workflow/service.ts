@@ -119,6 +119,14 @@ import {
   sideEffectAuthorizationPath,
   type SideEffectAuthorization,
 } from "./side-effect.js";
+import {
+  createWorkJournalEntry,
+  parseWorkJournalAppendInput,
+  parseWorkJournalJsonl,
+  serializeWorkJournalEntry,
+  workJournalPath,
+  type WorkJournalEntry,
+} from "./work-journal.js";
 
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
@@ -198,6 +206,12 @@ export interface SideEffectPreview {
 
 export interface SideEffectApplyResult extends SideEffectAuthorization {
   readonly authorizationPath: string;
+  readonly workspaceRevision: number;
+}
+
+export interface WorkJournalAppendResult {
+  readonly entry: WorkJournalEntry;
+  readonly journalPath: string;
   readonly workspaceRevision: number;
 }
 
@@ -863,6 +877,17 @@ async function readRecentKnowledge(root: string): Promise<readonly ResumeKnowled
   }));
 }
 
+async function readWorkJournalEntries(root: string, workItemId: string): Promise<readonly WorkJournalEntry[]> {
+  const relativePath = workJournalPath(workItemId);
+  const path = join(workspacePaths(root).root, ...relativePath.split("/"));
+  try {
+    return parseWorkJournalJsonl(await readBoundedText(path, 4 * 1024 * 1024), workItemId);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return Object.freeze([]);
+    throw error;
+  }
+}
+
 const KNOWLEDGE_NAME = /^SPEC-\d{8}-(?:\d{3}|[1-9]\d{3,})\.md$/u;
 const MAX_KNOWLEDGE_RECORDS = 2_048;
 
@@ -1088,6 +1113,44 @@ export class ExpertTeamWorkflowService {
       evidencePath: path,
       workspaceRevision: nextState.revision,
     });
+  }
+
+  async workJournalAppend(inputValue: unknown): Promise<WorkJournalAppendResult> {
+    const input = parseWorkJournalAppendInput(inputValue);
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan cannot use the v2 Work Journal");
+    if (input.workItemId !== records.workItem.id) {
+      throw new Error("Work Journal entry does not match the active Work Item");
+    }
+    if (!records.workItem.slices.some(({ id }) => id === input.sliceId)) {
+      throw new Error("Work Journal entry references an unknown Slice");
+    }
+    const existing = await readWorkJournalEntries(canonicalRoot, records.workItem.id);
+    const entry = createWorkJournalEntry(input, existing.length + 1);
+    const journalPath = workJournalPath(records.workItem.id);
+    const contents = [...existing, entry].map(serializeWorkJournalEntry).join("");
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+    };
+    await repository.commitMutation(
+      nextState,
+      context.state.revision,
+      "work-journal-appended",
+      [{ relativePath: journalPath, content: contents }],
+      {
+        workItemId: records.workItem.id,
+        sliceId: entry.sliceId,
+        journalSequence: entry.sequence,
+        observationCount: entry.observations.length,
+        decisionCount: entry.decisions.length,
+        failedApproachCount: entry.failedApproaches.length,
+        contextPointerCount: entry.contextPointers.length,
+      },
+    );
+    return Object.freeze({ entry, journalPath, workspaceRevision: nextState.revision });
   }
 
   private async prepareSideEffect(approvalPointId: string): Promise<PreparedSideEffect> {
@@ -1848,6 +1911,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        journal: null,
         knowledge: [],
         blockers: ["project-context-corrupt"],
       });
@@ -1866,6 +1930,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        journal: null,
         knowledge: [],
         blockers: ["knowledge-corrupt"],
       });
@@ -1881,6 +1946,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        journal: null,
         knowledge,
         blockers: ["workspace-safe-mode"],
       });
@@ -1896,6 +1962,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        journal: null,
         knowledge,
         blockers: [],
       });
@@ -1904,6 +1971,7 @@ export class ExpertTeamWorkflowService {
     try {
       const v2Records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
       if (v2Records !== null) {
+        const latestJournal = (await readWorkJournalEntries(canonicalRoot, v2Records.workItem.id)).at(-1);
         return freezeWorkflowResumeContext({
           workspaceRevision: context.state.revision,
           safeMode: false,
@@ -1943,6 +2011,12 @@ export class ExpertTeamWorkflowService {
             })),
           },
           team: null,
+          journal: latestJournal === undefined ? null : {
+            sequence: latestJournal.sequence,
+            sliceId: latestJournal.sliceId,
+            summary: latestJournal.summary,
+            nextStep: latestJournal.nextStep,
+          },
           knowledge,
           blockers: [],
         });
@@ -2005,6 +2079,7 @@ export class ExpertTeamWorkflowService {
           catalogFingerprint: records.team.catalogFingerprint,
           members,
         },
+        journal: null,
         knowledge,
         blockers: [],
       });
@@ -2019,6 +2094,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        journal: null,
         knowledge,
         blockers: ["active-plan-corrupt"],
       });

@@ -144,7 +144,7 @@ describe("workspace layout", () => {
   test("defines the workspace directories and paths", () => {
     expect(WORKSPACE_DIRECTORIES).toEqual([
       "state", "requirements", "specs", "tasks", "knowledge/decisions", "knowledge/patterns",
-      "experts", "quality/runs", "audit", "backups",
+      "journals", "experts", "quality/runs", "audit", "backups",
     ]);
     expect(workspacePaths("project")).toEqual({
       root: join("project", ".ezagent"),
