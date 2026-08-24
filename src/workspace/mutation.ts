@@ -24,6 +24,8 @@ const PENDING_KEYS = [
 ] as const;
 const PENDING_WRITE_KEYS = ["relativePath", "contentHash"] as const;
 const MAX_MUTATION_WRITES = 256;
+const SHARING_EVENT_TYPE = "artifact-sharing-approved";
+const SHARING_PATHS = new Set(["project.yaml", "knowledge/project.yaml"]);
 
 export interface WorkspaceMutationWrite {
   readonly relativePath: string;
@@ -89,21 +91,21 @@ function assertCanonicalTimestamp(value: unknown, label: string): asserts value 
   }
 }
 
-function isAllowedArtifactPath(components: readonly string[]): boolean {
+function isAllowedArtifactPath(components: readonly string[], allowSharing: boolean): boolean {
   const root = components[0];
-  return (components.length === 1 && root === "project.yaml") || (components.length >= 2 && (
+  const relativePath = components.join("/");
+  return (allowSharing && SHARING_PATHS.has(relativePath)) || (components.length >= 2 && (
     root === "requirements"
     || root === "specs"
     || root === "tasks"
     || root === "experts"
     || (root === "knowledge" && components.length >= 3
       && (components[1] === "decisions" || components[1] === "patterns"))
-    || (root === "knowledge" && components.length === 2 && components[1] === "project.yaml")
     || (root === "quality" && components.length >= 3 && components[1] === "runs")
   ));
 }
 
-export function validateArtifactRelativePath(value: unknown): string {
+function validateWorkspaceRelativePath(value: unknown, allowSharing: boolean): string {
   if (typeof value !== "string") {
     throw new TypeError(`workspace write path must be text: ${String(value)}`);
   }
@@ -142,28 +144,44 @@ export function validateArtifactRelativePath(value: unknown): string {
     }
     actualComponents.push(component);
   }
-  if (!isAllowedArtifactPath(actualComponents)) {
+  if (!isAllowedArtifactPath(actualComponents, allowSharing)) {
     throw new TypeError(`workspace write is outside allowed artifact roots: ${value}`);
   }
   return actualComponents.join("/");
 }
 
-function normalizeWrites(writes: readonly WorkspaceMutationWrite[]): readonly WorkspaceMutationWrite[] {
+export function validateArtifactRelativePath(value: unknown): string {
+  return validateWorkspaceRelativePath(value, false);
+}
+
+function assertExactSharingPaths(paths: readonly string[], label: string): void {
+  if (paths.length !== SHARING_PATHS.size || paths.some((path) => !SHARING_PATHS.has(path))) {
+    throw new TypeError(`${label} must contain exactly project.yaml and knowledge/project.yaml`);
+  }
+}
+
+function normalizeWrites(
+  writes: readonly WorkspaceMutationWrite[],
+  eventType: string,
+): readonly WorkspaceMutationWrite[] {
   if (!Array.isArray(writes) || writes.length > MAX_MUTATION_WRITES) {
     throw new TypeError(`workspace mutation must contain at most ${MAX_MUTATION_WRITES} writes`);
   }
   assertDenseArray(writes, "workspace mutation writes");
   const seen = new Set<string>();
-  return writes.map((write) => {
+  const allowSharing = eventType === SHARING_EVENT_TYPE;
+  const normalized = writes.map((write) => {
     if (!isRecord(write)) throw new TypeError("workspace mutation write must be an object");
     assertExactKeys(write, ["relativePath", "content"], "workspace mutation write");
-    const relativePath = validateArtifactRelativePath(write.relativePath);
+    const relativePath = validateWorkspaceRelativePath(write.relativePath, allowSharing);
     if (typeof write.content !== "string") throw new TypeError("workspace mutation content must be text");
     const duplicateKey = portableCollisionKey(relativePath);
     if (seen.has(duplicateKey)) throw new TypeError(`duplicate workspace mutation target: ${relativePath}`);
     seen.add(duplicateKey);
     return { relativePath, content: write.content };
   });
+  if (allowSharing) assertExactSharingPaths(normalized.map(({ relativePath }) => relativePath), "sharing mutation");
+  return normalized;
 }
 
 export function normalizeWorkspaceMutation(
@@ -188,7 +206,7 @@ export function normalizeWorkspaceMutation(
     next: parsedNext,
     expectedRevision,
     eventType: probe.type,
-    writes: normalizeWrites(writes),
+    writes: normalizeWrites(writes, probe.type),
     metadata: probe.metadata,
   };
 }
@@ -299,7 +317,7 @@ export function parsePendingMutation(value: unknown): PendingMutation {
   const writes = value.writes.map((rawWrite) => {
     if (!isRecord(rawWrite)) throw new TypeError("pending mutation write must be an object");
     assertExactKeys(rawWrite, PENDING_WRITE_KEYS, "pending mutation write");
-    const relativePath = validateArtifactRelativePath(rawWrite.relativePath);
+    const relativePath = validateWorkspaceRelativePath(rawWrite.relativePath, true);
     if (typeof rawWrite.contentHash !== "string" || !SHA256.test(rawWrite.contentHash)) {
       throw new TypeError("pending mutation contentHash is invalid");
     }
@@ -308,6 +326,9 @@ export function parsePendingMutation(value: unknown): PendingMutation {
     seen.add(duplicateKey);
     return { relativePath, contentHash: rawWrite.contentHash };
   });
+  if (writes.some(({ relativePath }) => SHARING_PATHS.has(relativePath))) {
+    assertExactSharingPaths(writes.map(({ relativePath }) => relativePath), "sharing pending mutation");
+  }
   return {
     schemaVersion: 1,
     token: value.token,
