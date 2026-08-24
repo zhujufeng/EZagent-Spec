@@ -7,7 +7,10 @@ import {
   cleanupWorkflowTeamFixtures,
   createWorkflowTeamFixture,
 } from "../fixtures/workflow-team-fixture.js";
-import { genericWorkContractDraft } from "../fixtures/work-contract-fixture.js";
+import {
+  genericEvidenceBundle,
+  genericWorkContractDraft,
+} from "../fixtures/work-contract-fixture.js";
 
 afterEach(cleanupWorkflowTeamFixtures);
 
@@ -64,5 +67,55 @@ describe("Agent Work Harness service", () => {
     expect(resumed.spec).toMatchObject({ sourceSchemaVersion: 1, mode: null });
     expect(resumed.task).toMatchObject({ sourceSchemaVersion: 1, slices: [] });
     expect(resumed.team).not.toBeNull();
+  });
+
+  test("accepts a Slice only after its typed Evidence covers every criterion", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+
+    const reviewed = await fixture.service.workReviewSlice(genericEvidenceBundle(
+      applied.workItem.id,
+      applied.workSpec.id,
+    ));
+
+    expect(reviewed.coverage.complete).toBe(true);
+    expect(reviewed.workItem).toMatchObject({
+      status: "verifying",
+      revision: 1,
+      slices: [{ id: "slice-tracer", status: "accepted" }],
+    });
+    expect(reviewed.evidencePath).toBe(
+      `quality/runs/${applied.workItem.id}/slice-tracer/000001.json`,
+    );
+    expect((await fixture.repository.readState()).activeWorkItem).toMatchObject({
+      status: "verifying",
+      revision: 1,
+    });
+  });
+
+  test("returns an incomplete Slice to revise instead of treating partial Evidence as done", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+    const incomplete = genericEvidenceBundle(applied.workItem.id, applied.workSpec.id);
+    incomplete.entries.splice(1, 1);
+
+    const reviewed = await fixture.service.workReviewSlice(incomplete);
+
+    expect(reviewed.coverage).toMatchObject({
+      complete: false,
+      criteria: [{ missingKinds: ["artifact"], status: "missing" }],
+    });
+    expect(reviewed.workItem).toMatchObject({
+      status: "implementing",
+      slices: [{ status: "revise" }],
+    });
   });
 });

@@ -83,6 +83,13 @@ import {
   type QualityGateReceipt,
 } from "./knowledge.js";
 import {
+  evidenceBundlePath,
+  parseEvidenceBundle,
+  reviewEvidenceCoverage,
+  serializeEvidenceBundle,
+  type EvidenceCoverage,
+} from "./evidence.js";
+import {
   KNOWLEDGE_PATTERN_MAX_BYTES,
   createKnowledgePattern,
   knowledgePatternPath,
@@ -158,6 +165,13 @@ export interface WorkPreview extends WorkArtifactsV2 {
 }
 
 export type AppliedWork = Omit<WorkPreview, "approvalToken">;
+
+export interface WorkSliceReviewResult {
+  readonly workItem: WorkItemArtifactV2;
+  readonly coverage: EvidenceCoverage;
+  readonly evidencePath: string;
+  readonly workspaceRevision: number;
+}
 
 export interface KnowledgeCaptureResult {
   readonly state: WorkspaceState;
@@ -928,6 +942,80 @@ export class ExpertTeamWorkflowService {
       brief: prepared.brief,
       workSpec: prepared.workSpec,
       workItem: prepared.workItem,
+      workspaceRevision: nextState.revision,
+    });
+  }
+
+  async workReviewSlice(bundleValue: unknown): Promise<WorkSliceReviewResult> {
+    const bundle = parseEvidenceBundle(bundleValue);
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan cannot use v2 Evidence review");
+    if (bundle.workItemId !== records.workItem.id
+      || bundle.workSpecId !== records.workSpec.id
+      || bundle.workSpecRevision !== records.workSpec.revision) {
+      throw new Error("Evidence bundle does not match the active Work Contract revision");
+    }
+    const sliceIndex = records.workItem.slices.findIndex(({ id }) => id === bundle.sliceId);
+    const currentSlice = records.workItem.slices[sliceIndex];
+    if (currentSlice === undefined || !["pending", "executing", "revise"].includes(currentSlice.status)) {
+      throw new Error("Slice is not ready for Evidence review");
+    }
+    if (currentSlice.blockedBy.some((id) => (
+      records.workItem.slices.find((slice) => slice.id === id)?.status !== "accepted"
+    ))) {
+      throw new Error("Slice dependencies must be accepted before Evidence review");
+    }
+    const coverage = reviewEvidenceCoverage(records.workSpec.workSpec, bundle);
+    const revision = records.workItem.revision + 1;
+    const slices = records.workItem.slices.map((slice, index) => (
+      index === sliceIndex
+        ? { ...slice, status: coverage.complete ? "accepted" as const : "revise" as const }
+        : slice
+    ));
+    const allAccepted = slices.every(({ status }) => status === "accepted");
+    const workItem: WorkItemArtifactV2 = {
+      ...records.workItem,
+      status: allAccepted ? "verifying" : "implementing",
+      revision,
+      slices,
+    };
+    const path = evidenceBundlePath(workItem.id, bundle.sliceId, revision);
+    await assertMissing(canonicalRoot, [path]);
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+      activeWorkItem: {
+        id: workItem.id,
+        kind: "task",
+        status: workItem.status,
+        risk: workModeRisk(records.workSpec.workSpec.mode),
+        revision: workItem.revision,
+      },
+    };
+    await repository.commitMutation(
+      nextState,
+      context.state.revision,
+      "slice-evidence-reviewed",
+      [
+        { relativePath: `tasks/${workItem.id}.yaml`, content: serializeWorkItemArtifactV2(workItem) },
+        { relativePath: path, content: serializeEvidenceBundle(bundle) },
+      ],
+      {
+        workItemId: workItem.id,
+        workSpecId: records.workSpec.id,
+        workSpecRevision: records.workSpec.revision,
+        workItemRevision: workItem.revision,
+        sliceId: bundle.sliceId,
+        evidenceCount: bundle.entries.length,
+        coverageComplete: coverage.complete,
+      },
+    );
+    return Object.freeze({
+      workItem,
+      coverage,
+      evidencePath: path,
       workspaceRevision: nextState.revision,
     });
   }

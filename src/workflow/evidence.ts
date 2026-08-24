@@ -192,6 +192,32 @@ export function parseEvidenceBundle(value: unknown): EvidenceBundle {
   return deepFreeze(bundleSchema.parse(value)) as EvidenceBundle;
 }
 
+export function parseEvidenceBundleJson(text: string): EvidenceBundle {
+  if (typeof text !== "string" || text.length === 0 || text.length > 1_048_576) {
+    throw new TypeError("Evidence bundle JSON must be bounded non-empty text");
+  }
+  return parseEvidenceBundle(JSON.parse(text) as unknown);
+}
+
+export function serializeEvidenceBundle(value: EvidenceBundle): string {
+  return `${JSON.stringify(parseEvidenceBundle(value), null, 2)}\n`;
+}
+
+export function evidenceBundlePath(
+  workItemId: string,
+  sliceId: string,
+  workItemRevision: number,
+): string {
+  if (!workItemId.startsWith("TASK-") || !isWorkItemId(workItemId)) {
+    throw new TypeError("invalid Evidence Work Item ID");
+  }
+  identifierSchema.parse(sliceId);
+  if (!Number.isSafeInteger(workItemRevision) || workItemRevision < 1) {
+    throw new TypeError("Evidence Work Item revision must be a positive safe integer");
+  }
+  return `quality/runs/${workItemId}/${sliceId}/${String(workItemRevision).padStart(6, "0")}.json`;
+}
+
 export function reviewEvidenceCoverage(
   workSpecValue: unknown,
   bundleValue: unknown,

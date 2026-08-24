@@ -75,3 +75,45 @@ export const genericWorkContractDraft = {
     ],
   },
 } as const;
+
+export function genericEvidenceBundle(workItemId: string, workSpecId: string) {
+  return {
+    schemaVersion: 1 as const,
+    workItemId,
+    workSpecId,
+    workSpecRevision: 0,
+    sliceId: "slice-tracer",
+    entries: [
+      {
+        id: "evidence-comparison",
+        kind: "comparison" as const,
+        criterionIds: ["criterion-explained"],
+        sliceId: "slice-tracer",
+        observedAt: "2026-08-24T08:00:00.000Z",
+        summary: "小样本中的预警结果与实际结果已完成对照。",
+        baseline: "当前预警结果",
+        candidate: "实际业务结果",
+        method: "按同一口径逐条对照",
+        differences: ["一个样本的阈值与实际状态不一致"],
+        threshold: "所有差异均可定位到明确口径或规则",
+        outcome: "passed" as const,
+      },
+      {
+        id: "evidence-artifact",
+        kind: "artifact" as const,
+        criterionIds: ["criterion-explained"],
+        sliceId: "slice-tracer",
+        observedAt: "2026-08-24T08:05:00.000Z",
+        summary: "偏差分析已按交付接口形成。",
+        resource: {
+          kind: "document" as const,
+          locator: "deliverables/alert-analysis.md",
+          purpose: "供结果审查者检查",
+        },
+        contentHash: `sha256:${"a".repeat(64)}`,
+        method: "检查必需章节与事实、推断、建议的分离",
+        outcome: "passed" as const,
+      },
+    ],
+  };
+}
