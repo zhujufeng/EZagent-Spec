@@ -27,7 +27,7 @@ import {
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const WORK_ITEM_STATUSES = [
@@ -54,7 +54,12 @@ type Command =
   | "plan-apply"
   | "replan-preview"
   | "replan-apply"
-  | "experts-reconcile";
+  | "experts-reconcile"
+  | "sharing-preview"
+  | "sharing-apply"
+  | "knowledge-context"
+  | "knowledge-promote-preview"
+  | "knowledge-promote-apply";
 
 interface CommandSpec {
   readonly valueOptions: readonly string[];
@@ -122,6 +127,31 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     valueOptions: ["--root"],
     booleanOptions: [],
     requiredOptions: ["--root"],
+  },
+  "sharing-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "sharing-apply": {
+    valueOptions: ["--root", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-token"],
+  },
+  "knowledge-context": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "knowledge-promote-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "knowledge-promote-apply": {
+    valueOptions: ["--root", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-token"],
   },
 };
 
@@ -329,6 +359,37 @@ export async function runCli(
 
   const workflow = runtime.createWorkflowService(root);
 
+  if (parsed.command === "sharing-preview") {
+    writeJson(io, await workflow.sharingPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "sharing-apply") {
+    writeJson(io, await workflow.sharingApply({
+      projectContext: await readBoundedJsonInput(runtime.stdin),
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    }));
+    return;
+  }
+
+  if (parsed.command === "knowledge-context") {
+    writeJson(io, await workflow.knowledgeContext(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "knowledge-promote-preview") {
+    writeJson(io, await workflow.knowledgePromotionPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "knowledge-promote-apply") {
+    writeJson(io, await workflow.knowledgePromotionApply({
+      draft: await readBoundedJsonInput(runtime.stdin),
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    }));
+    return;
+  }
+
   if (parsed.command === "team-select-preview") {
     writeJson(io, await workflow.selectPreview(await readBoundedJsonInput(runtime.stdin)));
     return;
@@ -386,6 +447,7 @@ export async function runCli(
       spec: resumed.spec,
       task: resumed.task,
       team: resumed.team,
+      projectContext: resumed.projectContext,
       knowledge: resumed.knowledge,
       blockers: resumed.blockers,
       recoveryStatus: resumed.recoveryStatus,

@@ -14,6 +14,11 @@ import { workspacePaths } from "../../src/workspace/layout.js";
 import type { WorkItemState } from "../../src/domain/work-item.js";
 import { formatCliError, runCli as runCliInProcess, type CliRuntime } from "../../src/cli/main.js";
 import { isWellFormedUnicode } from "../../src/text/unicode.js";
+import {
+  createKnowledgeRecord,
+  knowledgeRecordPath,
+  serializeKnowledgeRecord,
+} from "../../src/workflow/knowledge.js";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 const CLI_PATH = join(PROJECT_ROOT, "dist", "src", "cli", "main.js");
@@ -240,12 +245,95 @@ describe.sequential("ezagent CLI", () => {
       spec: null,
       task: null,
       team: null,
+      projectContext: null,
       knowledge: [],
       blockers: [],
       recoveryStatus: "ready",
       platformSyncStatus: "none",
     });
   });
+
+  test("shares project context, selects Knowledge, and promotes one Pattern through bounded JSON stdin", async () => {
+    const root = await temporaryProject();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Shared Context"]));
+    const projectContext = {
+      schemaVersion: 1,
+      summary: "结构化 Agent 研发流程。",
+      terms: [{ name: "Pattern", meaning: "人工批准的团队经验。" }],
+      constraints: ["不自动执行 Git。"],
+      sources: [{ path: "README.md", purpose: "项目入口。" }],
+    };
+    const sharingPreview = expectJsonSuccess(await runCli(
+      ["sharing-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(projectContext)}\n` },
+    )) as { readonly approvalToken: string };
+    expect(expectJsonSuccess(await runCli(
+      ["sharing-apply", "--root", root, "--approval-token", sharingPreview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(projectContext)}\n` },
+    ))).toMatchObject({ gitTracking: "artifacts", workspaceRevision: 1 });
+
+    const specId = "SPEC-20260824-001";
+    const taskId = "TASK-20260824-001";
+    const record = createKnowledgeRecord(specId, taskId, {
+      schemaVersion: 2,
+      title: "API 输入校验",
+      summary: "API 输入必须结构化校验。",
+      decisions: ["统一在边界校验。"],
+      constraints: ["保持旧字段可读。"],
+      verificationEvidence: ["测试通过。"],
+      qualityGateReceipts: [{
+        gate: "测试通过",
+        command: "npm test",
+        outcome: "passed",
+        exitCode: 0,
+        summary: "Tests passed.",
+      }],
+      followUps: [],
+    });
+    await writeFile(
+      join(root, ".ezagent", knowledgeRecordPath(specId)),
+      serializeKnowledgeRecord(record),
+      "utf8",
+    );
+    expect(expectJsonSuccess(await runCli(
+      ["knowledge-context", "--root", root],
+      PROJECT_ROOT,
+      { input: '{"schemaVersion":1,"terms":["api"]}\n' },
+    ))).toMatchObject({
+      relevant: [{ source: { kind: "decision", specId }, title: "API 输入校验" }],
+    });
+
+    const draft = {
+      schemaVersion: 1,
+      sourceSpecId: specId,
+      title: "API 校验 Pattern",
+      summary: "统一 API 输入校验。",
+      tags: ["api"],
+      guidance: ["在边界解析输入。"],
+      constraints: ["保持向后兼容。"],
+    };
+    const promotionPreview = expectJsonSuccess(await runCli(
+      ["knowledge-promote-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    )) as { readonly approvalToken: string };
+    expect(expectJsonSuccess(await runCli(
+      ["knowledge-promote-apply", "--root", root, "--approval-token", promotionPreview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    ))).toMatchObject({
+      targetPath: `knowledge/patterns/${specId}.md`,
+      workspaceRevision: 2,
+    });
+
+    expectSingleLineFailure(await runCli(
+      ["knowledge-context", "--root", root],
+      PROJECT_ROOT,
+      { input: `{"schemaVersion":1,"terms":["${"x".repeat(66_000)}"]}\n` },
+    ), "exceeds 65536 bytes");
+  }, 30_000);
 
   test("previews, applies, verifies, and completes an expert-team Task through JSON stdin", async () => {
     const root = await temporaryProject();
@@ -460,7 +548,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 
