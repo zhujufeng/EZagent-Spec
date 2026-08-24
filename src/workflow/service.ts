@@ -48,10 +48,16 @@ import {
 import { parseWorkContractDraft, type WorkContractDraftV2 } from "./work-contract.js";
 import {
   createWorkArtifactsV2,
+  parseBriefArtifactV2Yaml,
+  parseWorkItemArtifactV2Yaml,
+  parseWorkSpecArtifactV2Yaml,
   serializeBriefArtifactV2,
   serializeWorkItemArtifactV2,
   serializeWorkSpecArtifactV2,
   workModeRisk,
+  type BriefArtifactV2,
+  type WorkItemArtifactV2,
+  type WorkSpecArtifactV2,
   type WorkArtifactsV2,
 } from "./work-artifacts.js";
 import {
@@ -232,6 +238,12 @@ interface ActiveRecords {
   readonly task: TaskArtifact;
   readonly team: ExpertTeamPlan;
   readonly activeExperts: ActiveExperts;
+}
+
+interface ActiveWorkRecordsV2 {
+  readonly brief: BriefArtifactV2;
+  readonly workSpec: WorkSpecArtifactV2;
+  readonly workItem: WorkItemArtifactV2;
 }
 
 interface PreparedReplan extends ReplanPreview {
@@ -571,6 +583,45 @@ async function readActiveRecords(
     throw new Error("active expert projection does not match approved team");
   }
   return { requirement, spec, task, team, activeExperts };
+}
+
+async function readActiveWorkRecordsV2(
+  root: string,
+  state: WorkspaceState,
+): Promise<ActiveWorkRecordsV2 | null> {
+  const active = state.activeWorkItem;
+  if (active === null || active.kind !== "task") throw new Error("no active Work Item");
+  const base = workspacePaths(root).root;
+  const taskText = await readBoundedText(join(base, "tasks", `${active.id}.yaml`));
+  let workItem: WorkItemArtifactV2;
+  try {
+    workItem = parseWorkItemArtifactV2Yaml(taskText);
+  } catch (v2Error: unknown) {
+    try {
+      parseTaskArtifactYaml(taskText);
+      return null;
+    } catch {
+      throw v2Error;
+    }
+  }
+  const workSpec = parseWorkSpecArtifactV2Yaml(
+    await readBoundedText(join(base, "specs", `${workItem.workSpecId}.yaml`)),
+  );
+  const brief = parseBriefArtifactV2Yaml(
+    await readBoundedText(join(base, "requirements", `${workItem.briefId}.yaml`)),
+  );
+  if (workItem.id !== active.id
+    || workItem.status !== active.status
+    || workItem.revision !== active.revision
+    || workItem.briefId !== brief.id
+    || workItem.workSpecId !== workSpec.id
+    || workSpec.briefId !== brief.id
+    || active.risk !== workModeRisk(workSpec.workSpec.mode)
+    || workItem.slices.length !== workSpec.workSpec.slicePlan.length
+    || workItem.slices.some((slice, index) => slice.id !== workSpec.workSpec.slicePlan[index]?.id)) {
+    throw new Error("active Work Contract artifact identities do not match workspace state");
+  }
+  return Object.freeze({ brief, workSpec, workItem });
 }
 
 function replanToken(
@@ -1577,6 +1628,51 @@ export class ExpertTeamWorkflowService {
     }
 
     try {
+      const v2Records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+      if (v2Records !== null) {
+        return freezeWorkflowResumeContext({
+          workspaceRevision: context.state.revision,
+          safeMode: false,
+          recovered: context.recovered,
+          recoveryStatus: "ready",
+          projectContext,
+          requirement: {
+            sourceSchemaVersion: 2,
+            id: v2Records.brief.id,
+            title: v2Records.brief.brief.requestSummary,
+            status: v2Records.brief.status,
+            revision: v2Records.brief.revision,
+          },
+          spec: {
+            sourceSchemaVersion: 2,
+            id: v2Records.workSpec.id,
+            requirementId: v2Records.brief.id,
+            goal: v2Records.workSpec.workSpec.outcome,
+            status: v2Records.workSpec.status,
+            revision: v2Records.workSpec.revision,
+            mode: v2Records.workSpec.workSpec.mode,
+          },
+          task: {
+            sourceSchemaVersion: 2,
+            id: v2Records.workItem.id,
+            specId: v2Records.workSpec.id,
+            title: v2Records.workItem.title,
+            status: v2Records.workItem.status,
+            risk: workModeRisk(v2Records.workSpec.workSpec.mode),
+            revision: v2Records.workItem.revision,
+            slices: v2Records.workItem.slices.map((slice) => ({
+              id: slice.id,
+              title: slice.title,
+              intendedOutcome: slice.intendedOutcome,
+              status: slice.status,
+              humanCheckpoint: slice.humanCheckpoint,
+            })),
+          },
+          team: null,
+          knowledge,
+          blockers: [],
+        });
+      }
       const [catalog, activeExperts] = await Promise.all([
         this.runtime.readCatalog(),
         this.runtime.readActiveExperts(canonicalRoot),
@@ -1602,25 +1698,30 @@ export class ExpertTeamWorkflowService {
         recoveryStatus: "ready",
         projectContext,
         requirement: {
+          sourceSchemaVersion: 1,
           id: records.requirement.id,
           title: records.requirement.title,
           status: records.requirement.status,
           revision: records.requirement.revision,
         },
         spec: {
+          sourceSchemaVersion: 1,
           id: records.spec.id,
           requirementId: records.spec.requirementId,
           goal: records.spec.goal,
           status: records.spec.status,
           revision: records.spec.revision,
+          mode: null,
         },
         task: {
+          sourceSchemaVersion: 1,
           id: records.task.id,
           specId: records.task.specId,
           title: records.task.title,
           status: records.task.status,
           risk: records.task.risk,
           revision: records.task.revision,
+          slices: [],
         },
         team: {
           teamRevision: records.team.teamRevision,

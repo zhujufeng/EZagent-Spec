@@ -38,5 +38,31 @@ describe("Agent Work Harness service", () => {
       join(fixture.root, ".ezagent", "requirements", `${applied.brief.id}.yaml`),
       "utf8",
     )).resolves.toContain("schemaVersion: 2");
+
+    const resumed = await fixture.service.resumeContext();
+    expect(resumed).toMatchObject({
+      recoveryStatus: "ready",
+      requirement: { id: applied.brief.id, sourceSchemaVersion: 2 },
+      spec: { id: applied.workSpec.id, sourceSchemaVersion: 2, mode: "brief" },
+      task: {
+        id: applied.workItem.id,
+        sourceSchemaVersion: 2,
+        slices: [{ id: "slice-tracer", status: "pending" }],
+      },
+      team: null,
+      blockers: [],
+    });
+  });
+
+  test("keeps an active v1 coding Plan on the legacy adapter", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    await fixture.service.planApply(await fixture.prepareApprovedInput());
+
+    const resumed = await fixture.service.resumeContext();
+
+    expect(resumed.requirement?.sourceSchemaVersion).toBe(1);
+    expect(resumed.spec).toMatchObject({ sourceSchemaVersion: 1, mode: null });
+    expect(resumed.task).toMatchObject({ sourceSchemaVersion: 1, slices: [] });
+    expect(resumed.team).not.toBeNull();
   });
 });

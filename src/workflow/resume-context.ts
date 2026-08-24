@@ -1,7 +1,9 @@
 import type { ExpertTeamMode } from "./team-record.js";
 import { parseProjectContext, type ProjectContext } from "./project-context.js";
+import type { WorkMode } from "./work-contract.js";
 
 export interface ResumeRequirement {
+  readonly sourceSchemaVersion: 1 | 2;
   readonly id: string;
   readonly title: string;
   readonly status: "specified";
@@ -9,20 +11,32 @@ export interface ResumeRequirement {
 }
 
 export interface ResumeSpec {
+  readonly sourceSchemaVersion: 1 | 2;
   readonly id: string;
   readonly requirementId: string;
   readonly goal: string;
   readonly status: "approved";
   readonly revision: number;
+  readonly mode: WorkMode | null;
+}
+
+export interface ResumeSlice {
+  readonly id: string;
+  readonly title: string;
+  readonly intendedOutcome: string;
+  readonly status: string;
+  readonly humanCheckpoint: boolean;
 }
 
 export interface ResumeTask {
+  readonly sourceSchemaVersion: 1 | 2;
   readonly id: string;
   readonly specId: string;
   readonly title: string;
   readonly status: string;
   readonly risk: string;
   readonly revision: number;
+  readonly slices: readonly ResumeSlice[];
 }
 
 export interface ResumeTeamMember {
@@ -70,7 +84,10 @@ export function freezeWorkflowResumeContext(value: WorkflowResumeContext): Workf
     projectContext: value.projectContext === null ? null : parseProjectContext(value.projectContext),
     requirement: value.requirement === null ? null : Object.freeze({ ...value.requirement }),
     spec: value.spec === null ? null : Object.freeze({ ...value.spec }),
-    task: value.task === null ? null : Object.freeze({ ...value.task }),
+    task: value.task === null ? null : Object.freeze({
+      ...value.task,
+      slices: Object.freeze(value.task.slices.map((slice) => Object.freeze({ ...slice }))),
+    }),
     team: value.team === null ? null : Object.freeze({
       ...value.team,
       members: Object.freeze(value.team.members.map((member) => Object.freeze({
