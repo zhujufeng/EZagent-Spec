@@ -11,6 +11,7 @@ const EXPECTED_SKILLS = [
   "ezagent-router",
   "ezagent-initialize",
   "ezagent-light",
+  "ezagent-context",
   "ezagent-spec",
   "ezagent-implement",
   "ezagent-review",
@@ -80,7 +81,7 @@ function option(argv: readonly string[], name: string): string | undefined {
 }
 
 describe("Codex Skill contracts", () => {
-  test("ships exactly the six concise, implicitly discoverable workflow Skills", async () => {
+  test("ships exactly the seven concise, implicitly discoverable workflow Skills", async () => {
     const directories = (await readdir(SKILLS_ROOT, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
@@ -232,6 +233,32 @@ describe("Codex Skill contracts", () => {
     expect(implement.body).toContain("ready");
     expect(implement.body).toContain("replan-preview");
     expect(review.body).toContain("不得审查自己参与实现的 Task");
+  });
+
+  test("retrieves summaries and gates sharing or Pattern promotion behind one approval", async () => {
+    const context = await readSkill("ezagent-context");
+    const router = await readSkill("ezagent-router");
+
+    for (const command of [
+      "knowledge-context",
+      "sharing-preview",
+      "sharing-apply",
+      "knowledge-promote-preview",
+      "knowledge-promote-apply",
+    ]) {
+      expect(argvFor(context, command)).toBeDefined();
+    }
+    expect(String(context.frontmatter.description)).toMatch(/共享.*上下文|知识.*Pattern/u);
+    expect(context.body).toMatch(/短.*terms.*stdin/su);
+    expect(context.body).toMatch(/最多 5 条.*摘要/u);
+    expect(context.body).toMatch(/sharing-preview.*用户.*批准.*sharing-apply/su);
+    expect(context.body).toMatch(/knowledge-promote-preview.*用户.*批准.*knowledge-promote-apply/su);
+    expect(context.body).toMatch(/只.*一次.*批准/u);
+    expect(context.body).toMatch(/不.*完整用户提示.*聊天/u);
+    expect(router.body).toContain("$ezagent-context");
+    expect(router.body).toContain("knowledge-context");
+    expect(router.body).toMatch(/短.*terms.*最多 5 条.*摘要/su);
+    expect(router.body).toMatch(/不.*复制.*评分/u);
   });
 
   test("detects the OS with cross-platform built-ins before checking Node separately", async () => {

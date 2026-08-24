@@ -25,6 +25,14 @@ description: 在已初始化 EZagent Spec 的项目中，自动处理开发、�
 
 安全模式只做诊断，不修改项目，不推进状态。`consult` 直接回答；已有已批准 Task 时按状态转 `$ezagent-implement` 或 `$ezagent-review`。
 
+对于没有 active Task 的新行为请求，从 Task 标题、目标、capabilities、domains 和 projectSignals 形成少量短 terms，并作为单个 JSON 文档从 stdin 调用：
+
+```json
+["node", "<absolute-cli-path>", "knowledge-context", "--root", "<absolute-project-root>"]
+```
+
+只把返回的最多 5 条摘要作为只读规划输入，具体记录按 path 读取；不传完整用户提示，不复制核心评分、排序或去重规则。用户提出“启用团队共享”“更新项目上下文”或“沉淀为团队经验”时转 `$ezagent-context`。
+
 没有 active Task 的新行为变更按风险分流：确认是 `light` 时直接转 `$ezagent-light`；涉及依赖、数据模型、迁移、鉴权、安全边界、部署基础设施、公共 API 兼容性或跨模块架构时按 `standard` 转 `$ezagent-spec`。任一边界不确定也按 `standard` 处理。`high` 仍转 `$ezagent-spec`，由后续状态门关闭失败。
 
 以下自动规划流程只适用于 `standard` 和 `high`，不得让已确认的 `light` 请求进入组队或持久化 Plan。

@@ -136,6 +136,17 @@ describe("Codex activation policy contract", () => {
     expect(light.body).toMatch(/范围扩大.*停止.*写入.*standard/su);
   });
 
+  test("routes shared context and approved team knowledge through the dedicated Skill", async () => {
+    const router = await readSkill("ezagent-router");
+    const context = await readSkill("ezagent-context");
+
+    expect(router.body).toMatch(/启用团队共享.*更新项目上下文.*团队经验.*\$ezagent-context/su);
+    expect(router.body).toMatch(/Task 标题.*目标.*capabilities.*domains.*projectSignals.*knowledge-context/su);
+    expect(context.body).toMatch(/预览.*用户.*批准.*Apply/su);
+    expect(context.body).toMatch(/只请求一次批准/u);
+    expect(context.body).toMatch(/不执行.*Git/u);
+  });
+
   test("declares the automatic expert-team command order", async () => {
     const router = await readSkill("ezagent-router");
     const context = router.body.indexOf("context");

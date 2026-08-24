@@ -29,6 +29,7 @@ const SKILLS = [
   "ezagent-router",
   "ezagent-initialize",
   "ezagent-light",
+  "ezagent-context",
   "ezagent-spec",
   "ezagent-implement",
   "ezagent-review",
