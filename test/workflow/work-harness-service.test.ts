@@ -218,4 +218,36 @@ describe("Agent Work Harness service", () => {
     })).rejects.toThrow(/sensitive/iu);
     expect(await fixture.snapshot()).toEqual(beforeSensitiveAttempt);
   });
+
+  test("completes accepted Slices only after re-reading Evidence and writes a Decision Record", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+    await fixture.service.workReviewSlice(genericEvidenceBundle(
+      applied.workItem.id,
+      applied.workSpec.id,
+    ));
+
+    const completed = await fixture.service.workComplete({
+      schemaVersion: 3,
+      title: "业务预警偏差分析完成",
+      summary: "小样本偏差已复现、解释并形成修正建议。",
+      decisions: ["先在已确认范围内使用建议口径。"],
+      constraints: ["未批准前不修改外部系统。"],
+      followUps: ["由需求提出者决定是否扩大样本范围。"],
+    });
+
+    expect(completed).toMatchObject({
+      state: { activeWorkItem: null },
+      workItem: { status: "completed", revision: 2 },
+      decision: { schemaVersion: 3, evidencePaths: [expect.stringContaining("quality/runs/")] },
+      decisionPath: `knowledge/decisions/${applied.workSpec.id}.md`,
+    });
+    expect((await fixture.service.resumeContext()).knowledge).toMatchObject([
+      { specId: applied.workSpec.id, title: "业务预警偏差分析完成" },
+    ]);
+  });
 });

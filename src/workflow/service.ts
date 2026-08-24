@@ -74,20 +74,25 @@ import {
 } from "./resume-context.js";
 import {
   createKnowledgeRecord,
+  createDecisionRecord,
   knowledgeContentHash,
   knowledgeRecordPath,
   parseKnowledgeCaptureInput,
+  parseDecisionCaptureInput,
   parseKnowledgeRecordMarkdown,
   serializeKnowledgeRecord,
   type KnowledgeRecord,
+  type DecisionRecord,
   type QualityGateReceipt,
 } from "./knowledge.js";
 import {
   evidenceBundlePath,
   parseEvidenceBundle,
+  parseEvidenceBundleJson,
   reviewEvidenceCoverage,
   serializeEvidenceBundle,
   type EvidenceCoverage,
+  type EvidenceBundle,
 } from "./evidence.js";
 import {
   KNOWLEDGE_PATTERN_MAX_BYTES,
@@ -213,6 +218,14 @@ export interface WorkJournalAppendResult {
   readonly entry: WorkJournalEntry;
   readonly journalPath: string;
   readonly workspaceRevision: number;
+}
+
+export interface WorkCompletionResult {
+  readonly state: WorkspaceState;
+  readonly workItem: WorkItemArtifactV2;
+  readonly decision: DecisionRecord;
+  readonly decisionPath: string;
+  readonly decisionHash: `sha256:${string}`;
 }
 
 export interface KnowledgeCaptureResult {
@@ -888,6 +901,25 @@ async function readWorkJournalEntries(root: string, workItemId: string): Promise
   }
 }
 
+async function readLatestEvidenceBundle(
+  root: string,
+  workItemId: string,
+  sliceId: string,
+): Promise<{ readonly bundle: EvidenceBundle; readonly path: string }> {
+  const relativeDirectory = `quality/runs/${workItemId}/${sliceId}`;
+  const directory = join(workspacePaths(root).root, ...relativeDirectory.split("/"));
+  const names = await readdir(directory);
+  if (names.length === 0 || names.some((name) => !/^\d{6,}\.json$/u.test(name))) {
+    throw new Error("Slice Evidence history is missing or malformed");
+  }
+  const name = [...names].sort(portableCompare).at(-1)!;
+  const path = `${relativeDirectory}/${name}`;
+  return Object.freeze({
+    bundle: parseEvidenceBundleJson(await readBoundedText(join(directory, name))),
+    path,
+  });
+}
+
 const KNOWLEDGE_NAME = /^SPEC-\d{8}-(?:\d{3}|[1-9]\d{3,})\.md$/u;
 const MAX_KNOWLEDGE_RECORDS = 2_048;
 
@@ -1151,6 +1183,76 @@ export class ExpertTeamWorkflowService {
       },
     );
     return Object.freeze({ entry, journalPath, workspaceRevision: nextState.revision });
+  }
+
+  async workComplete(inputValue: unknown): Promise<WorkCompletionResult> {
+    const input = parseDecisionCaptureInput(inputValue);
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan must use legacy Task completion");
+    if (records.workItem.status !== "verifying"
+      || records.workItem.slices.some(({ status }) => status !== "accepted")) {
+      throw new Error("every Slice must be accepted before Work Item completion");
+    }
+    const evidence = await Promise.all(records.workItem.slices.map(async (slice) => {
+      const latest = await readLatestEvidenceBundle(canonicalRoot, records.workItem.id, slice.id);
+      if (latest.bundle.workItemId !== records.workItem.id
+        || latest.bundle.workSpecId !== records.workSpec.id
+        || latest.bundle.workSpecRevision !== records.workSpec.revision
+        || latest.bundle.sliceId !== slice.id) {
+        throw new Error("persisted Evidence does not match the active Work Contract revision");
+      }
+      const coverage = reviewEvidenceCoverage(records.workSpec.workSpec, latest.bundle);
+      if (!coverage.complete) throw new Error("persisted Evidence no longer covers its Slice");
+      return latest;
+    }));
+    const evidencePaths = evidence.map(({ path }) => path);
+    const decision = createDecisionRecord(
+      records.workSpec.id,
+      records.workItem.id,
+      input,
+      evidencePaths,
+    );
+    const decisionPath = knowledgeRecordPath(records.workSpec.id);
+    const decisionContents = serializeKnowledgeRecord(decision);
+    parseKnowledgeRecordMarkdown(decisionContents);
+    const decisionHash = knowledgeContentHash(decisionContents);
+    const workItem: WorkItemArtifactV2 = {
+      ...records.workItem,
+      status: "completed",
+      revision: records.workItem.revision + 1,
+    };
+    const nextState: WorkspaceState = {
+      ...context.state,
+      revision: context.state.revision + 1,
+      activeWorkItem: null,
+    };
+    await assertMissing(canonicalRoot, [decisionPath]);
+    await repository.commitMutation(
+      nextState,
+      context.state.revision,
+      "work-item-completed",
+      [
+        { relativePath: `tasks/${workItem.id}.yaml`, content: serializeWorkItemArtifactV2(workItem) },
+        { relativePath: decisionPath, content: decisionContents },
+      ],
+      {
+        workItemId: workItem.id,
+        workSpecId: records.workSpec.id,
+        workItemRevision: workItem.revision,
+        evidenceBundleCount: evidencePaths.length,
+        decisionPath,
+        decisionHash,
+      },
+    );
+    return Object.freeze({
+      state: nextState,
+      workItem,
+      decision,
+      decisionPath,
+      decisionHash,
+    });
   }
 
   private async prepareSideEffect(approvalPointId: string): Promise<PreparedSideEffect> {

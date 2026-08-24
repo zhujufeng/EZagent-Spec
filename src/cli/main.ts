@@ -27,7 +27,7 @@ import {
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const WORK_ITEM_STATUSES = [
@@ -52,6 +52,7 @@ type Command =
   | "work-preview"
   | "work-apply"
   | "work-review"
+  | "work-complete"
   | "journal-append"
   | "side-effect-preview"
   | "side-effect-apply"
@@ -115,6 +116,11 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     requiredOptions: ["--root", "--approval-token"],
   },
   "work-review": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "work-complete": {
     valueOptions: ["--root"],
     booleanOptions: [],
     requiredOptions: ["--root"],
@@ -410,6 +416,11 @@ export async function runCli(
 
   if (parsed.command === "work-review") {
     writeJson(io, await workflow.workReviewSlice(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "work-complete") {
+    writeJson(io, await workflow.workComplete(await readBoundedJsonInput(runtime.stdin)));
     return;
   }
 

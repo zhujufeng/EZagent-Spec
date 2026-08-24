@@ -509,6 +509,21 @@ describe.sequential("ezagent CLI", () => {
       journal: { sequence: 1, nextStep: "提交证据审查。" },
       platformSyncStatus: "none",
     });
+    expect(expectJsonSuccess(await runCli(
+      ["work-complete", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify({
+        schemaVersion: 3,
+        title: "业务预警分析完成",
+        summary: "小样本偏差已经解释。",
+        decisions: ["保留已验证的分析口径。"],
+        constraints: ["不直接修改外部规则。"],
+        followUps: [],
+      })}\n` },
+    ))).toMatchObject({
+      state: { activeWorkItem: null },
+      decision: { schemaVersion: 3 },
+    });
   }, 30_000);
 
   test("keeps external execution off after a Side Effect approval command", async () => {
@@ -633,7 +648,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 
