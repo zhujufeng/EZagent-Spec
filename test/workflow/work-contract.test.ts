@@ -28,4 +28,19 @@ describe("Work Contract v2", () => {
       },
     })).toThrow(/Controlled Mode|Approval Point/u);
   });
+
+  test("rejects Controlled work that delegates final review to the executing Agent", () => {
+    const controlled = controlledActionDraft();
+    expect(() => parseWorkContractDraft({
+      ...controlled,
+      workSpec: {
+        ...controlled.workSpec,
+        reviewPolicy: {
+          method: "self",
+          reasons: ["由执行 Agent 自审"],
+          reviewAfterSlices: 1,
+        },
+      },
+    })).toThrow(/Controlled Mode.*human|mixed/iu);
+  });
 });

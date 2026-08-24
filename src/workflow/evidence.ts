@@ -229,6 +229,12 @@ export function reviewEvidenceCoverage(
   const criteria = new Map(workSpec.acceptanceCriteria.map((criterion) => [criterion.id, criterion]));
   const allowedCriteria = new Set(slice.criterionIds);
   for (const entry of bundle.entries) {
+    if (entry.kind === "human-approval") {
+      const point = workSpec.approvalPoints.find(({ id }) => id === entry.approvalPointId);
+      if (point === undefined || point.contentHash !== entry.contentHash) {
+        throw new Error("human approval Evidence content does not match its Approval Point");
+      }
+    }
     for (const criterionId of entry.criterionIds) {
       const criterion = criteria.get(criterionId);
       if (criterion === undefined || !allowedCriteria.has(criterionId)) {

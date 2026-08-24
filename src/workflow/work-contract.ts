@@ -247,6 +247,26 @@ const workSpecSchema = z.object({
   uniqueIds(spec.approvalPoints, "approvalPoints");
   const slices = uniqueIds(spec.slicePlan, "slicePlan");
 
+  if (spec.mode === "controlled"
+    && spec.reviewPolicy.method !== "human"
+    && spec.reviewPolicy.method !== "mixed") {
+    context.addIssue({
+      code: "custom",
+      path: ["reviewPolicy", "method"],
+      message: "Controlled Mode review must include human or mixed judgment",
+    });
+  }
+  if ((spec.reviewPolicy.method === "human" || spec.reviewPolicy.method === "mixed")
+    && !spec.acceptanceCriteria.some(({ requiredEvidenceKinds }) => (
+      requiredEvidenceKinds.includes("human-approval")
+    ))) {
+    context.addIssue({
+      code: "custom",
+      path: ["acceptanceCriteria"],
+      message: "human and mixed review require human-approval Evidence",
+    });
+  }
+
   for (const [boundaryIndex, boundary] of spec.boundaries.entries()) {
     for (const [resourceIndex, resource] of boundary.resources.entries()) {
       if (resource.access !== "write" && resource.access !== "publish") continue;

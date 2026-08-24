@@ -5,7 +5,10 @@ import {
   reviewEvidenceCoverage,
 } from "../../src/workflow/evidence.js";
 import { parseWorkContractDraft } from "../../src/workflow/work-contract.js";
-import { genericWorkContractDraft } from "../fixtures/work-contract-fixture.js";
+import {
+  controlledActionDraft,
+  genericWorkContractDraft,
+} from "../fixtures/work-contract-fixture.js";
 
 describe("Evidence", () => {
   test("reviews a Slice criterion using non-command Evidence", () => {
@@ -60,5 +63,46 @@ describe("Evidence", () => {
         status: "covered",
       }],
     });
+  });
+
+  test("binds human approval Evidence to the declared Approval Point content", () => {
+    const contract = parseWorkContractDraft(controlledActionDraft());
+    const base = {
+      schemaVersion: 1 as const,
+      workItemId: "TASK-20260824-001",
+      workSpecId: "SPEC-20260824-001",
+      workSpecRevision: 0,
+      sliceId: "slice-tracer",
+      entries: [
+        {
+          id: "evidence-artifact",
+          kind: "artifact" as const,
+          criterionIds: ["criterion-explained"],
+          sliceId: "slice-tracer",
+          observedAt: "2026-08-24T08:05:00.000Z",
+          summary: "发布草稿已形成。",
+          resource: { kind: "document" as const, locator: "drafts/post.md", purpose: "人工审查" },
+          contentHash: `sha256:${"c".repeat(64)}`,
+          method: "检查草稿必需章节",
+          outcome: "passed" as const,
+        },
+        {
+          id: "evidence-human-approval",
+          kind: "human-approval" as const,
+          criterionIds: ["criterion-explained"],
+          sliceId: "slice-tracer",
+          observedAt: "2026-08-24T08:10:00.000Z",
+          summary: "内容审查者批准了待发布内容。",
+          approvalPointId: "approval-publish",
+          contentHash: `sha256:${"b".repeat(64)}`,
+          conclusion: "approved" as const,
+        },
+      ],
+    };
+
+    expect(reviewEvidenceCoverage(contract.workSpec, base).complete).toBe(true);
+    const drifted = structuredClone(base);
+    drifted.entries[1]!.contentHash = `sha256:${"d".repeat(64)}`;
+    expect(() => reviewEvidenceCoverage(contract.workSpec, drifted)).toThrow(/content/iu);
   });
 });

@@ -154,6 +154,16 @@ export function controlledActionDraft() {
         verification: "读取发布记录并核对内容 hash",
         recovery: "撤回内容并记录外部状态",
       }],
+      acceptanceCriteria: [{
+        id: "criterion-explained",
+        statement: "发布草稿完整且已经人工批准",
+        requiredEvidenceKinds: ["artifact" as const, "human-approval" as const],
+      }],
+      reviewPolicy: {
+        method: "mixed" as const,
+        reasons: ["对外发布需要内容审查者保留最终判断"],
+        reviewAfterSlices: 1,
+      },
       slicePlan: [{
         ...genericWorkContractDraft.workSpec.slicePlan[0],
         deliverableInterfaceIds: ["deliverable-publish-draft"],
