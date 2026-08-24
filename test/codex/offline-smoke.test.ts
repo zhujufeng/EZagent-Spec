@@ -35,6 +35,7 @@ const EXPECTED_PLUGIN_FILES = [
   "licenses/agency-agents-zh-MIT.txt",
   "licenses/npm/yaml@2.9.0/LICENSE",
   "licenses/npm/zod@4.4.3/LICENSE",
+  "skills/ezagent-context/SKILL.md",
   "skills/ezagent-implement/SKILL.md",
   "skills/ezagent-initialize/SKILL.md",
   "skills/ezagent-light/SKILL.md",
@@ -51,6 +52,7 @@ const CRITICAL_LF_PATHS = [
   "plugins/ezagent-spec/dist/ezagent-cli.mjs",
   "plugins/ezagent-spec/catalog/experts.json",
   "plugins/ezagent-spec/skills/ezagent-router/SKILL.md",
+  "plugins/ezagent-spec/skills/ezagent-context/SKILL.md",
   "catalog/normalized/experts.json",
   "THIRD_PARTY_NOTICES.md",
   "licenses/agency-agents-MIT.txt",
@@ -269,6 +271,15 @@ describe.sequential("Codex plugin offline release smoke", () => {
       /process\s*\.\s*(?:getBuiltinModule|binding|_linkedBinding)|\bmodule\s*\.\s*(?:createRequire|_load)|\b(?:eval|Function)\s*\(|\b(?:WebSocket|EventSource)\s*\(|navigator\s*\.\s*sendBeacon/u,
     );
     expect(bundle).not.toMatch(/\bfetch\s*\(|\bgit\s+(?:commit|push)|\b(?:telemetry|sentry|opentelemetry)\b/iu);
+    for (const command of [
+      "sharing-preview",
+      "sharing-apply",
+      "knowledge-context",
+      "knowledge-promote-preview",
+      "knowledge-promote-apply",
+    ]) {
+      expect(bundle).toContain(command);
+    }
 
     const cliPath = join(installedPlugin, "dist", "ezagent-cli.mjs");
     await expect(runPackagedCli(cliPath, projectRoot, ["doctor", "--root", projectRoot])).resolves.toMatchObject({
@@ -317,6 +328,11 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(routingSection).toContain("禁止拼接 shell 字符串");
     expect(routingSection).toContain('["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]');
     expect(routingSection.indexOf('"context"')).toBeLessThan(routingSection.indexOf("consult"));
+    expect(routingSection).toContain("$ezagent-context");
+    expect(await readFile(
+      join(installedPlugin, "skills", "ezagent-context", "SKILL.md"),
+      "utf8",
+    )).toContain("knowledge-promote-apply");
 
     const firstContext = await runPackagedCli(cliPath, projectRoot, [
       "context",
@@ -332,6 +348,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
       spec: null,
       task: null,
       team: null,
+      projectContext: null,
       knowledge: [],
       blockers: [],
       recoveryStatus: "ready",

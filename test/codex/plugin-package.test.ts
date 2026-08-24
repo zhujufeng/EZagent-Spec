@@ -194,10 +194,10 @@ describe.sequential("self-contained Codex plugin package", () => {
     expect(await treeSnapshot(SOURCE_PLUGIN_ROOT)).toEqual(firstTree);
 
     const paths = firstTree.map((entry) => entry.path);
-    expect(paths).toHaveLength(18);
+    expect(paths).toHaveLength(19);
     expect(paths).toContain("LICENSE");
     expect(paths).toContain(".codex-plugin/plugin.json");
-    expect(paths.filter((path) => /^skills\/[^/]+\/SKILL\.md$/u.test(path))).toHaveLength(6);
+    expect(paths.filter((path) => /^skills\/[^/]+\/SKILL\.md$/u.test(path))).toHaveLength(7);
     expect(paths).toContain("dist/ezagent-cli.mjs");
     expect(paths).toContain("catalog/experts.json");
     expect(paths).toContain("catalog/catalog.lock.json");
@@ -218,6 +218,8 @@ describe.sequential("self-contained Codex plugin package", () => {
     for (const skill of [
       "ezagent-router",
       "ezagent-initialize",
+      "ezagent-light",
+      "ezagent-context",
       "ezagent-spec",
       "ezagent-implement",
       "ezagent-review",
@@ -278,6 +280,11 @@ describe.sequential("self-contained Codex plugin package", () => {
       "replan-preview",
       "replan-apply",
       "experts-reconcile",
+      "sharing-preview",
+      "sharing-apply",
+      "knowledge-context",
+      "knowledge-promote-preview",
+      "knowledge-promote-apply",
     ]) {
       expect(bundle).toContain(command);
     }

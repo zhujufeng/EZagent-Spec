@@ -2,7 +2,7 @@
 
 面向中文团队的 Local-only Spec Coding Codex 插件。EZagent Spec 在项目内保存结构化需求、Spec、任务、专家、知识和质量证据，降低纯 vibe coding 的不确定性，并让上下文可以跨会话恢复。
 
-> 当前为 `0.1.0`。初始化、上下文恢复、Router、265 位中文专家目录、自动专家组队、Plan/replan、结构化 Knowledge 和 Task Finish 已形成闭环。当前版本有意关闭高风险 Task 实施；`light` 使用非持久化快速通道，`standard` 使用完整闭环。
+> 当前为 `0.1.0`。初始化、轻量共享上下文、Router、265 位中文专家目录、自动专家组队、Plan/replan、结构化 Knowledge、Pattern 晋升和 Task Finish 已形成闭环。当前版本有意关闭高风险 Task 实施；`light` 使用非持久化快速通道，`standard` 使用完整闭环。
 
 ## 安装
 
@@ -66,7 +66,7 @@ codex plugin marketplace remove ezagent
 
 1. `.ezagent/project.yaml` 标识项目已经启用。
 2. 受管 `AGENTS.md` 要求相关请求自动使用 `$ezagent-router`。
-3. Router 通过插件内自足 CLI 读取可信上下文，再路由到 Light、Spec、Implement 或 Review Skill。
+3. Router 通过插件内自足 CLI 读取可信上下文和相关知识摘要，再路由到 Light、Context、Spec、Implement 或 Review Skill。
 4. `.ezagent/**` 只能由本地核心修改，Skill 不能直接编辑状态文件。
 
 ### Light 与 standard
@@ -106,11 +106,21 @@ Plan: 实现用户资料输入校验
 
 质量门全部通过后，Review Skill 会把决策、约束、验证摘要、逐门 PASS 回执和后续事项整理成有界 Knowledge v2。每个回执包含与 active Task 精确匹配的 gate、实际命令、PASS 结果、退出码 0 和必要摘要；缺失、重复或未知 gate 都不能完成 Task。本地核心在一次原子事务中写入 `.ezagent/knowledge/decisions/`、完成 Task 并清退当前专家；新会话通过 `context` 恢复最近五条 Knowledge 摘要和内容哈希，不保存聊天全文。历史 Knowledge v1 保持可读，但新的完成请求必须使用 v2。
 
+## 团队共享上下文与 Pattern
+
+初始化仍默认 `gitTracking: none`，项目索引和 Knowledge 只保留在本地。需要团队共享时可以直接说“启用团队共享项目上下文”或“更新项目术语和架构入口”。Context Skill 会先展示共享范围和排除范围，取得一次明确批准后才把策略切换为 `gitTracking: artifacts`，并原子写入 `.ezagent/knowledge/project.yaml`。
+
+项目索引只保存项目摘要、团队术语、稳定约束和项目内来源指针，不复制 README、完整设计文档或聊天。建议由团队自己的 Git 流程跟踪 project、Requirement、Spec、Task、Decision Knowledge 和 Pattern；审计、state、备份、运行缓存、完整测试输出及本地专家投影保持排除。EZagent 不修改 `.gitignore`，也不执行 `git add`、commit、push 或 PR。
+
+Router 会从当前任务的标题、目标和结构化 selection 信号形成短查询词。本地核心使用确定性文本匹配返回最多 3 条正相关知识，再补充最多 2 条未重复的近期 Decision；结果只包含来源、路径、标题、摘要、内容哈希和分数。零分记录不会为了凑数进入相关结果，完整内容只在当前任务确有需要时按路径读取。检索无网络、无 embedding、无向量数据库，也不保存查询词。
+
+如果某条 Task Knowledge 值得长期复用，可以说“把这条经验沉淀成团队 Pattern”。Context Skill 会提炼不含测试回执、命令、聊天和原始全文的 Pattern 预览；用户批准一次后，本地核心校验来源哈希和 workspace revision，再写入 `.ezagent/knowledge/patterns/SPEC-*.md`。来源漂移或同一 Spec 已存在 Pattern 时会关闭失败，不覆盖旧经验。
+
 ## 能力与边界
 
 解释和只读咨询不会创建工作项。行为变化按 `light`、`standard` 或 `high` 分类；专家数量按任务能力动态选择，不固定为三位。所有多 Agent 委派都必须携带 Requirement、Spec、Task、expert、delegation、范围、交付物和质量门标识。
 
-当前插件可以完成环境检测、集成预览、一次性初始化、上下文恢复、结构化 Plan 预览和原子批准、自动专家组队、项目专家生成、replan 差异与批准、受限状态转换、结构化 Knowledge、Task Finish、Skills 路由和失败关闭。
+当前插件可以完成环境检测、集成预览、一次性初始化、项目索引与相关知识恢复、显式 artifact 共享、结构化 Plan 预览和原子批准、自动专家组队、项目专家生成、replan 差异与批准、受限状态转换、结构化 Knowledge、人工批准的 Pattern 晋升、Task Finish、Skills 路由和失败关闭。
 
 当前版本不支持高风险 Task 实施：risk 为 `high` 的 Task 不能进入或返回 `implementing`，也不存在可由调用方填写的授权编号绕过入口。高风险需求可以被分析和规划，但实际实施应拆分、降险或交由人工流程处理。持久化的 `standard` Task 只有在 verifying 状态提交包含完整质量门回执的 Knowledge v2 后才能进入 `completed`；非持久化 light 通道不创建 Task 状态。
 
@@ -120,7 +130,7 @@ Plan: 实现用户资料输入校验
 
 ## Local-only 与隐私
 
-EZagent runtime 不会自动访问网络、发送遥测、安装软件、执行 Git commit/push、发布或上传用户项目。初始化默认使用 `gitTracking: none`。联网、安装、Git 写入或发布必须由用户针对具体动作单独授权。
+EZagent runtime 不会自动访问网络、发送遥测、安装软件、执行 Git commit/push、发布或上传用户项目。初始化默认使用 `gitTracking: none`；只有用户明确预览并批准后才切换为 `artifacts`，这仍然只写本地文件，不代表授权 EZagent 执行 Git。联网、安装、Git 写入或发布必须由用户针对具体动作单独授权。
 
 Local-only 只描述 EZagent runtime，不改变 Codex 的模型处理、账号、组织策略或数据保留方式。GitHub marketplace 安装、Codex 自身通信和开发者主动执行的 `npm ci` 不属于 EZagent runtime 的离线行为。
 
