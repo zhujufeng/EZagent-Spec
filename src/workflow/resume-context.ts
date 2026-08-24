@@ -1,4 +1,5 @@
 import type { ExpertTeamMode } from "./team-record.js";
+import { parseProjectContext, type ProjectContext } from "./project-context.js";
 
 export interface ResumeRequirement {
   readonly id: string;
@@ -54,6 +55,7 @@ export interface WorkflowResumeContext {
   readonly safeMode: boolean;
   readonly recovered: boolean;
   readonly recoveryStatus: "ready" | "inspection-required";
+  readonly projectContext: ProjectContext | null;
   readonly requirement: ResumeRequirement | null;
   readonly spec: ResumeSpec | null;
   readonly task: ResumeTask | null;
@@ -65,6 +67,7 @@ export interface WorkflowResumeContext {
 export function freezeWorkflowResumeContext(value: WorkflowResumeContext): WorkflowResumeContext {
   return Object.freeze({
     ...value,
+    projectContext: value.projectContext === null ? null : parseProjectContext(value.projectContext),
     requirement: value.requirement === null ? null : Object.freeze({ ...value.requirement }),
     spec: value.spec === null ? null : Object.freeze({ ...value.spec }),
     task: value.task === null ? null : Object.freeze({ ...value.task }),

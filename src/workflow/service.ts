@@ -63,6 +63,22 @@ import {
   type KnowledgeRecord,
   type QualityGateReceipt,
 } from "./knowledge.js";
+import {
+  KNOWLEDGE_PATTERN_MAX_BYTES,
+  parseKnowledgePatternMarkdown,
+} from "./knowledge-pattern.js";
+import {
+  parseKnowledgeContextQuery,
+  selectKnowledge,
+  type KnowledgeCandidate,
+  type KnowledgeSelection,
+} from "./knowledge-selection.js";
+import {
+  PROJECT_CONTEXT_MAX_BYTES,
+  PROJECT_CONTEXT_PATH,
+  parseProjectContextYaml,
+  type ProjectContext,
+} from "./project-context.js";
 
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
@@ -380,9 +396,9 @@ function retireActiveTeam(active: ActiveExperts, team: ExpertTeamPlan): ActiveEx
   };
 }
 
-async function readBoundedText(path: string): Promise<string> {
+async function readBoundedText(path: string, maximumBytes = 1_048_576): Promise<string> {
   const observed = await lstat(path);
-  if (!observed.isFile() || observed.isSymbolicLink() || observed.size < 1 || observed.size > 1_048_576) {
+  if (!observed.isFile() || observed.isSymbolicLink() || observed.size < 1 || observed.size > maximumBytes) {
     throw new Error("Core artifact is not a bounded regular file");
   }
   const text = await readFile(path, "utf8");
@@ -390,6 +406,16 @@ async function readBoundedText(path: string): Promise<string> {
     throw new Error("Core artifact changed during read");
   }
   return text;
+}
+
+async function readProjectContext(root: string): Promise<ProjectContext | null> {
+  const path = join(workspacePaths(root).root, ...PROJECT_CONTEXT_PATH.split("/"));
+  try {
+    return parseProjectContextYaml(await readBoundedText(path, PROJECT_CONTEXT_MAX_BYTES));
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 async function latestTeamRecord(root: string, taskId: string): Promise<ExpertTeamPlan> {
@@ -490,6 +516,55 @@ async function readRecentKnowledge(root: string): Promise<readonly ResumeKnowled
       contentHash: knowledgeContentHash(contents),
     });
   }));
+}
+
+const KNOWLEDGE_NAME = /^SPEC-\d{8}-(?:\d{3}|[1-9]\d{3,})\.md$/u;
+const MAX_KNOWLEDGE_RECORDS = 2_048;
+
+async function readKnowledgeCandidates(root: string): Promise<readonly KnowledgeCandidate[]> {
+  const knowledgeRoot = join(workspacePaths(root).root, "knowledge");
+  const [decisionNames, patternNames] = await Promise.all([
+    readdir(join(knowledgeRoot, "decisions")),
+    readdir(join(knowledgeRoot, "patterns")),
+  ]);
+  const decisionFiles = decisionNames.filter((name) => KNOWLEDGE_NAME.test(name));
+  const patternFiles = patternNames.filter((name) => KNOWLEDGE_NAME.test(name));
+  if (decisionFiles.length + patternFiles.length > MAX_KNOWLEDGE_RECORDS) {
+    throw new Error("Knowledge collection exceeds the bounded record count");
+  }
+
+  const decisions = await Promise.all(decisionFiles.sort(portableCompare).map(async (name) => {
+    const path = `knowledge/decisions/${name}`;
+    const contents = await readBoundedText(join(knowledgeRoot, "decisions", name), 256 * 1024);
+    const record = parseKnowledgeRecordMarkdown(contents);
+    if (`${record.specId}.md` !== name) throw new Error("Knowledge record filename does not match Spec ID");
+    return {
+      source: { kind: "decision" as const, specId: record.specId },
+      path,
+      title: record.title,
+      summary: record.summary,
+      decisions: record.decisions,
+      constraints: record.constraints,
+      contentHash: knowledgeContentHash(contents),
+    } satisfies KnowledgeCandidate;
+  }));
+  const patterns = await Promise.all(patternFiles.sort(portableCompare).map(async (name) => {
+    const path = `knowledge/patterns/${name}`;
+    const contents = await readBoundedText(join(knowledgeRoot, "patterns", name), KNOWLEDGE_PATTERN_MAX_BYTES);
+    const pattern = parseKnowledgePatternMarkdown(contents);
+    if (`${pattern.sourceSpecId}.md` !== name) throw new Error("Knowledge Pattern filename does not match source Spec ID");
+    return {
+      source: { kind: "pattern" as const, specId: pattern.sourceSpecId },
+      path,
+      title: pattern.title,
+      summary: pattern.summary,
+      tags: pattern.tags,
+      guidance: pattern.guidance,
+      constraints: pattern.constraints,
+      contentHash: knowledgeContentHash(contents),
+    } satisfies KnowledgeCandidate;
+  }));
+  return Object.freeze([...patterns, ...decisions]);
 }
 
 export class ExpertTeamWorkflowService {
@@ -965,8 +1040,33 @@ export class ExpertTeamWorkflowService {
     return (await readActiveRecords(canonicalRoot, context.state, activeExperts)).team;
   }
 
+  async knowledgeContext(queryValue: unknown): Promise<KnowledgeSelection> {
+    const query = parseKnowledgeContextQuery(queryValue);
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    return selectKnowledge(query, await readKnowledgeCandidates(canonicalRoot));
+  }
+
   async resumeContext(): Promise<WorkflowResumeContext> {
     const { canonicalRoot, context } = await this.context(false);
+    let projectContext: ProjectContext | null;
+    try {
+      projectContext = await readProjectContext(canonicalRoot);
+    } catch {
+      return freezeWorkflowResumeContext({
+        workspaceRevision: context.state.revision,
+        safeMode: true,
+        recovered: context.recovered,
+        recoveryStatus: "inspection-required",
+        projectContext: null,
+        requirement: null,
+        spec: null,
+        task: null,
+        team: null,
+        knowledge: [],
+        blockers: ["project-context-corrupt"],
+      });
+    }
     let knowledge: readonly ResumeKnowledge[];
     try {
       knowledge = await readRecentKnowledge(canonicalRoot);
@@ -976,6 +1076,7 @@ export class ExpertTeamWorkflowService {
         safeMode: true,
         recovered: context.recovered,
         recoveryStatus: "inspection-required",
+        projectContext,
         requirement: null,
         spec: null,
         task: null,
@@ -990,6 +1091,7 @@ export class ExpertTeamWorkflowService {
         safeMode: true,
         recovered: context.recovered,
         recoveryStatus: "inspection-required",
+        projectContext,
         requirement: null,
         spec: null,
         task: null,
@@ -1004,6 +1106,7 @@ export class ExpertTeamWorkflowService {
         safeMode: false,
         recovered: context.recovered,
         recoveryStatus: "ready",
+        projectContext,
         requirement: null,
         spec: null,
         task: null,
@@ -1037,6 +1140,7 @@ export class ExpertTeamWorkflowService {
         safeMode: false,
         recovered: context.recovered,
         recoveryStatus: "ready",
+        projectContext,
         requirement: {
           id: records.requirement.id,
           title: records.requirement.title,
@@ -1075,6 +1179,7 @@ export class ExpertTeamWorkflowService {
         safeMode: true,
         recovered: context.recovered,
         recoveryStatus: "inspection-required",
+        projectContext,
         requirement: null,
         spec: null,
         task: null,
