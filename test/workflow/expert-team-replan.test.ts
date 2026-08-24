@@ -21,6 +21,32 @@ describe("expert-team replan and retirement", () => {
     expect(await fixture.teamHistoryRevisions()).toEqual(["000001.json", "000002.json"]);
   });
 
+  test("rejects unknown replacement context before writing a team revision", async () => {
+    const fixture = await createAppliedWorkflowTeamFixture();
+    const replacement = fixture.expandedDraft();
+    const draft = structuredClone(replacement.draft);
+    draft.selection.domains = ["enginnering"];
+    draft.selection.projectSignals = ["appi"];
+    const selection = await fixture.service.selectPreview(draft);
+    const input = {
+      draft,
+      selectionFingerprint: selection.selectionFingerprint,
+      assignments: fixture.assignmentsFor(selection),
+    };
+    const preview = await fixture.service.replanPreview(input);
+    expect(preview.vocabularyMismatches).toMatchObject({
+      domains: ["enginnering"],
+      projectSignals: ["appi"],
+    });
+    const before = await fixture.snapshot();
+
+    await expect(fixture.service.replanApply({
+      ...input,
+      approvalToken: preview.approvalToken,
+    })).rejects.toThrow(/unknown domains.*project signals/iu);
+    expect(await fixture.snapshot()).toEqual(before);
+  });
+
   test("a fresh service restores the approved team and cancellation retires only this Task", async () => {
     const fixture = await createAppliedWorkflowTeamFixture();
     expect((await fixture.freshService().resumeContext()).team?.teamRevision).toBe(1);

@@ -261,6 +261,17 @@ function vocabularyMismatches(draft: PlanDraft, catalog: RuntimeCatalog): Vocabu
   });
 }
 
+function assertKnownSelectionContext(mismatches: VocabularyMismatches): void {
+  const unknown: string[] = [];
+  if (mismatches.domains.length > 0) {
+    unknown.push(`unknown domains: ${mismatches.domains.join(", ")}`);
+  }
+  if (mismatches.projectSignals.length > 0) {
+    unknown.push(`unknown project signals: ${mismatches.projectSignals.join(", ")}`);
+  }
+  if (unknown.length > 0) throw new Error(unknown.join("; "));
+}
+
 function requestFor(draft: PlanDraft) {
   return {
     capabilities: [...draft.selection.capabilities],
@@ -586,6 +597,7 @@ export class ExpertTeamWorkflowService {
     if (prepared.approvalToken !== input.approvalToken) {
       throw new Error("approval token no longer matches the current workspace revision or Plan");
     }
+    assertKnownSelectionContext(prepared.vocabularyMismatches);
     if (prepared.blockers.includes("capability-uncovered")) {
       throw new Error("Plan has uncovered capabilities");
     }
@@ -730,6 +742,7 @@ export class ExpertTeamWorkflowService {
     if (prepared.approvalToken !== input.approvalToken) {
       throw new Error("approval token no longer matches the current replan diff or workspace revision");
     }
+    assertKnownSelectionContext(prepared.vocabularyMismatches);
     if (prepared.blockers.includes("capability-uncovered")) {
       throw new Error("replacement Plan has uncovered capabilities");
     }

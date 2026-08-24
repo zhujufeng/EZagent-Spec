@@ -44,6 +44,31 @@ describe("ExpertTeamWorkflowService", () => {
     expect(await fixture.snapshot()).toEqual(before);
   });
 
+  test("rejects unknown domain and project signal before applying any artifact", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const draft = structuredClone(fixture.draft);
+    draft.selection.domains = ["enginnering"];
+    draft.selection.projectSignals = ["appi"];
+    const selection = await fixture.service.selectPreview(draft);
+    const input = {
+      draft,
+      selectionFingerprint: selection.selectionFingerprint,
+      assignments: fixture.assignmentsFor(selection),
+    };
+    const preview = await fixture.service.planPreview(input);
+    expect(preview.vocabularyMismatches).toMatchObject({
+      domains: ["enginnering"],
+      projectSignals: ["appi"],
+    });
+    const before = await fixture.snapshot();
+
+    await expect(fixture.service.planApply({
+      ...input,
+      approvalToken: preview.approvalToken,
+    })).rejects.toThrow(/unknown domains.*project signals/iu);
+    expect(await fixture.snapshot()).toEqual(before);
+  });
+
   test("requires an explicit accepted decision for a team above the soft threshold", async () => {
     const fixture = await createWorkflowTeamFixture({ capabilityCount: 7, reviewAfter: 6 });
     const selection = await fixture.service.selectPreview(fixture.draft);
