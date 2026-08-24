@@ -13,12 +13,11 @@ const EXPECTED_SKILLS = [
   "ezagent-light",
   "ezagent-context",
   "ezagent-spec",
+  "ezagent-execute",
   "ezagent-implement",
   "ezagent-review",
 ] as const;
 const TRANSITION_SKILLS = [
-  "ezagent-router",
-  "ezagent-spec",
   "ezagent-implement",
   "ezagent-review",
 ] as const;
@@ -81,7 +80,7 @@ function option(argv: readonly string[], name: string): string | undefined {
 }
 
 describe("Codex Skill contracts", () => {
-  test("ships exactly the seven concise, implicitly discoverable workflow Skills", async () => {
+  test("ships exactly the eight concise, implicitly discoverable workflow Skills", async () => {
     const directories = (await readdir(SKILLS_ROOT, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
@@ -219,20 +218,56 @@ describe("Codex Skill contracts", () => {
     expect(implement.body).toMatch(/implementing.*继续/u);
   });
 
-  test("routes automatic selection, approval, readiness, and replan through real commands", async () => {
+  test("routes new work through the general harness and retains v1 coding compatibility", async () => {
     const router = await readSkill("ezagent-router");
     const spec = await readSkill("ezagent-spec");
+    const execute = await readSkill("ezagent-execute");
     const implement = await readSkill("ezagent-implement");
     const review = await readSkill("ezagent-review");
 
-    expect(router.body).toContain("team-select-preview");
-    expect(router.body).toContain("不得直接提交专家 ID");
-    expect(spec.body).toContain("plan-preview");
-    expect(spec.body).toContain("与 Spec/Plan 一起确认");
+    expect(router.body).toMatch(/Consult.*Quick.*Brief.*Standard.*Controlled/su);
+    expect(router.body).toMatch(/编码、分析、文档、策划.*其他/u);
+    expect(router.body).toContain("$ezagent-execute");
+    expect(spec.body).toContain("work-preview");
+    expect(spec.body).toContain("work-apply");
+    expect(spec.body).not.toContain("team-select-preview");
+    expect(execute.body).toContain("work-start");
+    expect(execute.body).toContain("journal-append");
+    expect(execute.body).toContain("work-review");
+    expect(review.body).toContain("work-complete");
+    expect(implement.body).toMatch(/v1.*兼容/su);
     expect(implement.body).toContain("platformSyncStatus");
     expect(implement.body).toContain("ready");
     expect(implement.body).toContain("replan-preview");
-    expect(review.body).toContain("不得审查自己参与实现的 Task");
+    expect(review.body).toMatch(/v1.*旧编码.*适配/su);
+  });
+
+  test("keeps personnel open-ended and specialists optional", async () => {
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+    const execute = await readSkill("ezagent-execute");
+
+    expect(spec.body).toMatch(/不得成为固定角色枚举/u);
+    expect(spec.body).toMatch(/只能作为非穷尽示例/u);
+    expect(spec.body).toMatch(/Specialist.*多 Agent.*可选/su);
+    expect(router.body).toMatch(/不得固定人员、数量或岗位/u);
+    expect(execute.body).toMatch(/人员和数量不固定/u);
+    for (const skill of [router, spec, execute]) {
+      expect(skill.body).not.toMatch(/(?:只能|必须由).*(?:库存|运营|策划|人事|HR|研发)/iu);
+    }
+  });
+
+  test("binds controlled side effects to an exact approval without pretending to execute them", async () => {
+    const spec = await readSkill("ezagent-spec");
+    const execute = await readSkill("ezagent-execute");
+
+    expect(spec.body).toMatch(/Controlled.*批准不等于.*Side Effect.*授权/su);
+    expect(argvFor(execute, "side-effect-preview")).toBeDefined();
+    expect(argvFor(execute, "side-effect-apply")).toBeDefined();
+    expect(execute.body).toMatch(/action、target.*content hash/su);
+    expect(execute.body).toContain("externalActionExecuted: false");
+    expect(execute.body).toMatch(/Apply 只生成.*授权记录.*不会执行外部动作/u);
+    expect(execute.body).toMatch(/漂移.*重新预览和批准/u);
   });
 
   test("retrieves summaries and gates sharing or Pattern promotion behind one approval", async () => {
@@ -286,7 +321,7 @@ describe("Codex Skill contracts", () => {
     expect(option(integrationInit, "--name")).toBe("<project-name>");
   });
 
-  test("captures structured Knowledge before completing a verified Task", async () => {
+  test("captures a bounded Decision from persisted Evidence before completing v2 work", async () => {
     const review = await readSkill("ezagent-review");
     const completion = structuredContract(review, "completion");
 
@@ -296,10 +331,13 @@ describe("Codex Skill contracts", () => {
       currentAction: "capture-and-complete",
       resultStatus: "completed",
     });
+    expect(argvFor(review, "work-review")).toBeDefined();
+    expect(argvFor(review, "work-complete")).toBeDefined();
+    expect(review.body).toMatch(/每个 Slice.*最新 Evidence/su);
+    expect(review.body).toMatch(/Decision.*标题、摘要、决策、约束和后续事项/su);
     expect(argvExamples(review).some((argv) => option(argv, "--to") === "completed")).toBe(true);
-    expect(review.body).toMatch(/Knowledge.*写入.*读回.*验证.*completed/su);
-    expect(review.body).toMatch(/stdin.*决策.*约束.*验证证据.*后续/su);
-    expect(review.body).toMatch(/不保存.*聊天.*完整用户提示.*完整专家提示/su);
+    expect(review.body).toMatch(/v1 Knowledge.*决策、约束、验证证据.*后续事项/su);
+    expect(review.body).toMatch(/不保存.*聊天、完整用户提示或完整专家提示/u);
   });
 
   test("transitions a completed implementation to verifying before review handoff", async () => {
@@ -339,25 +377,23 @@ describe("Codex Skill contracts", () => {
     }
   });
 
-  test("binds every multi-Agent delegation to the structured Spec workflow", async () => {
+  test("binds optional v2 multi-Agent delegation to one Work Slice", async () => {
     const spec = await readSkill("ezagent-spec");
-    const implement = await readSkill("ezagent-implement");
+    const execute = await readSkill("ezagent-execute");
     const requiredFields = [
-      "Requirement ID",
-      "Spec ID",
-      "Task ID",
-      "expert ID",
+      "Work Item ID",
+      "Work Spec ID",
+      "Slice ID",
       "delegation ID",
       "scope",
       "deliverables",
-      "gates",
+      "Evidence requirements",
     ];
 
-    for (const skill of [spec, implement]) {
+    for (const skill of [spec, execute]) {
       for (const field of requiredFields) expect(skill.body).toContain(field);
-      expect(skill.body).toMatch(/少量.*专家/u);
-      expect(skill.body).toMatch(/不固定.*数量/u);
-      expect(skill.body).toMatch(/不(?:得|要).*完整.*提示/u);
+      expect(skill.body).toMatch(/Specialist.*多 Agent/su);
+      expect(skill.body).toMatch(/不(?:保存|持久化).*完整.*提示/u);
     }
   });
 

@@ -2252,3 +2252,7 @@ export class ExpertTeamWorkflowService {
     }
   }
 }
+
+// Domain-neutral public name for new integrations; keep the original export as
+// the source-compatible v1 coding adapter name.
+export { ExpertTeamWorkflowService as AgentWorkHarnessService };

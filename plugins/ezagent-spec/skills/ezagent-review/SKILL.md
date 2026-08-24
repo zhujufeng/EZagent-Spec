@@ -1,11 +1,11 @@
 ---
 name: ezagent-review
-description: 由已批准团队中的独立审查专家验证 EZagent Spec Task 的实际交付和质量证据；失败返回实现，通过后沉淀结构化知识。
+description: 按 Acceptance Criterion 审查通用 Work Item 的真实 Evidence 并完成 Decision；同时保留已批准 v1 编码 Task 的独立质量门审查兼容路径。
 ---
 
 # EZagent Review
 
-## 验证证据
+## 恢复与分流
 
 先取当前 `SKILL.md` 所在目录，再向上两级得到 `<plugin-root>`，把 `dist/ezagent-cli.mjs` 解析为 `<absolute-cli-path>` 绝对路径；不要在 `PATH` 中搜索其他 EZagent，也不要要求用户输入或运行 CLI。
 
@@ -15,17 +15,39 @@ description: 由已批准团队中的独立审查专家验证 EZagent Spec Task 
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
-任何 gate、返工或状态推进前都应用状态门；kind 或 status 不匹配就关闭失败：
+安全模式或 inspection-required 只诊断。`sourceSchemaVersion: 2` 走通用 Evidence 审查；`sourceSchemaVersion: 1` 才走文末的旧编码适配器。不得虚构证据、状态、命令或人工结论。
+
+## v2：Criterion-by-Criterion Review
+
+逐个 Slice 对照 Work Spec：交付物是否符合 Deliverable Interface，每个 Acceptance Criterion 要求的 Evidence kind 是否真实存在且结论通过，资源和操作是否守住 Boundaries。只记录实际观察、实际执行或可定位的 Artifact；没有运行、无法读取、来源失效或证据不足都不能算通过。
+
+Review Policy 为 `independent-agent` 或 `mixed` 时，审查上下文必须与交付者分离，但不要求固定专家或固定人数。为 `human` 或 `mixed` 时，只有用户对匹配 Approval Point `contentHash` 的明确结论才能形成 `human-approval` Evidence。
+
+把一个 Slice 的完整 Evidence Bundle 作为单个 JSON 从 stdin 传入：
+
+```json
+["node", "<absolute-cli-path>", "work-review", "--root", "<absolute-project-root>"]
+```
+
+核心按 Criterion 返回 `covered` 或 `missing` 并持久化证据。缺失时 Slice 进入 `revise`，转回 `$ezagent-execute` 只修复该 Slice；完整时进入 `accepted`。已接受 Slice 也允许被真正独立的失败证据重新打开，不得用旧结论掩盖新发现。
+
+所有 Slice 都 accepted 且 Work Item 为 verifying 后，重新读取持久化 Evidence，并形成有界 Decision：标题、摘要、决策、约束和后续事项。不要复制聊天、长文、完整提示或测试输出。把 `schemaVersion: 3` 的 Decision JSON 从 stdin 传入：
+
+```json
+["node", "<absolute-cli-path>", "work-complete", "--root", "<absolute-project-root>"]
+```
+
+核心会重新验证每个 Slice 的最新 Evidence，原子写入 Decision、完成 Work Item 并清空 active item。随后再次执行 `context`，确认 active item 为空且 Decision 可按返回 path 与 hash 读回；失败就保持关闭失败。
+
+## v1：旧编码 Task 审查适配器
+
+只有 `sourceSchemaVersion: 1` 且 kind 为 task、status 为 verifying 时使用：
 
 ```json
 {"stateGuard":{"kind":"task","statuses":["verifying"]}}
 ```
 
-安全模式只诊断。审查只能委派给当前已批准团队中 mode 为 review 的独立专家，且只能只读检查；不得审查自己参与实现的 Task，也不得临时换人规避角色隔离。委派必须绑定 `Requirement ID`、`Spec ID`、`Task ID`、`expert ID`、`delegation ID`、`scope`、`deliverables` 和 `gates`。
-
-逐项运行 Task 定义的 `gates`，只记录实际执行的命令、环境、结果和必要摘要；未运行、无法运行或证据不足都不得记为 PASS。
-
-任一质量门失败时不得把 Task 标成完成。重新执行 `context`，按以下返工契约使用最新 revision：
+审查只能交给已批准团队中没有参与该 Task 实现的 review 专家，逐项运行 Task 定义的 gates。失败时按以下兼容契约返回实施：
 
 ```json
 {"failureHandoff":{"fromStatus":"verifying","toStatus":"implementing","supportedRisks":["light","standard"],"highRisk":"fail-closed","targetSkill":"ezagent-implement","onTransitionFailure":"fail-closed"}}
@@ -35,26 +57,16 @@ description: 由已批准团队中的独立审查专家验证 EZagent Spec Task 
 ["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "implementing", "--revision", "<active-work-item-revision>"]
 ```
 
-只有 `light` 和 `standard` Task 可以按此路径返工。若上下文中的 risk 为 `high`，返工也必须关闭失败，不得转入 Implement 或修改代码。transition 失败时必须关闭失败，不得转入 Implement；成功后才转 `$ezagent-implement`。
-
-全部质量门通过后，把结构化 Knowledge 作为单个 JSON 文档从 stdin 传入。`qualityGateReceipts` 必须与 active Task 的 `qualityGates` 一一对应，每项只记录实际命令、PASS 结果、退出码 0 和必要摘要。内容只包含标题、摘要、决策、约束、验证证据、质量门回执与后续事项；不保存聊天全文、完整用户提示或完整专家提示：
-
-```json
-{"schemaVersion":2,"title":"<knowledge-title>","summary":"<bounded-summary>","decisions":["<decision>"],"constraints":["<constraint>"],"verificationEvidence":["<human-readable-summary>"],"qualityGateReceipts":[{"gate":"<exact-task-gate>","command":"<actual-command>","outcome":"passed","exitCode":0,"summary":"<bounded-result-summary>"}],"followUps":[]}
-```
+high risk 返工关闭失败；transition 失败时关闭失败，不得转入 Implement。transition 成功后才转 `$ezagent-implement`。全部 gates 真实通过后，沿用 v1 Knowledge v2 capture-and-complete 契约：
 
 ```json
 {"completion":{"knowledgeRequiredBeforeStatus":"completed","currentKnowledgePersistence":"available","currentAction":"capture-and-complete","resultStatus":"completed"}}
 ```
 
-重新执行 `context` 取得最新 revision 后，用同一个进程调用将 Knowledge 写入并推进 completed：
-
 ```json
 ["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "completed", "--revision", "<active-work-item-revision>"]
 ```
 
-本地核心会在一次原子事务中写入 Knowledge、完成 Task 并清退专家。命令成功后再次执行 `context`，确认 `state.activeWorkItem` 为空，且 `knowledge` 中能按内容哈希读回并验证刚写入的记录；任一步失败都保持关闭失败，不得自行声称 completed。
-
-每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。不得虚构证据、状态或命令。
+每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。v1 Knowledge 只保存决策、约束、验证证据、逐 gate PASS 回执与后续事项，不保存聊天、完整用户提示或完整专家提示；完成后必须写入、读回、验证再声称 completed。
 
 不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。

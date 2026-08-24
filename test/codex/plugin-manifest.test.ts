@@ -12,7 +12,7 @@ async function readJson(relativePath: string): Promise<Record<string, unknown>> 
   >;
 }
 
-describe("EZagent Spec Codex plugin metadata", () => {
+describe("EZagent Work Harness Codex plugin metadata", () => {
   test("declares the plugin manifest without inactive integrations", async () => {
     const manifest = await readJson("plugins/ezagent-spec/.codex-plugin/plugin.json");
 
@@ -22,7 +22,7 @@ describe("EZagent Spec Codex plugin metadata", () => {
       license: "MIT",
       skills: "./skills/",
       interface: {
-        displayName: "EZagent Spec",
+        displayName: "EZagent Work Harness",
         category: "Developer Tools",
       },
     });

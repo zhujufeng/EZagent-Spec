@@ -70,9 +70,10 @@ describe("Codex host evaluation corpus", () => {
       "consult-no-work",
       "no-workflow",
       "initialize",
-      "router-light",
+      "router-quick",
+      "router-brief",
       "router-standard",
-      "router-high",
+      "router-controlled",
     ]));
     expect(new Set(suite.cases.flatMap(({ categories }) => categories))).toEqual(new Set([
       "explicit",

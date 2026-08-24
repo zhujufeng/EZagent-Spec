@@ -22,7 +22,7 @@ import type { WorkItemStatus } from "../domain/work-item.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
 import { WorkspaceRepository } from "../workspace/repository.js";
 import {
-  ExpertTeamWorkflowService,
+  AgentWorkHarnessService,
   loadDefaultRuntimeCatalog,
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
@@ -220,7 +220,7 @@ export interface CliRuntime {
   readonly createRepository: (root: string) => WorkspaceRepository;
   readonly codexIntegrationRuntime: CodexIntegrationRuntime;
   readonly stdin: JsonInputSource;
-  readonly createWorkflowService: (root: string) => ExpertTeamWorkflowService;
+  readonly createWorkflowService: (root: string) => AgentWorkHarnessService;
   readonly readRuntimeCatalog: () => Promise<RuntimeCatalog>;
   readonly inspectCodexTeam: (
     root: string,
@@ -238,7 +238,7 @@ const defaultRuntime: CliRuntime = {
   createRepository: (root) => new WorkspaceRepository(root),
   codexIntegrationRuntime: nodeCodexIntegrationRuntime,
   stdin: { chunks: process.stdin },
-  createWorkflowService: (root) => new ExpertTeamWorkflowService(root),
+  createWorkflowService: (root) => new AgentWorkHarnessService(root),
   readRuntimeCatalog: loadDefaultRuntimeCatalog,
   inspectCodexTeam: inspectCodexExpertTeam,
   reconcileCodexTeam: reconcileCodexExpertTeam,

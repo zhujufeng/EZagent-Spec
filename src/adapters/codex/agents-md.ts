@@ -20,13 +20,14 @@ export class EzagentAgentsMarkerError extends Error {
 }
 
 const RULES = [
-  "## EZagent Spec",
+  "## EZagent Work Harness",
   "",
-  "仅当项目根目录存在 `.ezagent/project.yaml` 时，所有开发、修改、修复、重构、实现、审查和验证请求都必须自动使用 `$ezagent-router`；不要要求用户手动输入 EZagent 命令。",
+  "仅当项目根目录存在 `.ezagent/project.yaml` 时，需要分析、创建、修改、执行、审查或跨会话恢复的 Agent 工作都必须自动使用 `$ezagent-router`；只读咨询直接回答，不要要求用户手动输入 EZagent 命令。",
   "每次相关工作开始，先调用插件内打包 CLI 的 `context --root <project-root> --json` 读取当前状态；不得直接编辑 `.ezagent/**`。",
-  "每次相关工作先恢复并核对已批准专家团队；若 `platformSyncStatus` 为 `pending`，先使用插件内 CLI 的 `experts-reconcile`，确认 `ready` 后才能进入 implementing。",
-  "所有工作必须遵循当前流程等级要求的批准、任务状态和质量门；当前版本不支持高风险 Task 实施，必须关闭失败。",
-  "多 Agent 委派必须绑定 Requirement/Spec/Task ID、专家 ID、delegation ID、范围、交付物和对应质量门。",
+  "Router 必须选择最轻且足够可靠的 Consult、Quick、Brief、Standard 或 Controlled Mode；岗位、部门和业务类型不得成为固定角色枚举或专属流程。",
+  "新的 v2 Work Item 按 Brief、Work Spec、Slices、Evidence、Work Journal 与 Decision 执行；旧 v1 编码 Task 才恢复已批准专家团队和原质量门。",
+  "Specialist 与多 Agent 不是默认前置；只有收益明确时才使用，并绑定 Work Item、Work Spec、Slice、delegation、范围、交付物和 Evidence requirements。",
+  "发送、发布、外部写入或其他 Side Effect 必须命中精确 Approval Point，经用户单独批准；本地授权记录不等于外部动作已经执行。",
   "不得自动联网、安装软件、执行任何 Git 写操作、发布或上传项目。",
 ] as const;
 

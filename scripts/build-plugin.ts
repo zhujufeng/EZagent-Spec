@@ -31,6 +31,7 @@ const SKILLS = [
   "ezagent-light",
   "ezagent-context",
   "ezagent-spec",
+  "ezagent-execute",
   "ezagent-implement",
   "ezagent-review",
 ] as const;

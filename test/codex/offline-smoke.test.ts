@@ -36,6 +36,7 @@ const EXPECTED_PLUGIN_FILES = [
   "licenses/npm/yaml@2.9.0/LICENSE",
   "licenses/npm/zod@4.4.3/LICENSE",
   "skills/ezagent-context/SKILL.md",
+  "skills/ezagent-execute/SKILL.md",
   "skills/ezagent-implement/SKILL.md",
   "skills/ezagent-initialize/SKILL.md",
   "skills/ezagent-light/SKILL.md",
@@ -277,6 +278,14 @@ describe.sequential("Codex plugin offline release smoke", () => {
       "knowledge-context",
       "knowledge-promote-preview",
       "knowledge-promote-apply",
+      "work-preview",
+      "work-apply",
+      "work-start",
+      "work-review",
+      "work-complete",
+      "journal-append",
+      "side-effect-preview",
+      "side-effect-apply",
     ]) {
       expect(bundle).toContain(command);
     }
@@ -323,11 +332,11 @@ describe.sequential("Codex plugin offline release smoke", () => {
     );
     expect(router).toContain(".ezagent/project.yaml");
     expect(router).toContain("dist/ezagent-cli.mjs");
-    const routingSection = router.slice(router.indexOf("## 读取与路由"));
+    const routingSection = router.slice(router.indexOf("## 激活与上下文"));
     expect(routingSection).toContain("支持 argv 数组");
     expect(routingSection).toContain("禁止拼接 shell 字符串");
     expect(routingSection).toContain('["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]');
-    expect(routingSection.indexOf('"context"')).toBeLessThan(routingSection.indexOf("consult"));
+    expect(routingSection.indexOf('"context"')).toBeLessThan(routingSection.indexOf("Consult"));
     expect(routingSection).toContain("$ezagent-context");
     expect(await readFile(
       join(installedPlugin, "skills", "ezagent-context", "SKILL.md"),
@@ -348,6 +357,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
       spec: null,
       task: null,
       team: null,
+      journal: null,
       projectContext: null,
       knowledge: [],
       blockers: [],
@@ -572,23 +582,22 @@ describe.sequential("Codex plugin offline release smoke", () => {
 
   test("documents the public plugin boundary and verified platforms", async () => {
     const readme = await readFile(join(REPOSITORY_ROOT, "README.md"), "utf8");
-    expect(readme).toContain("codex plugin marketplace add zhujufeng/EZagent-Spec --ref v0.1.0");
+    expect(readme).toContain("codex plugin marketplace add zhujufeng/EZagent-Spec");
     expect(readme).toContain("codex plugin add ezagent-spec@ezagent");
     expect(readme).toContain("请帮我安装这个 Codex 插件");
     expect(readme).toContain("Node.js 22+");
-    expect(readme).toContain("Router Skill + 项目内受管 `AGENTS.md`");
+    expect(readme).toContain("项目内受管 `AGENTS.md`");
     expect(readme).toContain("不是 Codex lifecycle Hook");
-    expect(readme).toContain("`PreToolUse` interception contract");
-    expect(readme).toContain("本地核心的确定性状态转换");
-    expect(readme).toContain("初始化一次");
+    expect(readme).toContain("Brief → Work Spec → 纵向 Slices → Evidence → Decision");
+    expect(readme).toContain("Consult");
+    expect(readme).toContain("Quick");
+    expect(readme).toContain("Controlled");
     expect(readme).toContain("自然语言");
     expect(readme).toContain("Local-only");
-    expect(readme).toContain("自动专家组队");
-    expect(readme).toContain("Plan 和团队只确认一次");
-    expect(readme).toContain("团队差异:");
-    expect(readme).toContain("结构化 Knowledge");
-    expect(readme).toContain("Task Finish");
-    expect(readme).toContain("当前版本不支持高风险 Task 实施");
+    expect(readme).toContain("新 v2 工作流不要求专家团队");
+    expect(readme).toContain("编码兼容适配器");
+    expect(readme).toContain("externalActionExecuted: false");
+    expect(readme).toContain("Work Journal");
     expect(readme).toContain("关闭失败");
     expect(readme).toContain("MIT License");
     expect(readme).toContain("GitHub Actions 对 Windows 与 macOS");

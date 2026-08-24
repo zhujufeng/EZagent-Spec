@@ -17,18 +17,20 @@ const policySchema = z.enum([
   "consult-no-work",
   "no-workflow",
   "initialize",
-  "router-light",
+  "router-quick",
+  "router-brief",
   "router-standard",
-  "router-high",
+  "router-controlled",
 ]);
 
 const ruleAnchorSchema = z.enum([
   "standard-new-capability",
-  "light-cosmetic",
+  "quick-cosmetic",
+  "brief-analysis",
   "consult-no-work",
   "uninitialized-no-workflow",
   "explicit-initialize",
-  "high-risk",
+  "controlled-side-effect",
 ]);
 
 const categorySchema = z.enum([

@@ -1,6 +1,6 @@
 ---
 name: ezagent-context
-description: 在已初始化 EZagent Spec 项目中检索轻量知识摘要、显式启用或更新团队共享上下文，并把用户批准的 Task Knowledge 晋升为团队 Pattern。
+description: 在已初始化 EZagent 项目中检索轻量 Decision 与 Pattern 摘要、显式启用或更新共享上下文，并把用户批准的可复用经验晋升为团队 Pattern。
 ---
 
 # EZagent Context
@@ -21,7 +21,7 @@ description: 在已初始化 EZagent Spec 项目中检索轻量知识摘要、�
 
 ## 检索相关知识
 
-从当前 Task 标题、目标、capabilities、domains 和 projectSignals 形成少量短 terms；把 terms 作为一个 JSON 文档从 stdin 传入，不传完整用户提示或聊天：
+从当前 Outcome、Canonical Terms、Boundaries、capabilities、domains 和 projectSignals 形成少量短 terms；把 terms 作为一个 JSON 文档从 stdin 传入，不传完整用户提示或聊天：
 
 ```json
 ["node", "<absolute-cli-path>", "knowledge-context", "--root", "<absolute-project-root>"]
@@ -47,7 +47,7 @@ description: 在已初始化 EZagent Spec 项目中检索轻量知识摘要、�
 
 ## 晋升团队 Pattern
 
-只有用户明确要求把已有 Task Knowledge 沉淀为团队经验时才形成精简的 Pattern 草案；保留来源 Spec，提炼标题、摘要、tags、guidance 和 constraints，不复制回执、测试输出、聊天或完整原文。先把草案作为单个 JSON 文档从 stdin 传入：
+只有用户明确要求把已有 Decision 沉淀为团队经验时才形成精简的 Pattern 草案；保留来源 Work Spec，提炼标题、摘要、tags、guidance 和 constraints，不复制回执、测试输出、聊天或完整原文。旧版 Task Knowledge 仍可作为兼容来源。先把草案作为单个 JSON 文档从 stdin 传入：
 
 ```json
 ["node", "<absolute-cli-path>", "knowledge-promote-preview", "--root", "<absolute-project-root>"]

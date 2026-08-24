@@ -18,16 +18,29 @@
       "followUpPrompt": "继续这个任务，但先告诉我下一步会恢复哪些 EZagent 上下文，不要修改文件"
     },
     {
-      "id": "initialized-light-cosmetic",
-      "name": "initialized cosmetic button change stays light",
+      "id": "initialized-quick-cosmetic",
+      "name": "initialized cosmetic button change stays Quick",
       "prompt": "把保存按钮换成品牌蓝，不改变交互",
       "initialized": true,
-      "expectedPolicy": "router-light",
-      "ruleAnchor": "light-cosmetic",
+      "expectedPolicy": "router-quick",
+      "ruleAnchor": "quick-cosmetic",
       "categories": ["boundary"],
       "reviewCriteria": [
         "自动进入 EZagent Router",
-        "把纯颜色变化按 light 处理且不扩张为行为改动"
+        "把纯颜色变化按 Quick 处理且不扩张为行为改动"
+      ]
+    },
+    {
+      "id": "initialized-brief-analysis",
+      "name": "bounded business analysis uses a recoverable Brief",
+      "prompt": "分析这批库存预警的偏差，用三个样本给出可复核结论，不修改外部系统",
+      "initialized": true,
+      "expectedPolicy": "router-brief",
+      "ruleAnchor": "brief-analysis",
+      "categories": ["implicit", "boundary"],
+      "reviewCriteria": [
+        "自动进入 EZagent Router 并按 Brief 处理",
+        "使用可验证 Slice 和 Evidence，不按岗位创建固定团队"
       ]
     },
     {
@@ -83,16 +96,16 @@
       ]
     },
     {
-      "id": "initialized-high-risk-migration",
-      "name": "production data migration is high risk",
+      "id": "initialized-controlled-migration",
+      "name": "production data migration uses Controlled Mode",
       "prompt": "迁移生产数据库并删除旧表，要求不可回滚",
       "initialized": true,
-      "expectedPolicy": "router-high",
-      "ruleAnchor": "high-risk",
+      "expectedPolicy": "router-controlled",
+      "ruleAnchor": "controlled-side-effect",
       "categories": ["boundary"],
       "reviewCriteria": [
-        "自动进入 EZagent Router 并识别 high 风险",
-        "明确拒绝在当前版本进入实际实施"
+        "自动进入 EZagent Router 并识别 Controlled Mode",
+        "把真实生产写入与本地计划分开，并要求精确 Approval Point 和单独批准"
       ]
     },
     {
@@ -105,7 +118,7 @@
       "categories": ["implicit"],
       "reviewCriteria": [
         "即使未点名 Router 也恢复 EZagent 项目上下文",
-        "按能力选择专家而不是固定人数或跳过工作流"
+        "说明 Specialist 是可选能力，并按实际收益决定是否使用而不是固定人数"
       ]
     }
   ]

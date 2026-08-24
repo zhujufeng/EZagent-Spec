@@ -1,23 +1,24 @@
 {
   "name": "ezagent-spec",
   "version": "0.1.0",
-  "description": "中文、本地优先的 Spec Coding 工作流。",
+  "description": "中文、本地优先的通用 Agent Work Harness。",
   "author": {
     "name": "EZagent"
   },
   "repository": "https://github.com/zhujufeng/EZagent-Spec",
   "license": "MIT",
   "keywords": [
-    "spec-coding",
+    "agent-workflow",
+    "spec-driven",
     "chinese",
     "multi-agent",
     "local-first"
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "EZagent Spec",
-    "shortDescription": "中文、本地优先的 Spec Coding",
-    "longDescription": "初始化一次后，通过项目规则和 Router Skill 自动恢复需求、任务、专家与质量上下文。",
+    "displayName": "EZagent Work Harness",
+    "shortDescription": "让任意 Agent 工作更有结构和证据",
+    "longDescription": "初始化一次后，把模糊请求整理为 Brief、Work Spec、Slices、Evidence 与 Decision；人员和专家均不设固定类型。",
     "developerName": "EZagent",
     "category": "Developer Tools",
     "capabilities": [
@@ -26,8 +27,8 @@
       "Write"
     ],
     "defaultPrompt": [
-      "在这个项目启用 EZagent Spec。",
-      "帮我按 Spec 流程实现这个需求。"
+      "在这个项目启用 EZagent Work Harness。",
+      "帮我把这个需求按可验证的工作切片完成。"
     ]
   }
 }

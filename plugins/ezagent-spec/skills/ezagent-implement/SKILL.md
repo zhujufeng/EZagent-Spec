@@ -1,9 +1,11 @@
 ---
 name: ezagent-implement
-description: 使用已批准且已同步的项目级专家团队执行 EZagent Spec Task；约束范围、交付物和质量门，并在范围变化时发起重规划。
+description: 兼容执行 sourceSchemaVersion 1 的旧版编码 Spec Task：使用其已批准专家团队、范围、交付物和质量门；新的通用 Work Item 应使用 ezagent-execute。
 ---
 
 # EZagent Implement
+
+这是旧版 v1 编码流程的兼容适配器。只有 `context` 返回 `sourceSchemaVersion: 1` 时使用；v2 Work Item 必须转 `$ezagent-execute`，不得为新请求强制组队。
 
 ## 开始条件
 

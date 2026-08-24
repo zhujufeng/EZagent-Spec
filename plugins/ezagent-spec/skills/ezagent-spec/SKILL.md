@@ -1,11 +1,11 @@
 ---
 name: ezagent-spec
-description: 在已初始化 EZagent Spec 项目中澄清需求、分级风险，并把 Spec、Plan、Task 与自动提议的少量专家团队一起交给用户批准。
+description: 在已初始化项目中，把需要跨步骤、跨会话或受控执行的任意 Agent 请求整理为 Brief、Work Spec、Slices、Evidence 与 Approval Points，并在一次预览后创建通用 Work Item。
 ---
 
 # EZagent Spec
 
-## 形成规格
+## 先形成共同理解
 
 先取当前 `SKILL.md` 所在目录，再向上两级得到 `<plugin-root>`，把 `dist/ezagent-cli.mjs` 解析为 `<absolute-cli-path>` 绝对路径；不要在 `PATH` 中搜索其他 EZagent，也不要要求用户输入或运行 CLI。
 
@@ -15,56 +15,41 @@ description: 在已初始化 EZagent Spec 项目中澄清需求、分级风险�
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
-安全模式只诊断。把请求分类为 `consult`、`light`、`standard` 或 `high`：解释和只读咨询属于 `consult` 且不创建工作项；纯文案、颜色或局部样式在范围明确且不改变行为、接口、数据、依赖或安全时属于 `light`；Excel 导出等不涉及权限、安全边界、敏感或破坏性数据变更、生产环境或不可逆影响的新增能力，以及一般行为或接口变化，属于 `standard`；权限或安全边界变化、敏感或破坏性数据变更、生产环境操作或不可逆影响属于 `high`。仍不确定时按 `standard` 处理并在必要时澄清。
+安全模式或 inspection-required 只做诊断。先用自然语言复述 Shared Design Concept：用户真正想改变什么、谁会使用结果、什么算成功、哪些事明确不做。只追问一个会实质改变结果的问题，并给出推荐答案；答案可以从项目和可信来源取得时不要询问。共同理解尚不稳定时，不急着生成完整资产。
 
-结构化 Plan 至少明确目标、范围、非目标、验收条件、验证方法、Task、允许路径、依赖、交付物、质量门、能力需求、领域信号、假设与未决问题。`standard` 和 `high` 必须等待用户明确批准；`high` 的 Spec 批准不等于危险动作授权，每个实际危险动作仍需单独授权。
+人员、岗位、部门和业务类型只进入 `actors`、交付物消费者或边界上下文，不得成为固定角色枚举。库存、运营、策划、人事、研发等只能作为非穷尽示例，不能决定流程。
 
-## 自动专家团队与一次批准
+## 形成通用 Work Contract
 
-按能力需求使用本地完整目录动态提议少量合适专家，不固定专家数量。先把结构化 Plan 作为单个 JSON 文档从进程 stdin 传入：
+根据 Router 已选模式生成 `schemaVersion: 2` 的单个 JSON：
 
-```json
-["node", "<absolute-cli-path>", "team-select-preview", "--root", "<absolute-project-root>"]
-```
+- `brief`：请求摘要、预期结果、参与者、Canonical Terms、已确认决策、带来源的假设、未决问题和 Source Pointers。
+- `workSpec`：`brief` / `standard` / `controlled` 模式、范围、非目标、Deliverable Interfaces、Acceptance Criteria、Boundaries、Approval Points、Review Policy 和 Slice Plan。
+- 每个 Acceptance Criterion 必须声明所需 Evidence kinds；每个 Criterion 至少被一个 Slice 覆盖。
+- 第一个 Tracer Slice 必须无依赖并尽快产出一个可验证的端到端结果；总 Slice 数保持在 1–15 个，优先小而完整的纵向切片。
+- Deliverable Interface 描述结构、不可破坏的约束和消费者，不预先臆造大段正文或实现细节。
+- 外部写入或发布只能进入 `controlled`，且目标必须有精确 Approval Point。Controlled Review 必须包含 human 或 mixed 判断以及 `human-approval` Evidence。
 
-不得自行确定或直接提交最终 expert ID。只为返回的候选成员编写与其 mode 一致的 assignments；任何多 Agent 委派都必须绑定 `Requirement ID`、`Spec ID`、`Task ID`、`expert ID`、`delegation ID`、`scope`、`deliverables` 和 `gates`。只保存结构化摘要，不得保存完整用户提示或完整专家提示。
+Specialist 和多 Agent 是可选执行手段，不是 Work Contract 的必填字段。只有领域判断、上下文隔离、真正独立的并行 Slice 或独立审查能证明收益时才使用；不得固定人员、数量或岗位。任何多 Agent 委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
 
-把 draft、selection fingerprint、assignments 与必要的大团队决策作为单个 JSON 文档从 stdin 传入：
-
-```json
-["node", "<absolute-cli-path>", "plan-preview", "--root", "<absolute-project-root>"]
-```
-
-必须把目标、范围、验收、风险、Task、团队成员、角色、选择理由、分工、质量门和 blockers 与 Spec/Plan 一起确认，而不是另开一次专家选择确认。存在能力未覆盖或独立审查者缺失时停止；超过软阈值时只有用户明确接受后才能继续。
-
-用户批准合并预览后，以完全相同的 stdin JSON 和预览返回的 token 原子写入 Requirement、Spec、Task 与团队：
+把完全相同的 Work Contract JSON 从 stdin 先传给只读预览：
 
 ```json
-["node", "<absolute-cli-path>", "plan-apply", "--root", "<absolute-project-root>", "--approval-token", "<approval-token>"]
+["node", "<absolute-cli-path>", "work-preview", "--root", "<absolute-project-root>"]
 ```
 
-批准后重新读取上下文；若平台专家尚未同步，由 Router 执行恢复流程。不要重复要求用户选择团队。
+向用户展示 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设和未决问题。`brief`、`standard`、`controlled` 都只确认这一份合并预览；Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
 
-## 范围变化与重规划
-
-实施中若范围、依赖、验收、风险或所需能力发生实质变化，停止编码并形成 replacement Plan。先用最新已批准团队计算只读差异：
+用户批准后，把完全相同的 JSON 从 stdin 传入，并把预览 token 作为独立 argv 元素原子创建 Brief、Work Spec 与 Work Item：
 
 ```json
-["node", "<absolute-cli-path>", "replan-preview", "--root", "<absolute-project-root>"]
+["node", "<absolute-cli-path>", "work-apply", "--root", "<absolute-project-root>", "--approval-token", "<approval-token>"]
 ```
 
-将 replacement draft 与 assignments 作为单个 JSON 文档从 stdin 传入，向用户展示 Plan 差异及团队 added、removed、changed、unchanged。用户明确批准后，使用相同 stdin JSON 和绑定 token：
+Apply 后重新读取 `context`，确认 `sourceSchemaVersion: 2`，再转 `$ezagent-execute`。token 漂移或字段校验失败时重新预览，不猜测成功。
 
-```json
-["node", "<absolute-cli-path>", "replan-apply", "--root", "<absolute-project-root>", "--approval-token", "<approval-token>"]
-```
+## 范围变化
 
-未批准时维持原 Plan 和团队；不得静默扩写范围。
-
-每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。
-
-```json
-["node", "<absolute-cli-path>", "transition", "--root", "<absolute-project-root>", "--to", "<target-status>", "--revision", "<active-work-item-revision>"]
-```
+执行中若 Outcome、Scope、Non-goals、Criterion、资源权限、风险或 Approval Point 实质变化，停止当前 Slice 并明确展示变化；当前 v2 不静默扩写或直接改状态文件。由用户决定收缩回已批准范围，或在结束当前 Work Item 后为新范围创建新的 Work Contract。
 
 不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。

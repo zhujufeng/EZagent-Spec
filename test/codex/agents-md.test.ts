@@ -89,7 +89,7 @@ describe("mergeEzagentAgentsBlock", () => {
     const merged = mergeEzagentAgentsBlock(existing);
 
     expect(merged.startsWith(existing)).toBe(true);
-    expect(merged.slice(existing.length)).toContain(`${START}\n## EZagent Spec`);
+    expect(merged.slice(existing.length)).toContain(`${START}\n## EZagent Work Harness`);
     expect(mergeEzagentAgentsBlock(merged)).toBe(merged);
   });
 
@@ -98,7 +98,7 @@ describe("mergeEzagentAgentsBlock", () => {
     const merged = mergeEzagentAgentsBlock(existing);
 
     expect(merged.startsWith(existing)).toBe(true);
-    expect(merged.slice(existing.length)).toContain(`${START}\n## EZagent Spec`);
+    expect(merged.slice(existing.length)).toContain(`${START}\n## EZagent Work Harness`);
     expect(mergeEzagentAgentsBlock(merged)).toBe(merged);
   });
 
@@ -107,7 +107,7 @@ describe("mergeEzagentAgentsBlock", () => {
     const merged = mergeEzagentAgentsBlock(existing);
 
     expect(merged.startsWith(existing)).toBe(true);
-    expect(merged.slice(existing.length)).toContain(`${START}\n## EZagent Spec`);
+    expect(merged.slice(existing.length)).toContain(`${START}\n## EZagent Work Harness`);
     expect(mergeEzagentAgentsBlock(merged)).toBe(merged);
   });
 
@@ -116,12 +116,12 @@ describe("mergeEzagentAgentsBlock", () => {
 
     expect(merged).toMatch(/仅当.*\.ezagent\/project\.yaml.*自动使用.*\$ezagent-router/su);
     expect(merged).toMatch(/先.*CLI.*context/su);
-    expect(merged).toContain("先恢复并核对已批准专家团队");
     expect(merged).toContain("不得直接编辑 `.ezagent/**`");
-    expect(merged).toMatch(/批准.*任务状态.*质量门/su);
-    expect(merged).toContain(
-      "多 Agent 委派必须绑定 Requirement/Spec/Task ID、专家 ID、delegation ID、范围、交付物和对应质量门。",
-    );
+    expect(merged).toMatch(/Consult、Quick、Brief、Standard 或 Controlled/u);
+    expect(merged).toMatch(/岗位、部门和业务类型不得成为固定角色枚举/u);
+    expect(merged).toMatch(/v2 Work Item.*Brief、Work Spec、Slices、Evidence、Work Journal 与 Decision/u);
+    expect(merged).toMatch(/Specialist 与多 Agent 不是默认前置/u);
+    expect(merged).toMatch(/Side Effect.*精确 Approval Point.*单独批准/su);
     expect(merged).toMatch(/不得自动联网、安装软件/su);
     expect(merged).toMatch(/Git 写操作/su);
     expect(merged).toMatch(/发布或上传/su);
