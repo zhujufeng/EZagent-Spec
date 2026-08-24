@@ -1,5 +1,5 @@
 export type WorkItemKind = "requirement" | "spec" | "task";
-export type RiskLevel = "consult" | "light" | "standard" | "high";
+export type RiskLevel = "consult" | "light" | "brief" | "standard" | "high";
 export type WorkItemStatus =
   | "captured"
   | "clarifying"

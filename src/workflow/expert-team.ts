@@ -67,8 +67,8 @@ function digest(value: unknown): `sha256:${string}` {
 }
 
 function frozenRequest(request: SelectionRequest): ExpertTeamProposal["selectionRequest"] {
-  if (request.risk === "consult") {
-    throw new TypeError("consult requests do not create expert teams");
+  if (request.risk === "consult" || request.risk === "brief") {
+    throw new TypeError(`${request.risk} requests do not create legacy expert teams`);
   }
   return Object.freeze({
     capabilities: Object.freeze([...request.capabilities].sort(portableCompare)),

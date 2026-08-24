@@ -8,7 +8,7 @@ const workItemStatuses = [
   "captured", "clarifying", "specified", "approved", "planned", "implementing",
   "verifying", "completed", "cancelled",
 ] as const;
-const riskLevels = ["consult", "light", "standard", "high"] as const;
+const riskLevels = ["consult", "light", "brief", "standard", "high"] as const;
 
 function assertAllowedKeys(value: unknown, allowedKeys: readonly string[], label: string): void {
   if (value === null || typeof value !== "object") {

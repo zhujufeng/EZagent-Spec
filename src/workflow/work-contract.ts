@@ -291,3 +291,15 @@ function deepFreeze<T>(value: T): T {
 export function parseWorkContractDraft(value: unknown): WorkContractDraftV2 {
   return deepFreeze(workContractDraftSchema.parse(value)) as WorkContractDraftV2;
 }
+
+export function parseBriefV2(value: unknown): BriefV2 {
+  return deepFreeze(briefSchema.parse(value)) as BriefV2;
+}
+
+export function parseWorkSpecV2(value: unknown): WorkSpecV2 {
+  return deepFreeze(workSpecSchema.parse(value)) as WorkSpecV2;
+}
+
+export function parseSlicePlan(value: unknown): SlicePlan {
+  return deepFreeze(slicePlanSchema.parse(value)) as SlicePlan;
+}

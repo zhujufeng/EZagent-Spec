@@ -45,6 +45,15 @@ import {
   type SpecArtifact,
   type TaskArtifact,
 } from "./plan-artifacts.js";
+import { parseWorkContractDraft, type WorkContractDraftV2 } from "./work-contract.js";
+import {
+  createWorkArtifactsV2,
+  serializeBriefArtifactV2,
+  serializeWorkItemArtifactV2,
+  serializeWorkSpecArtifactV2,
+  workModeRisk,
+  type WorkArtifactsV2,
+} from "./work-artifacts.js";
 import {
   approvalToken,
   parseExpertTeamPlan,
@@ -137,6 +146,13 @@ export interface PlanPreview {
 
 export type AppliedPlan = Omit<PlanPreview, "approvalToken">;
 
+export interface WorkPreview extends WorkArtifactsV2 {
+  readonly approvalToken: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
+export type AppliedWork = Omit<WorkPreview, "approvalToken">;
+
 export interface KnowledgeCaptureResult {
   readonly state: WorkspaceState;
   readonly task: TaskArtifact;
@@ -202,6 +218,12 @@ interface PreparedPlan extends PlanPreview {
   readonly canonicalRoot: string;
   readonly state: WorkspaceState;
   readonly activeExperts: ActiveExperts;
+}
+
+interface PreparedWork extends WorkPreview {
+  readonly canonicalRoot: string;
+  readonly repository: WorkspaceRepository;
+  readonly state: WorkspaceState;
 }
 
 interface ActiveRecords {
@@ -586,6 +608,42 @@ function sharingToken(
   })).digest("hex")}`;
 }
 
+function workToken(
+  canonicalRoot: string,
+  workspaceRevision: number,
+  artifacts: WorkArtifactsV2,
+): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    schemaVersion: 2,
+    operation: "work-contract-approval",
+    canonicalRoot,
+    workspaceRevision,
+    artifacts,
+  })).digest("hex")}`;
+}
+
+function parseWorkApplyInput(value: unknown): {
+  readonly draft: WorkContractDraftV2;
+  readonly approvalToken: `sha256:${string}`;
+} {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Work approval input must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  const unsupported = Object.keys(record).find((key) => !["draft", "approvalToken"].includes(key));
+  if (unsupported !== undefined) throw new TypeError(`unsupported Work approval input: ${unsupported}`);
+  if (!Object.hasOwn(record, "draft") || !Object.hasOwn(record, "approvalToken")) {
+    throw new TypeError("Work approval input requires draft and approvalToken");
+  }
+  if (typeof record.approvalToken !== "string" || !HASH.test(record.approvalToken)) {
+    throw new TypeError("Work approval token is invalid");
+  }
+  return Object.freeze({
+    draft: parseWorkContractDraft(record.draft),
+    approvalToken: record.approvalToken as `sha256:${string}`,
+  });
+}
+
 function parseSharingApplyInput(value: unknown): SharingApplyInput {
   const record = exactObject(
     value,
@@ -734,6 +792,93 @@ export class ExpertTeamWorkflowService {
     const context = await repository.readContext();
     if (requireIdleWorkspace) requireIdle(context.state);
     return { canonicalRoot, repository, context };
+  }
+
+  private async prepareWork(draftValue: unknown): Promise<PreparedWork> {
+    const draft = parseWorkContractDraft(draftValue);
+    const { canonicalRoot, repository, context } = await this.context();
+    const now = this.runtime.now();
+    if (!Number.isFinite(now.getTime())) throw new Error("workflow clock is invalid");
+    const [briefId, workSpecId, workItemId] = await Promise.all([
+      nextId(canonicalRoot, "requirements", "REQ", now),
+      nextId(canonicalRoot, "specs", "SPEC", now),
+      nextId(canonicalRoot, "tasks", "TASK", now),
+    ]);
+    const artifacts = createWorkArtifactsV2(draft, { briefId, workSpecId, workItemId });
+    return Object.freeze({
+      ...artifacts,
+      approvalToken: workToken(canonicalRoot, context.state.revision, artifacts),
+      workspaceRevision: context.state.revision,
+      canonicalRoot,
+      repository,
+      state: context.state,
+    });
+  }
+
+  async workPreview(draftValue: unknown): Promise<WorkPreview> {
+    const prepared = await this.prepareWork(draftValue);
+    return Object.freeze({
+      brief: prepared.brief,
+      workSpec: prepared.workSpec,
+      workItem: prepared.workItem,
+      approvalToken: prepared.approvalToken,
+      workspaceRevision: prepared.workspaceRevision,
+    });
+  }
+
+  async workApply(inputValue: unknown): Promise<AppliedWork> {
+    const input = parseWorkApplyInput(inputValue);
+    const prepared = await this.prepareWork(input.draft);
+    if (prepared.approvalToken !== input.approvalToken) {
+      throw new Error("Work approval token no longer matches the current workspace or contract");
+    }
+    const writes = [
+      {
+        relativePath: `requirements/${prepared.brief.id}.yaml`,
+        content: serializeBriefArtifactV2(prepared.brief),
+      },
+      {
+        relativePath: `specs/${prepared.workSpec.id}.yaml`,
+        content: serializeWorkSpecArtifactV2(prepared.workSpec),
+      },
+      {
+        relativePath: `tasks/${prepared.workItem.id}.yaml`,
+        content: serializeWorkItemArtifactV2(prepared.workItem),
+      },
+    ];
+    await assertMissing(prepared.canonicalRoot, writes.map((write) => write.relativePath));
+    const nextState: WorkspaceState = {
+      schemaVersion: 1,
+      revision: prepared.state.revision + 1,
+      activeWorkItem: {
+        id: prepared.workItem.id,
+        kind: "task",
+        status: "planned",
+        risk: workModeRisk(prepared.workSpec.workSpec.mode),
+        revision: prepared.workItem.revision,
+      },
+      safeMode: false,
+    };
+    await prepared.repository.commitMutation(
+      nextState,
+      prepared.state.revision,
+      "work-contract-approved",
+      writes,
+      {
+        briefId: prepared.brief.id,
+        workSpecId: prepared.workSpec.id,
+        workItemId: prepared.workItem.id,
+        mode: prepared.workSpec.workSpec.mode,
+        sliceCount: prepared.workItem.slices.length,
+        criterionCount: prepared.workSpec.workSpec.acceptanceCriteria.length,
+      },
+    );
+    return Object.freeze({
+      brief: prepared.brief,
+      workSpec: prepared.workSpec,
+      workItem: prepared.workItem,
+      workspaceRevision: nextState.revision,
+    });
   }
 
   async selectPreview(draftValue: unknown): Promise<SelectionPreview> {
