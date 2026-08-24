@@ -8,6 +8,7 @@ import {
   createWorkflowTeamFixture,
 } from "../fixtures/workflow-team-fixture.js";
 import {
+  controlledActionDraft,
   genericEvidenceBundle,
   genericWorkContractDraft,
 } from "../fixtures/work-contract-fixture.js";
@@ -117,5 +118,56 @@ describe("Agent Work Harness service", () => {
       status: "implementing",
       slices: [{ status: "revise" }],
     });
+  });
+
+  test("records a narrow Side Effect approval without executing the external action", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const draft = controlledActionDraft();
+    const workPreview = await fixture.service.workPreview(draft);
+    const applied = await fixture.service.workApply({
+      draft,
+      approvalToken: workPreview.approvalToken,
+    });
+    const before = await fixture.snapshot();
+
+    const preview = await fixture.service.sideEffectPreview("approval-publish");
+
+    expect(await fixture.snapshot()).toEqual(before);
+    expect(preview).toMatchObject({
+      action: "发布已审查内容",
+      target: "content-platform:brand-channel",
+      contentHash: `sha256:${"b".repeat(64)}`,
+      workItemId: applied.workItem.id,
+    });
+
+    const approved = await fixture.service.sideEffectApply({
+      approvalPointId: "approval-publish",
+      approvalToken: preview.approvalToken,
+    });
+
+    expect(approved).toMatchObject({
+      status: "approved",
+      externalActionExecuted: false,
+      approvalPointId: "approval-publish",
+      contentHash: `sha256:${"b".repeat(64)}`,
+    });
+    await expect(readFile(join(fixture.root, ".ezagent", approved.authorizationPath), "utf8"))
+      .resolves.toContain('"externalActionExecuted": false');
+  });
+
+  test("rejects a Side Effect token after the workspace changes", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const draft = controlledActionDraft();
+    const workPreview = await fixture.service.workPreview(draft);
+    await fixture.service.workApply({ draft, approvalToken: workPreview.approvalToken });
+    const preview = await fixture.service.sideEffectPreview("approval-publish");
+    await fixture.bumpWorkspaceRevision();
+    const before = await fixture.snapshot();
+
+    await expect(fixture.service.sideEffectApply({
+      approvalPointId: "approval-publish",
+      approvalToken: preview.approvalToken,
+    })).rejects.toThrow("approval token");
+    expect(await fixture.snapshot()).toEqual(before);
   });
 });

@@ -247,6 +247,26 @@ const workSpecSchema = z.object({
   uniqueIds(spec.approvalPoints, "approvalPoints");
   const slices = uniqueIds(spec.slicePlan, "slicePlan");
 
+  for (const [boundaryIndex, boundary] of spec.boundaries.entries()) {
+    for (const [resourceIndex, resource] of boundary.resources.entries()) {
+      if (resource.access !== "write" && resource.access !== "publish") continue;
+      if (spec.mode !== "controlled") {
+        context.addIssue({
+          code: "custom",
+          path: ["boundaries", boundaryIndex, "resources", resourceIndex, "access"],
+          message: "external write and publish access require Controlled Mode",
+        });
+      }
+      if (!spec.approvalPoints.some(({ target }) => target === resource.locator)) {
+        context.addIssue({
+          code: "custom",
+          path: ["boundaries", boundaryIndex, "resources", resourceIndex],
+          message: "external write and publish access require a target-matched Approval Point",
+        });
+      }
+    }
+  }
+
   for (const [index, slice] of spec.slicePlan.entries()) {
     for (const id of slice.deliverableInterfaceIds) {
       if (!deliverables.has(id)) {

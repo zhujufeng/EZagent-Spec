@@ -113,6 +113,12 @@ import {
   serializeProjectContext,
   type ProjectContext,
 } from "./project-context.js";
+import {
+  parseSideEffectAuthorization,
+  serializeSideEffectAuthorization,
+  sideEffectAuthorizationPath,
+  type SideEffectAuthorization,
+} from "./side-effect.js";
 
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
@@ -170,6 +176,28 @@ export interface WorkSliceReviewResult {
   readonly workItem: WorkItemArtifactV2;
   readonly coverage: EvidenceCoverage;
   readonly evidencePath: string;
+  readonly workspaceRevision: number;
+}
+
+export interface SideEffectPreview {
+  readonly workItemId: string;
+  readonly workSpecId: string;
+  readonly workSpecRevision: number;
+  readonly approvalPointId: string;
+  readonly action: string;
+  readonly target: string;
+  readonly contentSummary: string;
+  readonly contentHash: `sha256:${string}`;
+  readonly impact: string;
+  readonly reversible: boolean;
+  readonly verification: string;
+  readonly recovery: string;
+  readonly approvalToken: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
+export interface SideEffectApplyResult extends SideEffectAuthorization {
+  readonly authorizationPath: string;
   readonly workspaceRevision: number;
 }
 
@@ -241,6 +269,12 @@ interface PreparedPlan extends PlanPreview {
 }
 
 interface PreparedWork extends WorkPreview {
+  readonly canonicalRoot: string;
+  readonly repository: WorkspaceRepository;
+  readonly state: WorkspaceState;
+}
+
+interface PreparedSideEffect extends SideEffectPreview {
   readonly canonicalRoot: string;
   readonly repository: WorkspaceRepository;
   readonly state: WorkspaceState;
@@ -687,6 +721,20 @@ function workToken(
   })).digest("hex")}`;
 }
 
+function sideEffectToken(
+  canonicalRoot: string,
+  workspaceRevision: number,
+  value: Omit<SideEffectPreview, "approvalToken" | "workspaceRevision">,
+): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    schemaVersion: 1,
+    operation: "side-effect-approval",
+    canonicalRoot,
+    workspaceRevision,
+    ...value,
+  })).digest("hex")}`;
+}
+
 function parseWorkApplyInput(value: unknown): {
   readonly draft: WorkContractDraftV2;
   readonly approvalToken: `sha256:${string}`;
@@ -705,6 +753,28 @@ function parseWorkApplyInput(value: unknown): {
   }
   return Object.freeze({
     draft: parseWorkContractDraft(record.draft),
+    approvalToken: record.approvalToken as `sha256:${string}`,
+  });
+}
+
+function parseSideEffectApplyInput(value: unknown): {
+  readonly approvalPointId: string;
+  readonly approvalToken: `sha256:${string}`;
+} {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Side Effect approval input must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  const unsupported = Object.keys(record).find((key) => !["approvalPointId", "approvalToken"].includes(key));
+  if (unsupported !== undefined) throw new TypeError(`unsupported Side Effect approval input: ${unsupported}`);
+  if (typeof record.approvalPointId !== "string" || record.approvalPointId.length === 0) {
+    throw new TypeError("Side Effect approvalPointId is invalid");
+  }
+  if (typeof record.approvalToken !== "string" || !HASH.test(record.approvalToken)) {
+    throw new TypeError("Side Effect approval token is invalid");
+  }
+  return Object.freeze({
+    approvalPointId: record.approvalPointId,
     approvalToken: record.approvalToken as `sha256:${string}`,
   });
 }
@@ -1016,6 +1086,122 @@ export class ExpertTeamWorkflowService {
       workItem,
       coverage,
       evidencePath: path,
+      workspaceRevision: nextState.revision,
+    });
+  }
+
+  private async prepareSideEffect(approvalPointId: string): Promise<PreparedSideEffect> {
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan has no v2 Side Effect Approval Point");
+    if (records.workSpec.workSpec.mode !== "controlled") {
+      throw new Error("Side Effect approval requires Controlled Mode");
+    }
+    const point = records.workSpec.workSpec.approvalPoints.find(({ id }) => id === approvalPointId);
+    if (point === undefined) throw new Error("Side Effect Approval Point is not declared by the active Work Spec");
+    const matchesRiskyResource = records.workSpec.workSpec.boundaries.some((boundary) => (
+      boundary.resources.some((resource) => (
+        resource.locator === point.target && (resource.access === "write" || resource.access === "publish")
+      ))
+    ));
+    if (!matchesRiskyResource) {
+      throw new Error("Side Effect Approval Point does not match a declared write or publish target");
+    }
+    const previewBase = Object.freeze({
+      workItemId: records.workItem.id,
+      workSpecId: records.workSpec.id,
+      workSpecRevision: records.workSpec.revision,
+      approvalPointId: point.id,
+      action: point.action,
+      target: point.target,
+      contentSummary: point.contentSummary,
+      contentHash: point.contentHash,
+      impact: point.impact,
+      reversible: point.reversible,
+      verification: point.verification,
+      recovery: point.recovery,
+    });
+    return Object.freeze({
+      ...previewBase,
+      approvalToken: sideEffectToken(canonicalRoot, context.state.revision, previewBase),
+      workspaceRevision: context.state.revision,
+      canonicalRoot,
+      repository,
+      state: context.state,
+    });
+  }
+
+  async sideEffectPreview(approvalPointId: string): Promise<SideEffectPreview> {
+    const prepared = await this.prepareSideEffect(approvalPointId);
+    return Object.freeze({
+      workItemId: prepared.workItemId,
+      workSpecId: prepared.workSpecId,
+      workSpecRevision: prepared.workSpecRevision,
+      approvalPointId: prepared.approvalPointId,
+      action: prepared.action,
+      target: prepared.target,
+      contentSummary: prepared.contentSummary,
+      contentHash: prepared.contentHash,
+      impact: prepared.impact,
+      reversible: prepared.reversible,
+      verification: prepared.verification,
+      recovery: prepared.recovery,
+      approvalToken: prepared.approvalToken,
+      workspaceRevision: prepared.workspaceRevision,
+    });
+  }
+
+  async sideEffectApply(inputValue: unknown): Promise<SideEffectApplyResult> {
+    const input = parseSideEffectApplyInput(inputValue);
+    const prepared = await this.prepareSideEffect(input.approvalPointId);
+    if (prepared.approvalToken !== input.approvalToken) {
+      throw new Error("Side Effect approval token no longer matches the current action or workspace");
+    }
+    const now = this.runtime.now();
+    if (!Number.isFinite(now.getTime())) throw new Error("workflow clock is invalid");
+    const authorization = parseSideEffectAuthorization({
+      schemaVersion: 1,
+      workItemId: prepared.workItemId,
+      workSpecId: prepared.workSpecId,
+      workSpecRevision: prepared.workSpecRevision,
+      approvalPointId: prepared.approvalPointId,
+      action: prepared.action,
+      target: prepared.target,
+      contentHash: prepared.contentHash,
+      status: "approved",
+      approvedAt: now.toISOString(),
+      externalActionExecuted: false,
+    });
+    const nextState: WorkspaceState = {
+      ...prepared.state,
+      revision: prepared.state.revision + 1,
+    };
+    const authorizationPath = sideEffectAuthorizationPath(
+      prepared.workItemId,
+      prepared.approvalPointId,
+      nextState.revision,
+    );
+    const contents = serializeSideEffectAuthorization(authorization);
+    await assertMissing(prepared.canonicalRoot, [authorizationPath]);
+    await prepared.repository.commitMutation(
+      nextState,
+      prepared.state.revision,
+      "side-effect-approved",
+      [{ relativePath: authorizationPath, content: contents }],
+      {
+        workItemId: prepared.workItemId,
+        workSpecId: prepared.workSpecId,
+        workSpecRevision: prepared.workSpecRevision,
+        approvalPointId: prepared.approvalPointId,
+        contentHash: prepared.contentHash,
+        authorizationHash: knowledgeContentHash(contents),
+        externalActionExecuted: false,
+      },
+    );
+    return Object.freeze({
+      ...authorization,
+      authorizationPath,
       workspaceRevision: nextState.revision,
     });
   }

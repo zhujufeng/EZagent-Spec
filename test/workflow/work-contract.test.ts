@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import { parseWorkContractDraft } from "../../src/workflow/work-contract.js";
-import { genericWorkContractDraft } from "../fixtures/work-contract-fixture.js";
+import {
+  controlledActionDraft,
+  genericWorkContractDraft,
+} from "../fixtures/work-contract-fixture.js";
 
 describe("Work Contract v2", () => {
   test("accepts one domain-neutral tracer slice without a role enum or expert team", () => {
@@ -12,5 +15,17 @@ describe("Work Contract v2", () => {
     expect(contract).not.toHaveProperty("role");
     expect(contract).not.toHaveProperty("expertTeam");
     expect(Object.isFrozen(contract.workSpec.slicePlan)).toBe(true);
+  });
+
+  test("rejects external writes that are not Controlled and target-approved", () => {
+    const controlled = controlledActionDraft();
+    expect(() => parseWorkContractDraft({
+      ...controlled,
+      workSpec: {
+        ...controlled.workSpec,
+        mode: "brief",
+        approvalPoints: [],
+      },
+    })).toThrow(/Controlled Mode|Approval Point/u);
   });
 });
