@@ -10,8 +10,7 @@ import { isWellFormedUnicode } from "../text/unicode.js";
 const CONTROL = /[\u0000-\u001f\u007f]/u;
 const MAX_KNOWLEDGE_BYTES = 256 * 1024;
 
-export interface KnowledgeCaptureInput {
-  readonly schemaVersion: 1;
+interface KnowledgeFields {
   readonly title: string;
   readonly summary: string;
   readonly decisions: readonly string[];
@@ -20,10 +19,31 @@ export interface KnowledgeCaptureInput {
   readonly followUps: readonly string[];
 }
 
-export interface KnowledgeRecord extends KnowledgeCaptureInput {
+export interface QualityGateReceipt {
+  readonly gate: string;
+  readonly command: string;
+  readonly outcome: "passed";
+  readonly exitCode: 0;
+  readonly summary: string;
+}
+
+export interface KnowledgeCaptureInput extends KnowledgeFields {
+  readonly schemaVersion: 2;
+  readonly qualityGateReceipts: readonly QualityGateReceipt[];
+}
+
+export interface LegacyKnowledgeRecord extends KnowledgeFields {
+  readonly schemaVersion: 1;
   readonly specId: string;
   readonly taskId: string;
 }
+
+export interface CurrentKnowledgeRecord extends KnowledgeCaptureInput {
+  readonly specId: string;
+  readonly taskId: string;
+}
+
+export type KnowledgeRecord = LegacyKnowledgeRecord | CurrentKnowledgeRecord;
 
 function textSchema(label: string, maximum: number) {
   return z.string().max(maximum + 256)
@@ -55,34 +75,91 @@ function workItemId(prefix: "SPEC" | "TASK") {
   );
 }
 
-const captureSchema = z.object({
-  schemaVersion: z.literal(1),
+const knowledgeFields = {
   title: textSchema("knowledge title", 256),
   summary: textSchema("knowledge summary", 4_096),
   decisions: textList("knowledge decisions", 1),
   constraints: textList("knowledge constraints", 1),
   verificationEvidence: textList("knowledge verification evidence", 1),
   followUps: textList("knowledge follow-ups", 0),
+} as const;
+
+const receiptSchema = z.object({
+  gate: textSchema("quality gate receipt gate", 4_096),
+  command: textSchema("quality gate receipt command", 4_096),
+  outcome: z.literal("passed"),
+  exitCode: z.literal(0),
+  summary: textSchema("quality gate receipt summary", 4_096),
 }).strict();
 
-const recordSchema = z.object({
+const receiptsSchema = z.array(receiptSchema).min(1).max(64).superRefine((receipts, context) => {
+  const seen = new Set<string>();
+  for (const [index, receipt] of receipts.entries()) {
+    const key = unicodeDefaultCaseFold(receipt.gate.normalize("NFKC")).normalize("NFKC");
+    if (seen.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: [index, "gate"],
+        message: "quality gate receipts contain a duplicate gate",
+      });
+    }
+    seen.add(key);
+  }
+});
+
+const captureSchema = z.object({
+  schemaVersion: z.literal(2),
+  ...knowledgeFields,
+  qualityGateReceipts: receiptsSchema,
+}).strict();
+
+const legacyRecordSchema = z.object({
   schemaVersion: z.literal(1),
   specId: workItemId("SPEC"),
   taskId: workItemId("TASK"),
-  title: textSchema("knowledge title", 256),
-  summary: textSchema("knowledge summary", 4_096),
-  decisions: textList("knowledge decisions", 1),
-  constraints: textList("knowledge constraints", 1),
-  verificationEvidence: textList("knowledge verification evidence", 1),
-  followUps: textList("knowledge follow-ups", 0),
+  ...knowledgeFields,
 }).strict();
 
-function freezeRecord(value: z.infer<typeof recordSchema>): KnowledgeRecord {
+const currentRecordSchema = z.object({
+  schemaVersion: z.literal(2),
+  specId: workItemId("SPEC"),
+  taskId: workItemId("TASK"),
+  ...knowledgeFields,
+  qualityGateReceipts: receiptsSchema,
+}).strict();
+
+const readableRecordSchema = z.discriminatedUnion(
+  "schemaVersion",
+  [legacyRecordSchema, currentRecordSchema],
+);
+
+function freezeReceipts(
+  receipts: readonly z.infer<typeof receiptSchema>[],
+): readonly QualityGateReceipt[] {
+  return Object.freeze(receipts.map((receipt) => Object.freeze({ ...receipt })));
+}
+
+function freezeLegacyRecord(
+  value: z.infer<typeof legacyRecordSchema>,
+): LegacyKnowledgeRecord {
   return Object.freeze({
     ...value,
     decisions: Object.freeze([...value.decisions]),
     constraints: Object.freeze([...value.constraints]),
     verificationEvidence: Object.freeze([...value.verificationEvidence]),
+    followUps: Object.freeze([...value.followUps]),
+  });
+}
+
+function freezeCurrentRecord(
+  value: z.infer<typeof currentRecordSchema>,
+): CurrentKnowledgeRecord {
+  return Object.freeze({
+    ...value,
+    decisions: Object.freeze([...value.decisions]),
+    constraints: Object.freeze([...value.constraints]),
+    verificationEvidence: Object.freeze([...value.verificationEvidence]),
+    qualityGateReceipts: freezeReceipts(value.qualityGateReceipts),
     followUps: Object.freeze([...value.followUps]),
   });
 }
@@ -94,6 +171,7 @@ export function parseKnowledgeCaptureInput(value: unknown): KnowledgeCaptureInpu
     decisions: Object.freeze([...parsed.decisions]),
     constraints: Object.freeze([...parsed.constraints]),
     verificationEvidence: Object.freeze([...parsed.verificationEvidence]),
+    qualityGateReceipts: freezeReceipts(parsed.qualityGateReceipts),
     followUps: Object.freeze([...parsed.followUps]),
   });
 }
@@ -102,18 +180,21 @@ export function createKnowledgeRecord(
   specId: string,
   taskId: string,
   input: KnowledgeCaptureInput,
-): KnowledgeRecord {
-  return freezeRecord(recordSchema.parse({ ...parseKnowledgeCaptureInput(input), specId, taskId }));
+): CurrentKnowledgeRecord {
+  return freezeCurrentRecord(currentRecordSchema.parse({
+    ...parseKnowledgeCaptureInput(input),
+    specId,
+    taskId,
+  }));
 }
 
 function markdownList(values: readonly string[]): string {
   return values.length === 0 ? "- 无" : values.map((value) => `- ${value}`).join("\n");
 }
 
-export function serializeKnowledgeRecord(value: KnowledgeRecord): string {
-  const record = freezeRecord(recordSchema.parse(value));
+function serializeRecordDocument(record: KnowledgeRecord): string {
   const frontmatter = stringifyYaml(record, { lineWidth: 0 });
-  return [
+  const sections = [
     "---",
     frontmatter.trimEnd(),
     "---",
@@ -133,12 +214,33 @@ export function serializeKnowledgeRecord(value: KnowledgeRecord): string {
     "## 验证证据",
     "",
     markdownList(record.verificationEvidence),
+  ];
+  if (record.schemaVersion === 2) {
+    sections.push(
+      "",
+      "## 质量门回执",
+      "",
+      ...record.qualityGateReceipts.map((receipt) => (
+        `- ${receipt.gate} | ${receipt.command} | passed (0) | ${receipt.summary}`
+      )),
+    );
+  }
+  sections.push(
     "",
     "## 后续事项",
     "",
     markdownList(record.followUps),
     "",
-  ].join("\n");
+  );
+  return sections.join("\n");
+}
+
+function serializeLegacyKnowledgeRecord(value: LegacyKnowledgeRecord): string {
+  return serializeRecordDocument(freezeLegacyRecord(legacyRecordSchema.parse(value)));
+}
+
+export function serializeKnowledgeRecord(value: CurrentKnowledgeRecord): string {
+  return serializeRecordDocument(freezeCurrentRecord(currentRecordSchema.parse(value)));
 }
 
 export function parseKnowledgeRecordMarkdown(contents: string): KnowledgeRecord {
@@ -152,8 +254,14 @@ export function parseKnowledgeRecordMarkdown(contents: string): KnowledgeRecord 
   }
   const end = contents.indexOf("\n---\n", 4);
   if (end < 0) throw new TypeError("Knowledge record frontmatter is incomplete");
-  const record = freezeRecord(recordSchema.parse(parseYaml(contents.slice(4, end))));
-  if (serializeKnowledgeRecord(record) !== contents) {
+  const parsed = readableRecordSchema.parse(parseYaml(contents.slice(4, end)));
+  const record: KnowledgeRecord = parsed.schemaVersion === 1
+    ? freezeLegacyRecord(parsed)
+    : freezeCurrentRecord(parsed);
+  const canonical = record.schemaVersion === 1
+    ? serializeLegacyKnowledgeRecord(record)
+    : serializeKnowledgeRecord(record);
+  if (canonical !== contents) {
     throw new TypeError("Knowledge record is not canonical");
   }
   return record;

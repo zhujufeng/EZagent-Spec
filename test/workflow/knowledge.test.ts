@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { parseKnowledgeRecordMarkdown } from "../../src/workflow/knowledge.js";
 import {
   cleanupWorkflowTeamFixtures,
   createAppliedWorkflowTeamFixture,
@@ -29,12 +30,28 @@ describe("minimal Knowledge completion", () => {
 
     expect(fixture.service).toHaveProperty("completeActiveTask");
     const result = await (fixture.service as unknown as KnowledgeCompleter).completeActiveTask(2, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       title: "用户资料校验完成",
       summary: "资料 API 已拒绝非法输入并通过回归测试。",
       decisions: ["在 API 边界统一执行结构化校验。"],
       constraints: ["保持现有登录流程不变。"],
       verificationEvidence: ["API 单元测试与独立审查通过。"],
+      qualityGateReceipts: [
+        {
+          gate: "API 测试通过",
+          command: "npm run test:api",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "API tests passed.",
+        },
+        {
+          gate: "独立审查失败路径",
+          command: "npm run review:failures",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "Failure-path review passed.",
+        },
+      ],
       followUps: ["后续复用同一套字段错误结构。"],
     });
 
@@ -46,6 +63,8 @@ describe("minimal Knowledge completion", () => {
     });
     const persisted = await readFile(join(fixture.root, ".ezagent", result.knowledgePath), "utf8");
     expect(persisted).toContain("用户资料校验完成");
+    expect(persisted).toContain("schemaVersion: 2");
+    expect(persisted).toContain("qualityGateReceipts:");
     expect(persisted).not.toMatch(/chat|transcript/iu);
 
     const resumed = await fixture.freshService().resumeContext() as unknown as {
@@ -73,15 +92,76 @@ describe("minimal Knowledge completion", () => {
 
     expect(fixture.service).toHaveProperty("completeActiveTask");
     await expect((fixture.service as unknown as KnowledgeCompleter).completeActiveTask(2, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       title: "用户资料校验完成",
       summary: "完成。",
       decisions: ["使用结构化校验。"],
       constraints: ["不改变登录。"],
       verificationEvidence: ["测试通过。"],
+      qualityGateReceipts: [
+        {
+          gate: "API 测试通过",
+          command: "npm run test:api",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "API tests passed.",
+        },
+        {
+          gate: "独立审查失败路径",
+          command: "npm run review:failures",
+          outcome: "passed",
+          exitCode: 0,
+          summary: "Failure-path review passed.",
+        },
+      ],
       followUps: [],
       chatTranscript: "不应持久化的聊天内容",
     })).rejects.toThrow();
     expect(await fixture.snapshot()).toEqual(before);
+  });
+
+  test("reads canonical schema version 1 Knowledge without rewriting it", () => {
+    const legacy = `---
+schemaVersion: 1
+specId: SPEC-20260821-001
+taskId: TASK-20260821-001
+title: 旧知识
+summary: 旧版记录仍可读取。
+decisions:
+  - 保留兼容读取。
+constraints:
+  - 不重写历史文件。
+verificationEvidence:
+  - 历史测试通过。
+followUps: []
+---
+
+# 旧知识
+
+旧版记录仍可读取。
+
+## 决策
+
+- 保留兼容读取。
+
+## 约束
+
+- 不重写历史文件。
+
+## 验证证据
+
+- 历史测试通过。
+
+## 后续事项
+
+- 无
+`;
+
+    expect(parseKnowledgeRecordMarkdown(legacy)).toMatchObject({
+      schemaVersion: 1,
+      specId: "SPEC-20260821-001",
+      taskId: "TASK-20260821-001",
+      title: "旧知识",
+    });
   });
 });
