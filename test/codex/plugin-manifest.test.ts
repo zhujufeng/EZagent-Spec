@@ -18,11 +18,13 @@ describe("EZagent Work Harness Codex plugin metadata", () => {
 
     expect(manifest).toMatchObject({
       name: "ezagent-spec",
-      version: "0.1.0",
+      version: "0.2.0",
+      author: { name: "zhujufeng" },
       license: "MIT",
       skills: "./skills/",
       interface: {
         displayName: "EZagent Work Harness",
+        developerName: "zhujufeng",
         category: "Developer Tools",
       },
     });

@@ -1,9 +1,9 @@
 {
   "name": "ezagent-spec",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "中文、本地优先的通用 Agent Work Harness。",
   "author": {
-    "name": "EZagent"
+    "name": "zhujufeng"
   },
   "repository": "https://github.com/zhujufeng/EZagent-Spec",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "displayName": "EZagent Work Harness",
     "shortDescription": "让任意 Agent 工作更有结构和证据",
     "longDescription": "初始化一次后，把模糊请求整理为 Brief、Work Spec、Slices、Evidence 与 Decision；人员和专家均不设固定类型。",
-    "developerName": "EZagent",
+    "developerName": "zhujufeng",
     "category": "Developer Tools",
     "capabilities": [
       "Instructions",

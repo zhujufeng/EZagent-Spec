@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-08-24
 
 ### 通用 Agent Work Harness
 
 - 新增领域中立的 Brief、Work Spec、Slices、Evidence、Work Journal、Decision 与 Controlled Side Effect 闭环。
 - Router 使用 Consult、Quick、Brief、Standard、Controlled 五档模式，不按人员、岗位或部门分流。
 - Specialist 和多 Agent 改为按需能力，不再是新工作项的前置条件；原 Spec Coding 专家团队流程作为 v1 兼容适配器保留。
+
+### 元数据
+
+- 插件开发者统一显示为 `zhujufeng`。
 
 ## 0.1.0 - 2026-08-22
 

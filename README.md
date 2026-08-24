@@ -92,6 +92,8 @@ codex plugin add ezagent-spec@ezagent
 
 安装或更新后新建一个 Codex 任务，让新 Skills 生效。
 
+版本遵循语义化规则：兼容的新能力提升次版本，例如 `0.1.0 → 0.2.0`；后续兼容性修复依次使用 `0.2.1`、`0.2.2` 等小版本，避免相同版本号命中旧缓存。
+
 也可以把下面这句话交给 Codex：
 
 > 请帮我安装这个 Codex 插件：https://github.com/zhujufeng/EZagent-Spec 。先检查 Codex CLI 与 Node.js 22+，在联网、安装软件或修改全局配置前征得我的确认。
@@ -145,7 +147,7 @@ GitHub Actions 对 Windows 与 macOS 执行相同的类型检查、测试、确�
 
 ## 开源与来源
 
-EZagent Spec 使用 MIT License。
+EZagent Spec 由 `zhujufeng` 开发，使用 MIT License。
 
 兼容专家目录衍生自 MIT 许可的 [Agency Agents](https://github.com/msitarzewski/agency-agents) 与 [Agency Agents 中文项目](https://github.com/jnMetaCode/agency-agents-zh)。完整版权和许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 `licenses/`。
 
