@@ -42,6 +42,7 @@ import {
   createAttestedLicenseEntry,
   createAttestedMarkdownEntry,
 } from "../../src/experts/attested-source-contract.js";
+import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryRoots: string[] = [];
@@ -1236,7 +1237,7 @@ describe("lockCatalogSources", () => {
     expect(result.sources[0]?.licenseFile?.sha256).toBe(
       `sha256:${createHash("sha256").update("MIT fixture license\n").digest("hex")}`,
     );
-  }, 30_000);
+  }, slowTestTimeoutForPlatform(process.platform));
 
   it("labels the executable command as a local, release-only, no-network operation", async () => {
     const root = await temporaryRoot();

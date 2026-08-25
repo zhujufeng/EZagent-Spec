@@ -31,6 +31,7 @@ import {
   collectRuntimeLicenses,
   readStableRelativeFile,
 } from "../../scripts/collect-runtime-licenses.js";
+import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "../..");
 const SOURCE_PLUGIN_ROOT = join(REPOSITORY_ROOT, "plugins", "ezagent-spec");
@@ -313,7 +314,7 @@ describe.sequential("self-contained multi-host plugin package", () => {
     if (process.platform !== "win32") {
       expect((await stat(bundlePath)).mode & 0o777).toBe(0o755);
     }
-  }, 30_000);
+  }, slowTestTimeoutForPlatform(process.platform));
 
   test("passes hostile roots and names as argv without shell execution", async () => {
     const pluginRoot = await temporaryDirectory("ezagent-plugin-argv-");
