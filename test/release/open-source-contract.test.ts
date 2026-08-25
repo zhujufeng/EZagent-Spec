@@ -50,6 +50,15 @@ describe("open-source release contract", () => {
       readonly updates: ReadonlyArray<Record<string, unknown>>;
     };
     const workflow = await text(".github/workflows/ci.yml");
+    const workflowConfig = parse(workflow) as {
+      readonly on: {
+        readonly push: {
+          readonly branches: readonly string[];
+          readonly tags?: unknown;
+          readonly "tags-ignore"?: unknown;
+        };
+      };
+    };
 
     expect(dependabot.version).toBe(2);
     expect(dependabot.updates).toContainEqual(expect.objectContaining({
@@ -59,6 +68,9 @@ describe("open-source release contract", () => {
       "open-pull-requests-limit": 5,
     }));
     expect(workflow).toContain("npm audit --audit-level=high");
+    expect(workflowConfig.on.push.branches).toEqual(["**"]);
+    expect(workflowConfig.on.push).not.toHaveProperty("tags");
+    expect(workflowConfig.on.push).not.toHaveProperty("tags-ignore");
   });
 
   test("versions single-maintainer branch and immutable release-tag rulesets", async () => {
