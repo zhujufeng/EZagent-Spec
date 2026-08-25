@@ -7,5 +7,6 @@ coverage/
 *.log
 .DS_Store
 .codegraph/
+.omc/
 .superpowers/
 vendor-sources/
