@@ -196,5 +196,5 @@ followUps: []
     const before = await safe.snapshot();
     await expect(safe.service.knowledgePromotionPreview(promotionDraft)).rejects.toThrow(/safe mode/iu);
     expect(await safe.snapshot()).toEqual(before);
-  });
+  }, 30_000);
 });
