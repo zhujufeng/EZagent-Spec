@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 - 2026-08-25
+
+### 按需 Specialist 编排
+
+- v2 Work Contract 新增显式 Specialist Assessment；Core 按 Capability Needs 确定性选择专家并在 Apply 后物化 project Agents。
+- 新增绑定 Plan 指纹的不可变 Delegation start/completion receipts；Evidence 与 Delegation coverage 必须同时完整才能接受 Slice。
+- 新增 Specialist-only replan、独立 reviewer 隔离以及完成/取消后的受管 Agent 自动退役，Plan 与 Receipt 历史保持可审计。
+
 ## 0.2.0 - 2026-08-24
 
 ### 通用 Agent Work Harness
