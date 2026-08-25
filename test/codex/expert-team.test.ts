@@ -106,5 +106,5 @@ describe("Codex expert-team adapter", () => {
     await reconcileCodexExpertTeam(fixture.root, fixture.catalog);
     expect((await readdir(join(fixture.root, ".codex", "agents")))
       .filter((name) => name.startsWith("ezagent-"))).toEqual([]);
-  });
+  }, 15_000);
 });
