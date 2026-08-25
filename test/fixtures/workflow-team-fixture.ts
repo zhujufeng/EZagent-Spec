@@ -81,9 +81,9 @@ export async function createWorkflowTeamFixture(options: WorkflowFixtureOptions 
   ));
   const experts = [
     ...capabilities.map((capability, index) => (
-      expertFixture(`implementer-${index}`, [capability], ["implement"])
+      expertFixture(`implementer-${index}`, [capability, "production-implementation"], ["implement"])
     )),
-    expertFixture("reviewer", capabilities, ["review"]),
+    expertFixture("reviewer", [...capabilities, "production-implementation"], ["review"]),
     expertFixture("audit", ["audit-logging"], ["implement"]),
   ];
   const catalog: RuntimeCatalog = parseRuntimeCatalog(Buffer.from(JSON.stringify({

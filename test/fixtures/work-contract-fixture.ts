@@ -1,5 +1,10 @@
 export const genericWorkContractDraft = {
   schemaVersion: 2,
+  specialistAssessment: {
+    decision: "not-needed",
+    reasons: ["单一只读 Slice 不需要额外领域能力或上下文隔离"],
+    needs: [],
+  },
   brief: {
     requestSummary: "分析一个业务预警偏差并给出修正建议",
     intendedOutcome: "用一个小样本解释偏差并形成可审查的建议",
@@ -121,6 +126,19 @@ export function genericEvidenceBundle(workItemId: string, workSpecId: string) {
 export function controlledActionDraft() {
   return {
     ...genericWorkContractDraft,
+    specialistAssessment: {
+      decision: "required" as const,
+      reasons: ["Mixed Review 需要隔离的独立 Agent 审查"],
+      needs: [{
+        id: "need-independent-review",
+        sliceId: "slice-tracer",
+        purpose: "review" as const,
+        capabilities: ["production-implementation"],
+        domains: ["engineering"],
+        projectSignals: [],
+        isolationReason: "independent-review" as const,
+      }],
+    },
     workSpec: {
       ...genericWorkContractDraft.workSpec,
       mode: "controlled" as const,

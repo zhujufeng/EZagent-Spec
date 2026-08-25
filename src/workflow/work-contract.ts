@@ -3,6 +3,10 @@ import { z } from "zod";
 import { containsSensitiveContent } from "../text/sensitive-content.js";
 import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
+import {
+  parseSpecialistAssessmentDraftV2,
+  type SpecialistAssessmentDraftV2,
+} from "./specialist-plan.js";
 
 export type WorkMode = "brief" | "standard" | "controlled";
 export type EvidenceKind =
@@ -105,6 +109,7 @@ export interface WorkSpecV2 {
 
 export interface WorkContractDraftV2 {
   readonly schemaVersion: 2;
+  readonly specialistAssessment: SpecialistAssessmentDraftV2;
   readonly brief: BriefV2;
   readonly workSpec: WorkSpecV2;
 }
@@ -316,11 +321,46 @@ const workSpecSchema = z.object({
   }
 }).strict();
 
+const specialistAssessmentSchema = z.unknown().transform((value, context) => {
+  try {
+    return parseSpecialistAssessmentDraftV2(value);
+  } catch (error: unknown) {
+    context.addIssue({
+      code: "custom",
+      message: error instanceof Error ? error.message : "invalid Specialist Assessment",
+    });
+    return z.NEVER;
+  }
+});
+
 const workContractDraftSchema = z.object({
   schemaVersion: z.literal(2),
+  specialistAssessment: specialistAssessmentSchema,
   brief: briefSchema,
   workSpec: workSpecSchema,
-}).strict();
+}).strict().superRefine((draft, context) => {
+  const sliceIds = new Set(draft.workSpec.slicePlan.map(({ id }) => id));
+  for (const [index, need] of draft.specialistAssessment.needs.entries()) {
+    if (!sliceIds.has(need.sliceId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["specialistAssessment", "needs", index, "sliceId"],
+        message: `Capability Need references an unknown Slice: ${need.sliceId}`,
+      });
+    }
+  }
+  if ((draft.workSpec.reviewPolicy.method === "independent-agent"
+      || draft.workSpec.reviewPolicy.method === "mixed")
+    && !draft.specialistAssessment.needs.some((need) => (
+      need.purpose === "review" && need.isolationReason === "independent-review"
+    ))) {
+    context.addIssue({
+      code: "custom",
+      path: ["specialistAssessment", "needs"],
+      message: "independent-agent and mixed review require an independent review capability need",
+    });
+  }
+});
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {

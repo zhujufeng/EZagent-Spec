@@ -17,11 +17,15 @@ export const PROJECT_AGENT_FILE = /^ezagent-[a-z0-9]+(?:-[a-z0-9]+)*\.toml$/u;
 export const PROJECT_AGENT_HASH = /^sha256:[0-9a-f]{64}$/u;
 const ASSIGNMENT_KEYS = [
   "taskIds",
+  "workSpecIds",
+  "sliceIds",
+  "delegationIds",
   "mode",
   "reason",
   "scope",
   "deliverables",
   "qualityGates",
+  "evidenceRequirements",
 ] as const;
 const RENDERED_KEYS = ["expertId", "fileName", "content", "sha256", "assignment"] as const;
 const CONTROL = /\p{Cc}/u;
@@ -30,20 +34,28 @@ type ProjectAgentMode = "analysis" | "review" | "implement";
 
 export interface ProjectAgentAssignment {
   readonly taskIds: readonly string[];
+  readonly workSpecIds?: readonly string[];
+  readonly sliceIds?: readonly string[];
+  readonly delegationIds?: readonly string[];
   readonly mode: ProjectAgentMode;
   readonly reason: string;
   readonly scope?: readonly string[];
   readonly deliverables?: readonly string[];
   readonly qualityGates?: readonly string[];
+  readonly evidenceRequirements?: readonly string[];
 }
 
 export interface NormalizedAssignment {
   readonly taskIds: readonly string[];
+  readonly workSpecIds: readonly string[];
+  readonly sliceIds: readonly string[];
+  readonly delegationIds: readonly string[];
   readonly mode: ProjectAgentMode;
   readonly reason: string;
   readonly scope: readonly string[];
   readonly deliverables: readonly string[];
   readonly qualityGates: readonly string[];
+  readonly evidenceRequirements: readonly string[];
 }
 
 export interface RenderedProjectAgent {
@@ -151,6 +163,25 @@ function textArray(
   return Object.freeze(result);
 }
 
+function optionalTextArray(
+  value: unknown,
+  label: string,
+  budget: { bytes: number },
+): readonly string[] {
+  if (value === undefined) return Object.freeze([]);
+  const raw = projectAgentDenseArray(value, label, MAX_ASSIGNMENT_ITEMS);
+  const seen = new Set<string>();
+  const result = raw.map((item, index) => {
+    const text = boundedText(item, `${label}.${index}`);
+    chargeAssignmentBytes(budget, text);
+    const key = unicodeDefaultCaseFold(text);
+    if (seen.has(key)) throw new Error(`${label} contains a duplicate`);
+    seen.add(key);
+    return text;
+  });
+  return Object.freeze(result);
+}
+
 export function normalizeProjectAgentAssignment(value: unknown): NormalizedAssignment {
   const input = projectAgentOwnDataObject(value, "assignment", ASSIGNMENT_KEYS);
   const budget = { bytes: 0 };
@@ -169,6 +200,19 @@ export function normalizeProjectAgentAssignment(value: unknown): NormalizedAssig
     return value;
   });
   if (new Set(taskIds).size !== taskIds.length) throw new Error("assignment.taskIds contains duplicates");
+  const workSpecIds = optionalTextArray(input.workSpecIds, "assignment.workSpecIds", budget);
+  if (workSpecIds.some((value) => !value.startsWith("SPEC-") || !isWorkItemId(value))) {
+    throw new Error("assignment.workSpecIds contains an invalid Work Spec ID");
+  }
+  const identifier = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+  const sliceIds = optionalTextArray(input.sliceIds, "assignment.sliceIds", budget);
+  if (sliceIds.some((value) => !identifier.test(value))) {
+    throw new Error("assignment.sliceIds contains an invalid Slice ID");
+  }
+  const delegationIds = optionalTextArray(input.delegationIds, "assignment.delegationIds", budget);
+  if (delegationIds.some((value) => !identifier.test(value))) {
+    throw new Error("assignment.delegationIds contains an invalid Delegation ID");
+  }
   if (input.mode !== "analysis" && input.mode !== "review" && input.mode !== "implement") {
     throw new Error("assignment.mode is invalid");
   }
@@ -177,6 +221,9 @@ export function normalizeProjectAgentAssignment(value: unknown): NormalizedAssig
   chargeAssignmentBytes(budget, reason);
   return Object.freeze({
     taskIds: Object.freeze([...taskIds].sort()),
+    workSpecIds: Object.freeze([...workSpecIds].sort()),
+    sliceIds: Object.freeze([...sliceIds].sort()),
+    delegationIds: Object.freeze([...delegationIds].sort()),
     mode: input.mode,
     reason,
     scope: textArray(input.scope, "assignment.scope", ["仅限指定 Task IDs 与专家职责范围"], budget),
@@ -187,6 +234,11 @@ export function normalizeProjectAgentAssignment(value: unknown): NormalizedAssig
       budget,
     ),
     qualityGates: textArray(input.qualityGates, "assignment.qualityGates", ["满足项目质量门"], budget),
+    evidenceRequirements: optionalTextArray(
+      input.evidenceRequirements,
+      "assignment.evidenceRequirements",
+      budget,
+    ),
   });
 }
 
@@ -275,12 +327,18 @@ export function renderProjectAgent(
   appendParagraph(expert.summaryZh);
   appendParagraph(expert.instructionsZh);
   appendSection("绑定 Task IDs", assignment.taskIds);
+  if (assignment.workSpecIds.length > 0) appendSection("绑定 Work Spec IDs", assignment.workSpecIds);
+  if (assignment.sliceIds.length > 0) appendSection("绑定 Slice IDs", assignment.sliceIds);
+  if (assignment.delegationIds.length > 0) appendSection("Delegation IDs", assignment.delegationIds);
   appendParagraph(`启用模式：${assignment.mode}`);
   appendParagraph(`选择原因：${assignment.reason}`);
   appendSection("工作范围", assignment.scope);
   appendSection("交付物", assignment.deliverables);
   appendSection("专家质量门", expert.qualityGates);
   appendSection("本次质量门", assignment.qualityGates);
+  if (assignment.evidenceRequirements.length > 0) {
+    appendSection("Evidence requirements", assignment.evidenceRequirements);
+  }
   appendParagraph("只能在上述任务、范围与权限内工作；必须基于项目证据输出。不得自行推进 EZagent 状态，任何状态迁移只能由结构化工作流执行。");
   builder.append('"\n');
   const content = builder.finish();

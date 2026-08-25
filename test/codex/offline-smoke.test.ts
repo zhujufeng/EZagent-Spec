@@ -357,6 +357,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
       spec: null,
       task: null,
       team: null,
+      specialists: null,
       journal: null,
       projectContext: null,
       knowledge: [],

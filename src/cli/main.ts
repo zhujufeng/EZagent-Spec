@@ -27,7 +27,7 @@ import {
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const WORK_ITEM_STATUSES = [
@@ -52,6 +52,8 @@ type Command =
   | "work-preview"
   | "work-apply"
   | "work-start"
+  | "delegation-start"
+  | "delegation-complete"
   | "work-review"
   | "work-complete"
   | "journal-append"
@@ -62,6 +64,8 @@ type Command =
   | "plan-apply"
   | "replan-preview"
   | "replan-apply"
+  | "specialist-replan-preview"
+  | "specialist-replan-apply"
   | "experts-reconcile"
   | "sharing-preview"
   | "sharing-apply"
@@ -121,6 +125,16 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     booleanOptions: [],
     requiredOptions: ["--root", "--slice"],
   },
+  "delegation-start": {
+    valueOptions: ["--root", "--delegation"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--delegation"],
+  },
+  "delegation-complete": {
+    valueOptions: ["--root", "--delegation"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--delegation"],
+  },
   "work-review": {
     valueOptions: ["--root"],
     booleanOptions: [],
@@ -167,6 +181,16 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     requiredOptions: ["--root"],
   },
   "replan-apply": {
+    valueOptions: ["--root", "--approval-token"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--approval-token"],
+  },
+  "specialist-replan-preview": {
+    valueOptions: ["--root"],
+    booleanOptions: [],
+    requiredOptions: ["--root"],
+  },
+  "specialist-replan-apply": {
     valueOptions: ["--root", "--approval-token"],
     booleanOptions: [],
     requiredOptions: ["--root", "--approval-token"],
@@ -413,15 +437,43 @@ export async function runCli(
   }
 
   if (parsed.command === "work-apply") {
-    writeJson(io, await workflow.workApply({
+    const applied = await workflow.workApply({
       draft: await readBoundedJsonInput(runtime.stdin),
       approvalToken: requiredValueOption(parsed, "--approval-token"),
-    }));
+    });
+    if (applied.specialistPlan.delegations.length === 0) {
+      writeJson(io, { ...applied, platformSyncStatus: "none", files: [] });
+      return;
+    }
+    const catalog = await runtime.readRuntimeCatalog();
+    const synchronized = await runtime.reconcileCodexTeam(root, catalog);
+    writeJson(io, { ...applied, platformSyncStatus: "ready", files: synchronized.files });
     return;
   }
 
   if (parsed.command === "work-start") {
-    writeJson(io, await workflow.workStartSlice(requiredValueOption(parsed, "--slice")));
+    const sliceId = requiredValueOption(parsed, "--slice");
+    const specialistPlan = await workflow.activeSpecialistPlanRecord();
+    if (specialistPlan?.delegations.some((delegation) => delegation.sliceId === sliceId) === true) {
+      const platform = await runtime.inspectCodexTeam(root, await runtime.readRuntimeCatalog());
+      if (platform.status !== "ready") {
+        throw new Error(`delegated Slice requires ready project Agents; platform status: ${platform.status}`);
+      }
+    }
+    writeJson(io, await workflow.workStartSlice(sliceId));
+    return;
+  }
+
+  if (parsed.command === "delegation-start") {
+    writeJson(io, await workflow.delegationStart(requiredValueOption(parsed, "--delegation")));
+    return;
+  }
+
+  if (parsed.command === "delegation-complete") {
+    writeJson(io, await workflow.delegationComplete(
+      requiredValueOption(parsed, "--delegation"),
+      await readBoundedJsonInput(runtime.stdin),
+    ));
     return;
   }
 
@@ -431,7 +483,12 @@ export async function runCli(
   }
 
   if (parsed.command === "work-complete") {
-    writeJson(io, await workflow.workComplete(await readBoundedJsonInput(runtime.stdin)));
+    const specialistPlan = await workflow.activeSpecialistPlanRecord();
+    const completed = await workflow.workComplete(await readBoundedJsonInput(runtime.stdin));
+    const synchronized = specialistPlan?.delegations.length === 0 || specialistPlan === null
+      ? { files: Object.freeze([]) }
+      : await runtime.reconcileCodexTeam(root, await runtime.readRuntimeCatalog());
+    writeJson(io, { ...completed, platformSyncStatus: "none", files: synchronized.files });
     return;
   }
 
@@ -523,6 +580,26 @@ export async function runCli(
     return;
   }
 
+  if (parsed.command === "specialist-replan-preview") {
+    writeJson(io, await workflow.specialistReplanPreview(await readBoundedJsonInput(runtime.stdin)));
+    return;
+  }
+
+  if (parsed.command === "specialist-replan-apply") {
+    const input = jsonRecord(await readBoundedJsonInput(runtime.stdin));
+    const applied = await workflow.specialistReplanApply({
+      ...input,
+      approvalToken: requiredValueOption(parsed, "--approval-token"),
+    });
+    const synchronized = await runtime.reconcileCodexTeam(root, await runtime.readRuntimeCatalog());
+    writeJson(io, {
+      ...applied,
+      platformSyncStatus: applied.nextPlan.delegations.length === 0 ? "none" : "ready",
+      files: synchronized.files,
+    });
+    return;
+  }
+
   if (parsed.command === "experts-reconcile") {
     const catalog = await runtime.readRuntimeCatalog();
     const synchronized = await runtime.reconcileCodexTeam(root, catalog);
@@ -532,7 +609,9 @@ export async function runCli(
 
   if (parsed.command === "context") {
     const [base, resumed] = await Promise.all([repository.readContext(), workflow.resumeContext()]);
-    const platform = resumed.team === null
+    const hasSpecialistDelegations = resumed.specialists?.status === "ready"
+      && resumed.specialists.delegations.length > 0;
+    const platform = resumed.team === null && !hasSpecialistDelegations
       ? { status: "none" as const }
       : await runtime.inspectCodexTeam(root, await runtime.readRuntimeCatalog());
     writeJson(io, {
@@ -541,6 +620,7 @@ export async function runCli(
       spec: resumed.spec,
       task: resumed.task,
       team: resumed.team,
+      specialists: resumed.specialists,
       journal: resumed.journal,
       projectContext: resumed.projectContext,
       knowledge: resumed.knowledge,
@@ -566,8 +646,20 @@ export async function runCli(
       return;
     }
     if (to === "cancelled") {
+      const [specialistPlan, legacyTeam] = await Promise.all([
+        workflow.activeSpecialistPlanRecord(),
+        workflow.activeTeamRecord(),
+      ]);
       await workflow.retireTeam(context.state.activeWorkItem.id, revision, "cancelled");
-      writeJson(io, await repository.readState());
+      const synchronized = (specialistPlan === null || specialistPlan.delegations.length === 0)
+        && legacyTeam === null
+        ? { files: Object.freeze([]) }
+        : await runtime.reconcileCodexTeam(root, await runtime.readRuntimeCatalog());
+      writeJson(io, {
+        ...(await repository.readState()),
+        platformSyncStatus: "none",
+        files: synchronized.files,
+      });
       return;
     }
     if (to === "implementing") {

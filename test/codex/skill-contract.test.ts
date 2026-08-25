@@ -257,6 +257,24 @@ describe("Codex Skill contracts", () => {
     }
   });
 
+  test("requires an explicit Specialist assessment without preselecting experts", async () => {
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+    const shared = spec.body.indexOf("Shared Design Concept");
+    const assessment = spec.body.indexOf("specialistAssessment");
+    const preview = spec.body.indexOf("work-preview");
+
+    expect(router.body).toMatch(/Shared Design Concept.*Specialist Assessment/su);
+    expect(router.body).toMatch(/not-needed.*Capability Needs/su);
+    expect(assessment).toBeGreaterThan(shared);
+    expect(preview).toBeGreaterThan(assessment);
+    expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
+    expect(spec.body).toMatch(/decision: not-needed.*空 `needs`/su);
+    expect(spec.body).toMatch(/decision: required.*`sliceId`.*`purpose`.*`capabilities`.*`isolationReason`/su);
+    expect(spec.body).toMatch(/Assessment 不得填写 expert ID、指定人数/u);
+    expect(spec.body).toMatch(/delegations、未覆盖能力与 blockers/u);
+  });
+
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {
     const spec = await readSkill("ezagent-spec");
     const execute = await readSkill("ezagent-execute");
@@ -395,6 +413,35 @@ describe("Codex Skill contracts", () => {
       expect(skill.body).toMatch(/Specialist.*多 Agent/su);
       expect(skill.body).toMatch(/不(?:保存|持久化).*完整.*提示/u);
     }
+  });
+
+  test("executes approved delegations through matching isolated project Agents and bounded receipts", async () => {
+    const execute = await readSkill("ezagent-execute");
+    const review = await readSkill("ezagent-review");
+
+    for (const skill of [execute, review]) {
+      expect(argvFor(skill, "delegation-start")).toBeDefined();
+      expect(argvFor(skill, "delegation-complete")).toBeDefined();
+      expect(skill.body).toMatch(/expertId.*project Agent/su);
+      expect(skill.body).toMatch(/不得.*(?:模拟|替换)/u);
+      expect(skill.body).toMatch(/有界.*(?:摘要|审查摘要).*result hash|结果 hash/su);
+      expect(skill.body).toMatch(/不(?:得|传).*完整.*(?:聊天|提示)/u);
+    }
+    expect(execute.body).toMatch(/协调器.*不得.*自行接管/u);
+    expect(review.body).toMatch(/实现者.*不得.*批准自己的输出/u);
+    expect(review.body).toMatch(/mixed.*独立 review completion.*人工 Evidence/su);
+    expect(review.body).toMatch(/Criterion Evidence coverage.*Delegation coverage/su);
+  });
+
+  test("limits Specialist replan to an exact approved execution-strategy diff", async () => {
+    const execute = await readSkill("ezagent-execute");
+
+    expect(argvFor(execute, "specialist-replan-preview")).toBeDefined();
+    expect(argvFor(execute, "specialist-replan-apply")).toBeDefined();
+    expect(execute.body).toMatch(/没有已开始但未完成的 receipt/su);
+    expect(execute.body).toMatch(/不得改变 Outcome、Scope、Non-goals.*Acceptance Criteria.*Approval Points/su);
+    expect(execute.body).toMatch(/added、removed、changed、unchanged.*用户.*批准/su);
+    expect(execute.body).toMatch(/不得用 replan 覆盖未完成委派/u);
   });
 
   test("does not create optional Skill scaffolding or placeholders", async () => {

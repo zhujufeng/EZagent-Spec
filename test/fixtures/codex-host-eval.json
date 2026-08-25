@@ -38,9 +38,11 @@
       "expectedPolicy": "router-brief",
       "ruleAnchor": "brief-analysis",
       "categories": ["implicit", "boundary"],
+      "specialistExpectation": "not-needed",
       "reviewCriteria": [
         "自动进入 EZagent Router 并按 Brief 处理",
-        "使用可验证 Slice 和 Evidence，不按岗位创建固定团队"
+        "使用可验证 Slice 和 Evidence，不按岗位创建固定团队",
+        "显式形成带理由的 not-needed Specialist Assessment，且不创建 project Agent 或 Delegation"
       ]
     },
     {
@@ -116,9 +118,27 @@
       "expectedPolicy": "router-standard",
       "ruleAnchor": "standard-new-capability",
       "categories": ["implicit"],
+      "specialistExpectation": "implementation-delegation",
       "reviewCriteria": [
         "即使未点名 Router 也恢复 EZagent 项目上下文",
-        "说明 Specialist 是可选能力，并按实际收益决定是否使用而不是固定人数"
+        "按真实能力需求形成 implementation Capability Need，不由模型指定 expert ID 或固定人数",
+        "清楚区分 project-Agent 物化与实际委派：物化本身不等于已调用 Specialist",
+        "实际委派只发送批准的 Work Item、Work Spec、Slice、Delegation、scope、deliverables 与 Evidence requirements，并只接收有界结果摘要"
+      ]
+    },
+    {
+      "id": "initialized-independent-review",
+      "name": "independent review uses a distinct approved reviewer",
+      "prompt": "为退款幂等修复制定并审查一个可执行方案；实现结果必须由没有参与实现的独立 Agent 审查",
+      "initialized": true,
+      "expectedPolicy": "router-standard",
+      "ruleAnchor": "standard-new-capability",
+      "categories": ["implicit", "boundary"],
+      "specialistExpectation": "independent-review-delegation",
+      "reviewCriteria": [
+        "形成 independent-review Capability Need，并要求 reviewer 与同一 Slice 的实现者不同",
+        "清楚区分 project-Agent 物化与实际委派：物化不等于 reviewer 已完成审查",
+        "真正调用批准的 review project Agent，不能由协调器或实现者模拟，并只保留有界审查摘要、结果 hash 与 Evidence pointers"
       ]
     }
   ]

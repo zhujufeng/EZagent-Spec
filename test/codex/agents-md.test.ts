@@ -121,6 +121,9 @@ describe("mergeEzagentAgentsBlock", () => {
     expect(merged).toMatch(/岗位、部门和业务类型不得成为固定角色枚举/u);
     expect(merged).toMatch(/v2 Work Item.*Brief、Work Spec、Slices、Evidence、Work Journal 与 Decision/u);
     expect(merged).toMatch(/Specialist 与多 Agent 不是默认前置/u);
+    expect(merged).toMatch(/v2 Work Contract.*显式记录 Specialist Assessment/u);
+    expect(merged).toMatch(/approved delegation|已批准 delegation/u);
+    expect(merged).toMatch(/project Agent.*不得由协调器模拟或替换/u);
     expect(merged).toMatch(/Side Effect.*精确 Approval Point.*单独批准/su);
     expect(merged).toMatch(/不得自动联网、安装软件/su);
     expect(merged).toMatch(/Git 写操作/su);

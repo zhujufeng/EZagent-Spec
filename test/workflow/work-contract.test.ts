@@ -12,9 +12,43 @@ describe("Work Contract v2", () => {
 
     expect(contract.workSpec.mode).toBe("brief");
     expect(contract.workSpec.slicePlan[0]?.id).toBe("slice-tracer");
+    expect(contract.specialistAssessment.decision).toBe("not-needed");
     expect(contract).not.toHaveProperty("role");
     expect(contract).not.toHaveProperty("expertTeam");
     expect(Object.isFrozen(contract.workSpec.slicePlan)).toBe(true);
+  });
+
+  test("requires an explicit Specialist Assessment for new persisted work", () => {
+    const { specialistAssessment: _assessment, ...missing } = genericWorkContractDraft;
+
+    expect(() => parseWorkContractDraft(missing)).toThrow();
+  });
+
+  test("binds required capability needs to known Slices", () => {
+    expect(() => parseWorkContractDraft({
+      ...genericWorkContractDraft,
+      specialistAssessment: {
+        decision: "required",
+        reasons: ["需要隔离分析"],
+        needs: [{
+          id: "need-analysis",
+          sliceId: "slice-missing",
+          purpose: "analysis",
+          capabilities: ["business-analysis"],
+          domains: [],
+          projectSignals: [],
+          isolationReason: "context-isolation",
+        }],
+      },
+    })).toThrow(/unknown Slice/u);
+  });
+
+  test("requires an independent review need for independent-agent and mixed review", () => {
+    const controlled = controlledActionDraft();
+    expect(() => parseWorkContractDraft({
+      ...controlled,
+      specialistAssessment: genericWorkContractDraft.specialistAssessment,
+    })).toThrow(/review capability need/iu);
   });
 
   test("rejects external writes that are not Controlled and target-approved", () => {

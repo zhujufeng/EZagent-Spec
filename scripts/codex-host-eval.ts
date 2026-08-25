@@ -41,6 +41,13 @@ const categorySchema = z.enum([
   "follow-up",
 ]);
 
+const specialistExpectationSchema = z.enum([
+  "not-evaluated",
+  "not-needed",
+  "implementation-delegation",
+  "independent-review-delegation",
+]);
+
 const hostEvalCaseSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/u),
   name: z.string().min(1),
@@ -49,7 +56,8 @@ const hostEvalCaseSchema = z.strictObject({
   expectedPolicy: policySchema,
   ruleAnchor: ruleAnchorSchema,
   categories: z.array(categorySchema).min(1),
-  reviewCriteria: z.array(z.string().min(1)).min(1),
+  specialistExpectation: specialistExpectationSchema.default("not-evaluated"),
+  reviewCriteria: z.array(z.string().min(1).max(512)).min(1),
   followUpPrompt: z.string().min(1).optional(),
 });
 
@@ -93,6 +101,7 @@ const commitSchema = z.string().regex(/^[0-9a-f]{40}$/u);
 const hostEvalEvidenceCaseSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/u),
   expectedPolicy: policySchema,
+  specialistExpectation: specialistExpectationSchema,
   exitCode: z.number().int(),
   timedOut: z.boolean(),
   workspaceChanged: z.boolean(),
@@ -101,7 +110,7 @@ const hostEvalEvidenceCaseSchema = z.strictObject({
   transcriptSha256: sha256Schema,
   review: z.strictObject({
     status: z.enum(["pending", "pass", "fail"]),
-    reason: z.string(),
+    reason: z.string().max(1_024),
   }),
 });
 
@@ -443,6 +452,7 @@ async function runHostEvaluation(): Promise<string> {
     results.push({
       id: fixture.id,
       expectedPolicy: fixture.expectedPolicy,
+      specialistExpectation: fixture.specialistExpectation,
       exitCode,
       timedOut,
       workspaceChanged: before !== after,

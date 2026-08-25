@@ -21,7 +21,19 @@ description: 按 Acceptance Criterion 审查通用 Work Item 的真实 Evidence 
 
 逐个 Slice 对照 Work Spec：交付物是否符合 Deliverable Interface，每个 Acceptance Criterion 要求的 Evidence kind 是否真实存在且结论通过，资源和操作是否守住 Boundaries。只记录实际观察、实际执行或可定位的 Artifact；没有运行、无法读取、来源失效或证据不足都不能算通过。
 
-Review Policy 为 `independent-agent` 或 `mixed` 时，审查上下文必须与交付者分离，但不要求固定专家或固定人数。为 `human` 或 `mixed` 时，只有用户对匹配 Approval Point `contentHash` 的明确结论才能形成 `human-approval` Evidence。
+Review Policy 为 `independent-agent` 或 `mixed` 时，只能使用当前 Slice 上已批准、`mode: review` 且没有实现该 Slice 的 reviewer project Agent。协调器、实现者或其他 Agent 不得模拟、替换或批准自己的输出。先为该 review delegation 创建不可变 start receipt：
+
+```json
+["node", "<absolute-cli-path>", "delegation-start", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
+```
+
+调用与 receipt 中 `expertId` 对应的 project Agent，只传已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、交付物指针、Criterion IDs 和 Evidence requirements。只接收有界审查摘要、结果 hash、Evidence pointers 与通过/失败结论，不传完整聊天、完整提示或实现者的私有上下文。随后从 stdin 提交 completion receipt：
+
+```json
+["node", "<absolute-cli-path>", "delegation-complete", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
+```
+
+审查失败或无法完成时必须提交 `status: blocked`，Evidence 如实标记失败，`work-review` 会把 Slice 返回 `revise`；不得把失败 reviewer 替换成实现者。为 `human` 或 `mixed` 时，只有用户对匹配 Approval Point `contentHash` 的明确结论才能形成 `human-approval` Evidence；`mixed` 同时要求独立 review completion 与这份人工 Evidence。
 
 把一个 Slice 的完整 Evidence Bundle 作为单个 JSON 从 stdin 传入：
 
@@ -29,7 +41,7 @@ Review Policy 为 `independent-agent` 或 `mixed` 时，审查上下文必须与
 ["node", "<absolute-cli-path>", "work-review", "--root", "<absolute-project-root>"]
 ```
 
-核心按 Criterion 返回 `covered` 或 `missing` 并持久化证据。缺失时 Slice 进入 `revise`，转回 `$ezagent-execute` 只修复该 Slice；完整时进入 `accepted`。已接受 Slice 也允许被真正独立的失败证据重新打开，不得用旧结论掩盖新发现。
+核心分别返回 Criterion Evidence coverage 与 required Delegation coverage。任一缺失或 blocked 时 Slice 进入 `revise`，转回 `$ezagent-execute` 只修复该 Slice；二者都完整时才进入 `accepted`。已接受 Slice 也允许被真正独立的失败证据重新打开，不得用旧结论掩盖新发现。
 
 所有 Slice 都 accepted 且 Work Item 为 verifying 后，重新读取持久化 Evidence，并形成有界 Decision：标题、摘要、决策、约束和后续事项。不要复制聊天、长文、完整提示或测试输出。把 `schemaVersion: 3` 的 Decision JSON 从 stdin 传入：
 

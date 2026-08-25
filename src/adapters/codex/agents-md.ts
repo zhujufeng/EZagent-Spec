@@ -26,7 +26,8 @@ const RULES = [
   "每次相关工作开始，先调用插件内打包 CLI 的 `context --root <project-root> --json` 读取当前状态；不得直接编辑 `.ezagent/**`。",
   "Router 必须选择最轻且足够可靠的 Consult、Quick、Brief、Standard 或 Controlled Mode；岗位、部门和业务类型不得成为固定角色枚举或专属流程。",
   "新的 v2 Work Item 按 Brief、Work Spec、Slices、Evidence、Work Journal 与 Decision 执行；旧 v1 编码 Task 才恢复已批准专家团队和原质量门。",
-  "Specialist 与多 Agent 不是默认前置；只有收益明确时才使用，并绑定 Work Item、Work Spec、Slice、delegation、范围、交付物和 Evidence requirements。",
+  "Specialist 与多 Agent 不是默认前置；但每个持久化 v2 Work Contract 都必须显式记录 Specialist Assessment：说明 not-needed，或提交不含 expert ID 和固定人数的有界 Capability Needs。",
+  "有已批准 delegation 时必须调用匹配 expertId 的 project Agent，不得由协调器模拟或替换；消息和回执只绑定 Work Item、Work Spec、Slice、delegation、范围、交付物和 Evidence requirements。",
   "发送、发布、外部写入或其他 Side Effect 必须命中精确 Approval Point，经用户单独批准；本地授权记录不等于外部动作已经执行。",
   "不得自动联网、安装软件、执行任何 Git 写操作、发布或上传项目。",
 ] as const;

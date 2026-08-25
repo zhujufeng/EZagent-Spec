@@ -1,5 +1,6 @@
 import type { ExpertTeamMode } from "./team-record.js";
 import { parseProjectContext, type ProjectContext } from "./project-context.js";
+import type { SpecialistMode } from "./specialist-plan.js";
 import type { WorkMode } from "./work-contract.js";
 
 export interface ResumeRequirement {
@@ -55,6 +56,23 @@ export interface ResumeExpertTeam {
   readonly members: readonly ResumeTeamMember[];
 }
 
+export interface ResumeSpecialistDelegation {
+  readonly id: string;
+  readonly expertId: string;
+  readonly nameZh: string;
+  readonly sliceId: string;
+  readonly mode: SpecialistMode;
+  readonly reasons: readonly string[];
+}
+
+export interface ResumeSpecialists {
+  readonly status: "legacy-unassessed" | "not-needed" | "ready";
+  readonly planRevision: number | null;
+  readonly planFingerprint: `sha256:${string}` | null;
+  readonly catalogFingerprint: `sha256:${string}` | null;
+  readonly delegations: readonly ResumeSpecialistDelegation[];
+}
+
 export interface ResumeKnowledge {
   readonly specId: string;
   readonly taskId: string;
@@ -81,6 +99,7 @@ export interface WorkflowResumeContext {
   readonly spec: ResumeSpec | null;
   readonly task: ResumeTask | null;
   readonly team: ResumeExpertTeam | null;
+  readonly specialists: ResumeSpecialists | null;
   readonly journal: ResumeWorkJournal | null;
   readonly knowledge: readonly ResumeKnowledge[];
   readonly blockers: readonly string[];
@@ -101,6 +120,13 @@ export function freezeWorkflowResumeContext(value: WorkflowResumeContext): Workf
       members: Object.freeze(value.team.members.map((member) => Object.freeze({
         ...member,
         reasons: Object.freeze([...member.reasons]),
+      }))),
+    }),
+    specialists: value.specialists === null ? null : Object.freeze({
+      ...value.specialists,
+      delegations: Object.freeze(value.specialists.delegations.map((delegation) => Object.freeze({
+        ...delegation,
+        reasons: Object.freeze([...delegation.reasons]),
       }))),
     }),
     journal: value.journal === null ? null : Object.freeze({ ...value.journal }),

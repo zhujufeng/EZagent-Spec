@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -25,6 +25,11 @@ describe("Agent Work Harness service", () => {
     expect(await fixture.snapshot()).toEqual(before);
     expect(preview.workSpec.workSpec.mode).toBe("brief");
     expect(preview.workItem.slices[0]?.status).toBe("pending");
+    expect(preview.specialistPlan).toMatchObject({
+      assessment: { decision: "not-needed", needs: [] },
+      delegations: [],
+      blockers: [],
+    });
     expect(preview).not.toHaveProperty("team");
 
     const applied = await fixture.service.workApply({
@@ -42,6 +47,10 @@ describe("Agent Work Harness service", () => {
       join(fixture.root, ".ezagent", "requirements", `${applied.brief.id}.yaml`),
       "utf8",
     )).resolves.toContain("schemaVersion: 2");
+    await expect(readFile(
+      join(fixture.root, ".ezagent", "experts", "plans", applied.workItem.id, "000001.json"),
+      "utf8",
+    )).resolves.toContain('"decision": "not-needed"');
 
     const resumed = await fixture.service.resumeContext();
     expect(resumed).toMatchObject({
@@ -54,7 +63,239 @@ describe("Agent Work Harness service", () => {
         slices: [{ id: "slice-tracer", status: "pending" }],
       },
       team: null,
+      specialists: { status: "not-needed", delegations: [] },
       blockers: [],
+    });
+  });
+
+  test("selects, persists, and resumes approved v2 Specialists", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const draft = {
+      ...genericWorkContractDraft,
+      specialistAssessment: {
+        decision: "required" as const,
+        reasons: ["实现与审查需要隔离"],
+        needs: [
+          {
+            id: "need-implementation",
+            sliceId: "slice-tracer",
+            purpose: "implementation" as const,
+            capabilities: ["api-design"],
+            domains: ["engineering"],
+            projectSignals: ["typescript"],
+            isolationReason: "domain-judgment" as const,
+          },
+          {
+            id: "need-review",
+            sliceId: "slice-tracer",
+            purpose: "review" as const,
+            capabilities: ["api-design"],
+            domains: ["engineering"],
+            projectSignals: ["typescript"],
+            isolationReason: "independent-review" as const,
+          },
+        ],
+      },
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        reviewPolicy: {
+          method: "independent-agent" as const,
+          reasons: ["实现结果需要独立审查"],
+          reviewAfterSlices: 1,
+        },
+      },
+    };
+
+    const preview = await fixture.service.workPreview(draft);
+    expect(preview.specialistPlan).toMatchObject({
+      assessment: { decision: "required" },
+      blockers: [],
+    });
+    expect(preview.specialistPlan.delegations.map(({ mode }) => mode).sort())
+      .toEqual(["implement", "review"]);
+
+    const applied = await fixture.service.workApply({ draft, approvalToken: preview.approvalToken });
+    await expect(readFile(
+      join(fixture.root, ".ezagent", "experts", "active.yaml"),
+      "utf8",
+    )).resolves.toContain("ezagent.test.implementer-0");
+
+    const resumed = await fixture.service.resumeContext();
+    expect(resumed.specialists).toMatchObject({
+      status: "ready",
+      planRevision: 1,
+      planFingerprint: applied.specialistPlan.planFingerprint,
+    });
+    expect(resumed.specialists?.delegations).toHaveLength(2);
+  });
+
+  test("persists immutable delegation receipts and keeps review incomplete until all are completed", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const draft = {
+      ...genericWorkContractDraft,
+      specialistAssessment: {
+        decision: "required" as const,
+        reasons: ["实现与审查需要隔离"],
+        needs: [
+          {
+            id: "need-implementation",
+            sliceId: "slice-tracer",
+            purpose: "implementation" as const,
+            capabilities: ["api-design"],
+            domains: ["engineering"],
+            projectSignals: ["typescript"],
+            isolationReason: "domain-judgment" as const,
+          },
+          {
+            id: "need-review",
+            sliceId: "slice-tracer",
+            purpose: "review" as const,
+            capabilities: ["api-design"],
+            domains: ["engineering"],
+            projectSignals: ["typescript"],
+            isolationReason: "independent-review" as const,
+          },
+        ],
+      },
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        reviewPolicy: {
+          method: "independent-agent" as const,
+          reasons: ["实现结果需要独立审查"],
+          reviewAfterSlices: 1,
+        },
+      },
+    };
+    const preview = await fixture.service.workPreview(draft);
+    const applied = await fixture.service.workApply({ draft, approvalToken: preview.approvalToken });
+    await fixture.service.workStartSlice("slice-tracer");
+    const implementation = applied.specialistPlan.delegations.find(({ mode }) => mode === "implement")!;
+    const reviewer = applied.specialistPlan.delegations.find(({ mode }) => mode === "review")!;
+    const completion = (expertId: string) => ({
+      schemaVersion: 1 as const,
+      expertId,
+      planFingerprint: applied.specialistPlan.planFingerprint,
+      status: "completed" as const,
+      summary: "委派范围内的结果与证据已完成。",
+      resultHash: `sha256:${"c".repeat(64)}` as const,
+      evidencePointers: [{
+        kind: "file" as const,
+        locator: "src/result.ts",
+        contentHash: `sha256:${"c".repeat(64)}` as const,
+      }],
+    });
+
+    const started = await fixture.service.delegationStart(implementation.id);
+    expect(started).toMatchObject({
+      delegation: { id: implementation.id, expertId: implementation.expertId },
+      receipt: { status: "started", planFingerprint: applied.specialistPlan.planFingerprint },
+    });
+    await expect(fixture.service.delegationStart(implementation.id)).rejects.toThrow(/already exists/iu);
+    await expect(fixture.service.delegationComplete(implementation.id, {
+      ...completion(implementation.expertId),
+      expertId: reviewer.expertId,
+    })).rejects.toThrow(/expert/iu);
+    await expect(fixture.service.delegationComplete(implementation.id, {
+      ...completion(implementation.expertId),
+      planFingerprint: `sha256:${"d".repeat(64)}`,
+    })).rejects.toThrow(/stale/iu);
+
+    await fixture.service.delegationStart(reviewer.id);
+    const completed = await fixture.service.delegationComplete(
+      implementation.id,
+      completion(implementation.expertId),
+    );
+    expect(completed.receipt).toMatchObject({ status: "completed", expertId: implementation.expertId });
+    await expect(fixture.service.delegationComplete(
+      implementation.id,
+      completion(implementation.expertId),
+    )).rejects.toThrow(/already exists/iu);
+
+    const incompleteReview = await fixture.service.workReviewSlice(genericEvidenceBundle(
+      applied.workItem.id,
+      applied.workSpec.id,
+    ));
+    expect(incompleteReview.coverage.complete).toBe(true);
+    expect(incompleteReview.delegationCoverage).toMatchObject({
+      complete: false,
+      delegations: expect.arrayContaining([
+        expect.objectContaining({ delegationId: implementation.id, status: "completed" }),
+        expect.objectContaining({ delegationId: reviewer.id, status: "missing" }),
+      ]),
+    });
+    expect(incompleteReview.workItem.slices[0]?.status).toBe("revise");
+
+    await fixture.service.workStartSlice("slice-tracer");
+    await fixture.service.delegationComplete(reviewer.id, completion(reviewer.expertId));
+    const accepted = await fixture.service.workReviewSlice(genericEvidenceBundle(
+      applied.workItem.id,
+      applied.workSpec.id,
+    ));
+    expect(accepted.delegationCoverage.complete).toBe(true);
+    expect(accepted.workItem).toMatchObject({
+      status: "verifying",
+      slices: [{ status: "accepted" }],
+    });
+    const completedWork = await fixture.service.workComplete({
+      schemaVersion: 3,
+      title: "委派工作完成",
+      summary: "实现与独立审查回执均已验证。",
+      decisions: ["保留已验证的分析结论。"],
+      constraints: ["不扩大已批准范围。"],
+      followUps: [],
+    });
+    expect(completedWork.state.activeWorkItem).toBeNull();
+    await expect(readFile(join(fixture.root, ".ezagent", "experts", "active.yaml"), "utf8"))
+      .resolves.toContain("experts: []");
+    await expect(readFile(join(fixture.root, ".ezagent", completed.receiptPath), "utf8"))
+      .resolves.toContain('"status": "completed"');
+  });
+
+  test("rejects a blocked Specialist Plan without mutating the workspace", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const draft = {
+      ...genericWorkContractDraft,
+      specialistAssessment: {
+        decision: "required" as const,
+        reasons: ["需要不存在的能力"],
+        needs: [{
+          id: "need-missing",
+          sliceId: "slice-tracer",
+          purpose: "implementation" as const,
+          capabilities: ["quantum-ledger"],
+          domains: ["engineering"],
+          projectSignals: [],
+          isolationReason: "domain-judgment" as const,
+        }],
+      },
+    };
+    const before = await fixture.snapshot();
+    const preview = await fixture.service.workPreview(draft);
+
+    expect(preview.specialistPlan.blockers).toContain("capability-uncovered:quantum-ledger");
+    await expect(fixture.service.workApply({ draft, approvalToken: preview.approvalToken }))
+      .rejects.toThrow(/blocker/u);
+    expect(await fixture.snapshot()).toEqual(before);
+  });
+
+  test("resumes a pre-Specialist v2 Work Item as legacy-unassessed", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+    await rm(join(fixture.root, ".ezagent", "experts", "plans", applied.workItem.id), {
+      recursive: true,
+    });
+
+    await expect(fixture.service.resumeContext()).resolves.toMatchObject({
+      recoveryStatus: "ready",
+      specialists: {
+        status: "legacy-unassessed",
+        planRevision: null,
+        delegations: [],
+      },
     });
   });
 

@@ -92,6 +92,44 @@ async function initializedWorkspace(
   return { root, repository };
 }
 
+function specialistWorkContractDraft() {
+  return {
+    ...genericWorkContractDraft,
+    specialistAssessment: {
+      decision: "required" as const,
+      reasons: ["实现和审查需要隔离"],
+      needs: [
+        {
+          id: "need-implementation",
+          sliceId: "slice-tracer",
+          purpose: "implementation" as const,
+          capabilities: ["production-implementation"],
+          domains: ["engineering"],
+          projectSignals: ["typescript"],
+          isolationReason: "domain-judgment" as const,
+        },
+        {
+          id: "need-review",
+          sliceId: "slice-tracer",
+          purpose: "review" as const,
+          capabilities: ["production-implementation"],
+          domains: ["engineering"],
+          projectSignals: ["typescript"],
+          isolationReason: "independent-review" as const,
+        },
+      ],
+    },
+    workSpec: {
+      ...genericWorkContractDraft.workSpec,
+      reviewPolicy: {
+        method: "independent-agent" as const,
+        reasons: ["实现结果需要独立审查"],
+        reviewAfterSlices: 1,
+      },
+    },
+  };
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, {
     recursive: true,
@@ -250,6 +288,7 @@ describe.sequential("ezagent CLI", () => {
       spec: null,
       task: null,
       team: null,
+      specialists: null,
       journal: null,
       projectContext: null,
       knowledge: [],
@@ -477,6 +516,8 @@ describe.sequential("ezagent CLI", () => {
     expect(applied).toMatchObject({
       workSpec: { workSpec: { mode: "brief" } },
       workItem: { status: "planned" },
+      specialistPlan: { assessment: { decision: "not-needed" }, delegations: [] },
+      platformSyncStatus: "none",
     });
     expect(expectJsonSuccess(await runCli([
       "work-start", "--root", root, "--slice", "slice-tracer",
@@ -509,6 +550,7 @@ describe.sequential("ezagent CLI", () => {
       spec: { sourceSchemaVersion: 2, mode: "brief" },
       task: { sourceSchemaVersion: 2, slices: [{ status: "accepted" }] },
       team: null,
+      specialists: { status: "not-needed", delegations: [] },
       journal: { sequence: 1, nextStep: "提交证据审查。" },
       platformSyncStatus: "none",
     });
@@ -526,6 +568,108 @@ describe.sequential("ezagent CLI", () => {
     ))).toMatchObject({
       state: { activeWorkItem: null },
       decision: { schemaVersion: 3 },
+    });
+  }, 30_000);
+
+  test("reconciles Specialists and blocks work-start when delegated Slice Agents drift", async () => {
+    const root = await temporaryProject();
+    const draft = specialistWorkContractDraft();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Specialist Work"]));
+    const preview = expectJsonSuccess(await runCli(
+      ["work-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    )) as { readonly approvalToken: string };
+    const applied = expectJsonSuccess(await runCli(
+      ["work-apply", "--root", root, "--approval-token", preview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    ));
+    expect(applied).toMatchObject({
+      specialistPlan: { assessment: { decision: "required" }, delegations: expect.arrayContaining([
+        expect.objectContaining({ sliceId: "slice-tracer", mode: "implement" }),
+        expect.objectContaining({ sliceId: "slice-tracer", mode: "review" }),
+      ]) },
+      platformSyncStatus: "ready",
+      files: expect.any(Array),
+    });
+    expect(expectJsonSuccess(await runCli(["context", "--root", root, "--json"]))).toMatchObject({
+      specialists: { status: "ready", delegations: expect.arrayContaining([
+        expect.objectContaining({ sliceId: "slice-tracer", mode: "implement" }),
+        expect.objectContaining({ sliceId: "slice-tracer", mode: "review" }),
+      ]) },
+      platformSyncStatus: "ready",
+    });
+
+    const generated = (await readdir(join(root, ".codex", "agents")))
+      .find((name) => name.startsWith("ezagent-"));
+    expect(generated).toBeDefined();
+    const generatedPath = join(root, ".codex", "agents", generated!);
+    await writeFile(generatedPath, `${await readFile(generatedPath, "utf8")}# drift\n`, "utf8");
+
+    const blocked = await runCli(["work-start", "--root", root, "--slice", "slice-tracer"]);
+    expectSingleLineFailure(blocked, "delegated Slice requires ready project Agents");
+    expect(expectJsonSuccess(await runCli(["context", "--root", root, "--json"]))).toMatchObject({
+      task: { status: "planned", slices: [{ id: "slice-tracer", status: "pending" }] },
+      platformSyncStatus: "inspection-required",
+    });
+  }, 30_000);
+
+  test("starts and completes approved delegation contracts through bounded CLI receipts", async () => {
+    const root = await temporaryProject();
+    const draft = specialistWorkContractDraft();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Delegation Work"]));
+    const preview = expectJsonSuccess(await runCli(
+      ["work-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    )) as { readonly approvalToken: string };
+    const applied = expectJsonSuccess(await runCli(
+      ["work-apply", "--root", root, "--approval-token", preview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(draft)}\n` },
+    )) as {
+      readonly workItem: { readonly id: string };
+      readonly workSpec: { readonly id: string };
+      readonly specialistPlan: {
+        readonly planFingerprint: string;
+        readonly delegations: readonly { readonly id: string; readonly expertId: string }[];
+      };
+    };
+    expectJsonSuccess(await runCli(["work-start", "--root", root, "--slice", "slice-tracer"]));
+
+    for (const delegation of applied.specialistPlan.delegations) {
+      expect(expectJsonSuccess(await runCli([
+        "delegation-start", "--root", root, "--delegation", delegation.id,
+      ]))).toMatchObject({
+        delegation: { id: delegation.id, expertId: delegation.expertId },
+        receipt: { status: "started", planFingerprint: applied.specialistPlan.planFingerprint },
+      });
+      const completed = expectJsonSuccess(await runCli(
+        ["delegation-complete", "--root", root, "--delegation", delegation.id],
+        PROJECT_ROOT,
+        { input: `${JSON.stringify({
+          schemaVersion: 1,
+          expertId: delegation.expertId,
+          planFingerprint: applied.specialistPlan.planFingerprint,
+          status: "completed",
+          summary: "委派范围内工作与验证已经完成。",
+          resultHash: `sha256:${"e".repeat(64)}`,
+          evidencePointers: [{ kind: "file", locator: "src/result.ts" }],
+        })}\n` },
+      ));
+      expect(completed).toMatchObject({ receipt: { status: "completed", expertId: delegation.expertId } });
+    }
+
+    const reviewed = expectJsonSuccess(await runCli(
+      ["work-review", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericEvidenceBundle(applied.workItem.id, applied.workSpec.id))}\n` },
+    ));
+    expect(reviewed).toMatchObject({
+      coverage: { complete: true },
+      delegationCoverage: { complete: true },
+      workItem: { status: "verifying", slices: [{ status: "accepted" }] },
     });
   }, 30_000);
 
@@ -651,7 +795,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 

@@ -37,7 +37,11 @@
 | **Approval Point** | 执行必须暂停的命名决策点，直到用户批准 exact Side Effect 或契约变化。 | Confirmation、review、general permission |
 | **Review** | 将 Deliverable 及其 Evidence 与 approved Work Spec 中每项 Acceptance Criterion 逐条比较。 | Test run、opinion、self-check |
 | **Work Mode** | 根据歧义、时长、风险、可恢复性和 Side Effects 所需的最小 Harness 强度。 | Risk level、team size、task type |
-| **Specialist** | Shared Design Concept 暴露能力需求后才选择的可选领域或方法视角。 | Mandatory agent、team member、persona |
+| **Specialist Assessment** | Shared Design Concept 和 Slice Plan 已知后，对是否需要额外领域能力或隔离执行作出的显式判断；持久化工作必须说明 `not-needed` 或 `required`。 | Silent default、team size、role list |
+| **Capability Need** | 不包含专家 ID、绑定具体 Slice 的能力、领域、用途和隔离需求。 | Expert choice、persona request、job title |
+| **Specialist** | Core 根据已声明 Capability Need 从锁定目录中确定性选择的可选领域或方法执行者。 | Mandatory agent、team member、persona |
+| **Delegation Contract** | 绑定 Work Item、Work Spec、Slice、expert、范围、交付物和 Evidence requirements 的一次有界子 Agent 授权。 | Prompt、free-form subtask、role assignment |
+| **Delegation Receipt** | Host 执行 Delegation Contract 后形成的有界事实记录，只保存状态、摘要、结果哈希和 Evidence pointers。 | Full transcript、self-claim、chat history |
 | **Independent Reviewer** | 未参与被审查 Slice 产出，并通过已声明 Deliverable Interface 评价结果的 Specialist 或人。 | Extra implementer、approver、self-reviewer |
 
 ## Work modes
@@ -60,7 +64,10 @@
 - A **Project Constitution** uses **Canonical Terms** and **Context Pointers** to guide many Work Items without injecting every source.
 - A **Work Journal** belongs to one active Work Item and may inform a final **Decision Record**, but it is not itself long-term project knowledge.
 - A **Pattern** can only be promoted from validated **Decision Records** after explicit user approval.
-- A **Specialist** is selected only when a capability need is known; an **Independent Reviewer** is selected only when the Work Spec's review policy requires one.
+- Every persisted v2 Work Item has a **Specialist Assessment**; `not-needed` requires reasons and `required` produces one or more Slice-bound **Capability Needs**.
+- Core selects a **Specialist** only from a known **Capability Need**; the Agent does not submit expert IDs.
+- A selected Specialist works through a **Delegation Contract**, and required delegation coverage is incomplete until a matching **Delegation Receipt** exists.
+- An **Independent Reviewer** is selected only when the Work Spec's review policy requires one and cannot implement the same Slice.
 - A **Side Effect** in **Controlled Mode** requires its own **Approval Point** even when the Work Spec is already approved.
 
 ## Example dialogue
@@ -85,3 +92,4 @@
 - “Review” previously implied command-based software verification. Use **Review** only for criterion-by-criterion comparison; command execution is one possible Evidence kind.
 - “High risk” previously meant the whole task could not enter implementation. Use **Controlled Mode** to allow safe preparation while keeping every sensitive or irreversible Side Effect behind an Approval Point.
 - “Expert team” implied that multiple Agents are the default execution unit. Use **Specialist** and **Independent Reviewer** as optional roles selected only after a concrete need is known.
+- “Specialist is optional” must not mean “the assessment may be skipped.” Use **Specialist Assessment** to distinguish an explicit no-Specialist decision from legacy unassessed work.

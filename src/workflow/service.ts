@@ -46,6 +46,17 @@ import {
   type TaskArtifact,
 } from "./plan-artifacts.js";
 import { parseWorkContractDraft, type WorkContractDraftV2 } from "./work-contract.js";
+import { proposeSpecialistPlanV2 } from "./specialist-selection.js";
+import {
+  diffSpecialistPlansV2,
+  parseSpecialistAssessmentDraftV2,
+  parseSpecialistPlanV2,
+  serializeSpecialistPlanV2,
+  specialistPlanHistoryPath,
+  type SpecialistAssessmentDraftV2,
+  type SpecialistDelegationDiffV2,
+  type SpecialistPlanV2,
+} from "./specialist-plan.js";
 import {
   createWorkArtifactsV2,
   parseBriefArtifactV2Yaml,
@@ -94,6 +105,20 @@ import {
   type EvidenceCoverage,
   type EvidenceBundle,
 } from "./evidence.js";
+import {
+  createDelegationCompletionReceipt,
+  createDelegationStartReceipt,
+  delegationCompletionReceiptPath,
+  delegationStartReceiptPath,
+  parseDelegationCompletionInput,
+  parseDelegationCompletionReceipt,
+  parseDelegationStartReceipt,
+  serializeDelegationCompletionReceipt,
+  serializeDelegationStartReceipt,
+  type DelegationCompletionInput,
+  type DelegationCompletionReceipt,
+  type DelegationStartReceipt,
+} from "./delegation-receipt.js";
 import {
   KNOWLEDGE_PATTERN_MAX_BYTES,
   createKnowledgePattern,
@@ -179,6 +204,7 @@ export interface PlanPreview {
 export type AppliedPlan = Omit<PlanPreview, "approvalToken">;
 
 export interface WorkPreview extends WorkArtifactsV2 {
+  readonly specialistPlan: SpecialistPlanV2;
   readonly approvalToken: `sha256:${string}`;
   readonly workspaceRevision: number;
 }
@@ -188,9 +214,47 @@ export type AppliedWork = Omit<WorkPreview, "approvalToken">;
 export interface WorkSliceReviewResult {
   readonly workItem: WorkItemArtifactV2;
   readonly coverage: EvidenceCoverage;
+  readonly delegationCoverage: DelegationCoverage;
   readonly evidencePath: string;
   readonly workspaceRevision: number;
 }
+
+export interface DelegationCoverageEntry {
+  readonly delegationId: string;
+  readonly expertId: string;
+  readonly status: "completed" | "blocked" | "missing";
+}
+
+export interface DelegationCoverage {
+  readonly complete: boolean;
+  readonly delegations: readonly DelegationCoverageEntry[];
+}
+
+export interface DelegationStartResult {
+  readonly delegation: SpecialistPlanV2["delegations"][number];
+  readonly receipt: DelegationStartReceipt;
+  readonly receiptPath: string;
+  readonly workspaceRevision: number;
+}
+
+export interface DelegationCompletionResult {
+  readonly receipt: DelegationCompletionReceipt;
+  readonly receiptPath: string;
+  readonly workspaceRevision: number;
+}
+
+export interface SpecialistReplanPreview {
+  readonly workSpec: WorkSpecArtifactV2;
+  readonly workItem: WorkItemArtifactV2;
+  readonly previousPlan: SpecialistPlanV2;
+  readonly nextPlan: SpecialistPlanV2;
+  readonly diff: SpecialistDelegationDiffV2;
+  readonly blockers: readonly string[];
+  readonly approvalToken: `sha256:${string}`;
+  readonly workspaceRevision: number;
+}
+
+export type AppliedSpecialistReplan = Omit<SpecialistReplanPreview, "approvalToken">;
 
 export interface SideEffectPreview {
   readonly workItemId: string;
@@ -299,6 +363,14 @@ interface PreparedWork extends WorkPreview {
   readonly canonicalRoot: string;
   readonly repository: WorkspaceRepository;
   readonly state: WorkspaceState;
+  readonly activeExperts: ActiveExperts;
+}
+
+interface PreparedSpecialistReplan extends SpecialistReplanPreview {
+  readonly canonicalRoot: string;
+  readonly repository: WorkspaceRepository;
+  readonly state: WorkspaceState;
+  readonly activeExperts: ActiveExperts;
 }
 
 interface PreparedSideEffect extends SideEffectPreview {
@@ -319,6 +391,7 @@ interface ActiveWorkRecordsV2 {
   readonly brief: BriefArtifactV2;
   readonly workSpec: WorkSpecArtifactV2;
   readonly workItem: WorkItemArtifactV2;
+  readonly specialistPlan: SpecialistPlanV2 | null;
 }
 
 interface PreparedReplan extends ReplanPreview {
@@ -359,6 +432,8 @@ const EXCLUDED_LOCAL_PATHS = Object.freeze([
   "state/**",
   "experts/active.yaml",
   "experts/teams/**",
+  "experts/plans/**",
+  "experts/receipts/**",
 ]);
 
 function portableCompare(left: string, right: string): number {
@@ -562,6 +637,84 @@ function addActiveTeam(
   };
 }
 
+function addActiveSpecialists(
+  active: ActiveExperts,
+  plan: SpecialistPlanV2,
+): ActiveExperts {
+  const byId = new Map(active.experts.map((expert) => [expert.id, {
+    id: expert.id,
+    reason: expert.reason,
+    taskIds: [...expert.taskIds],
+  }]));
+  for (const expertId of new Set(plan.delegations.map(({ expertId }) => expertId))) {
+    const existing = byId.get(expertId);
+    if (existing === undefined) {
+      byId.set(expertId, {
+        id: expertId,
+        reason: `approved v2 Specialist for ${plan.workItemId}`,
+        taskIds: [plan.workItemId],
+      });
+    } else if (!existing.taskIds.includes(plan.workItemId)) {
+      existing.taskIds.push(plan.workItemId);
+    }
+  }
+  return {
+    revision: active.revision + 1,
+    experts: [...byId.values()].map((expert) => ({
+      ...expert,
+      taskIds: expert.taskIds.sort(portableCompare),
+    })).sort((left, right) => portableCompare(left.id, right.id)),
+  };
+}
+
+function replaceActiveSpecialists(
+  active: ActiveExperts,
+  previous: SpecialistPlanV2,
+  next: SpecialistPlanV2,
+): ActiveExperts {
+  const previousIds = new Set(previous.delegations.map(({ expertId }) => expertId));
+  const byId = new Map<string, { id: string; reason: string; taskIds: string[] }>(active.experts.flatMap((expert) => {
+    if (!previousIds.has(expert.id)) return [[expert.id, { ...expert, taskIds: [...expert.taskIds] }] as const];
+    const taskIds = expert.taskIds.filter((taskId) => taskId !== previous.workItemId);
+    return taskIds.length === 0 ? [] : [[expert.id, { ...expert, taskIds }] as const];
+  }));
+  for (const expertId of new Set(next.delegations.map(({ expertId }) => expertId))) {
+    const existing = byId.get(expertId);
+    if (existing === undefined) {
+      byId.set(expertId, {
+        id: expertId,
+        reason: `approved v2 Specialist for ${next.workItemId}`,
+        taskIds: [next.workItemId],
+      });
+    } else if (!existing.taskIds.includes(next.workItemId)) {
+      existing.taskIds.push(next.workItemId);
+    }
+  }
+  return {
+    revision: active.revision + 1,
+    experts: [...byId.values()].map((expert) => ({
+      ...expert,
+      taskIds: expert.taskIds.sort(portableCompare),
+    })).sort((left, right) => portableCompare(left.id, right.id)),
+  };
+}
+
+function retireActiveSpecialists(
+  active: ActiveExperts,
+  workItemId: string,
+  plan: SpecialistPlanV2 | null,
+): ActiveExperts {
+  const specialistIds = new Set(plan?.delegations.map(({ expertId }) => expertId) ?? []);
+  return {
+    revision: active.revision + 1,
+    experts: active.experts.flatMap((expert) => {
+      if (!specialistIds.has(expert.id)) return [expert];
+      const taskIds = expert.taskIds.filter((taskId) => taskId !== workItemId);
+      return taskIds.length === 0 ? [] : [{ ...expert, taskIds }];
+    }),
+  };
+}
+
 function replaceActiveTeam(
   active: ActiveExperts,
   previous: ExpertTeamPlan,
@@ -626,6 +779,125 @@ async function latestTeamRecord(root: string, taskId: string): Promise<ExpertTea
     throw new Error("expert team history identity mismatch");
   }
   return team;
+}
+
+async function latestSpecialistPlan(
+  root: string,
+  workItemId: string,
+): Promise<SpecialistPlanV2 | null> {
+  const directory = join(workspacePaths(root).root, "experts", "plans", workItemId);
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (names.length === 0 || names.some((name) => !/^\d{6,}\.json$/u.test(name))) {
+    throw new Error("Specialist Plan history is missing or malformed");
+  }
+  const name = [...names].sort(portableCompare).at(-1)!;
+  const value: unknown = JSON.parse(await readBoundedText(join(directory, name)));
+  const plan = parseSpecialistPlanV2(value);
+  if (plan.workItemId !== workItemId
+    || name !== `${String(plan.revision).padStart(6, "0")}.json`) {
+    throw new Error("Specialist Plan history identity mismatch");
+  }
+  return plan;
+}
+
+async function readDelegationStartReceipt(
+  root: string,
+  workItemId: string,
+  delegationId: string,
+): Promise<DelegationStartReceipt | null> {
+  const relativePath = delegationStartReceiptPath(workItemId, delegationId);
+  try {
+    return parseDelegationStartReceipt(JSON.parse(await readBoundedText(
+      join(workspacePaths(root).root, ...relativePath.split("/")),
+    )) as unknown);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function readDelegationCompletionReceipt(
+  root: string,
+  workItemId: string,
+  delegationId: string,
+): Promise<DelegationCompletionReceipt | null> {
+  const relativePath = delegationCompletionReceiptPath(workItemId, delegationId);
+  try {
+    return parseDelegationCompletionReceipt(JSON.parse(await readBoundedText(
+      join(workspacePaths(root).root, ...relativePath.split("/")),
+    )) as unknown);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function reviewDelegationCoverage(
+  root: string,
+  records: ActiveWorkRecordsV2,
+  sliceId: string,
+): Promise<DelegationCoverage> {
+  const plan = records.specialistPlan;
+  if (plan === null) return Object.freeze({ complete: true, delegations: Object.freeze([]) });
+  const required = plan.delegations.filter((delegation) => delegation.sliceId === sliceId);
+  const delegations = await Promise.all(required.map(async (delegation): Promise<DelegationCoverageEntry> => {
+    const receipt = await readDelegationCompletionReceipt(root, plan.workItemId, delegation.id);
+    if (receipt === null) {
+      return Object.freeze({ delegationId: delegation.id, expertId: delegation.expertId, status: "missing" });
+    }
+    if (receipt.delegationId !== delegation.id
+      || receipt.expertId !== delegation.expertId
+      || receipt.workItemId !== delegation.workItemId
+      || receipt.workSpecId !== delegation.workSpecId
+      || receipt.workSpecRevision !== delegation.workSpecRevision
+      || receipt.sliceId !== delegation.sliceId
+      || receipt.planFingerprint !== plan.planFingerprint) {
+      throw new Error("Delegation completion receipt does not match the approved Specialist Plan");
+    }
+    return Object.freeze({
+      delegationId: delegation.id,
+      expertId: delegation.expertId,
+      status: receipt.status,
+    });
+  }));
+  return Object.freeze({
+    complete: delegations.every(({ status }) => status === "completed"),
+    delegations: Object.freeze(delegations),
+  });
+}
+
+async function assertNoUnfinishedDelegations(
+  root: string,
+  plan: SpecialistPlanV2,
+): Promise<void> {
+  for (const delegation of plan.delegations) {
+    const [start, completion] = await Promise.all([
+      readDelegationStartReceipt(root, plan.workItemId, delegation.id),
+      readDelegationCompletionReceipt(root, plan.workItemId, delegation.id),
+    ]);
+    if (completion !== null && start === null) {
+      throw new Error("Delegation receipt history is inconsistent");
+    }
+    if (start !== null && completion === null) {
+      throw new Error(`Specialist replan has an unfinished Delegation: ${delegation.id}`);
+    }
+    if (start !== null && (start.expertId !== delegation.expertId
+      || start.planFingerprint !== plan.planFingerprint
+      || start.sliceId !== delegation.sliceId)) {
+      throw new Error("Delegation start receipt does not match the active Specialist Plan");
+    }
+    if (completion !== null && (completion.expertId !== delegation.expertId
+      || completion.planFingerprint !== plan.planFingerprint
+      || completion.sliceId !== delegation.sliceId)) {
+      throw new Error("Delegation completion receipt does not match the active Specialist Plan");
+    }
+  }
 }
 
 async function readActiveRecords(
@@ -696,7 +968,13 @@ async function readActiveWorkRecordsV2(
     || workItem.slices.some((slice, index) => slice.id !== workSpec.workSpec.slicePlan[index]?.id)) {
     throw new Error("active Work Contract artifact identities do not match workspace state");
   }
-  return Object.freeze({ brief, workSpec, workItem });
+  const specialistPlan = await latestSpecialistPlan(root, workItem.id);
+  if (specialistPlan !== null
+    && (specialistPlan.workSpecId !== workSpec.id
+      || specialistPlan.workSpecRevision !== workSpec.revision)) {
+    throw new Error("Specialist Plan does not match the active Work Spec");
+  }
+  return Object.freeze({ brief, workSpec, workItem, specialistPlan });
 }
 
 function replanToken(
@@ -738,6 +1016,7 @@ function workToken(
   canonicalRoot: string,
   workspaceRevision: number,
   artifacts: WorkArtifactsV2,
+  specialistPlan: SpecialistPlanV2,
 ): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(JSON.stringify({
     schemaVersion: 2,
@@ -745,6 +1024,25 @@ function workToken(
     canonicalRoot,
     workspaceRevision,
     artifacts,
+    specialistPlan,
+  })).digest("hex")}`;
+}
+
+function specialistReplanToken(
+  canonicalRoot: string,
+  workspaceRevision: number,
+  previousPlan: SpecialistPlanV2,
+  nextPlan: SpecialistPlanV2,
+  diff: SpecialistDelegationDiffV2,
+): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    schemaVersion: 2,
+    operation: "specialist-replan",
+    canonicalRoot,
+    workspaceRevision,
+    previousPlanFingerprint: previousPlan.planFingerprint,
+    nextPlan,
+    diff,
   })).digest("hex")}`;
 }
 
@@ -780,6 +1078,33 @@ function parseWorkApplyInput(value: unknown): {
   }
   return Object.freeze({
     draft: parseWorkContractDraft(record.draft),
+    approvalToken: record.approvalToken as `sha256:${string}`,
+  });
+}
+
+function parseSpecialistReplanPreviewInput(value: unknown): {
+  readonly specialistAssessment: SpecialistAssessmentDraftV2;
+} {
+  const record = exactObject(value, ["specialistAssessment"], ["specialistAssessment"]);
+  return Object.freeze({
+    specialistAssessment: parseSpecialistAssessmentDraftV2(record.specialistAssessment),
+  });
+}
+
+function parseSpecialistReplanApplyInput(value: unknown): {
+  readonly specialistAssessment: SpecialistAssessmentDraftV2;
+  readonly approvalToken: `sha256:${string}`;
+} {
+  const record = exactObject(
+    value,
+    ["specialistAssessment", "approvalToken"],
+    ["specialistAssessment", "approvalToken"],
+  );
+  if (typeof record.approvalToken !== "string" || !HASH.test(record.approvalToken)) {
+    throw new TypeError("Specialist replan approval token is invalid");
+  }
+  return Object.freeze({
+    specialistAssessment: parseSpecialistAssessmentDraftV2(record.specialistAssessment),
     approvalToken: record.approvalToken as `sha256:${string}`,
   });
 }
@@ -991,19 +1316,79 @@ export class ExpertTeamWorkflowService {
     const { canonicalRoot, repository, context } = await this.context();
     const now = this.runtime.now();
     if (!Number.isFinite(now.getTime())) throw new Error("workflow clock is invalid");
-    const [briefId, workSpecId, workItemId] = await Promise.all([
+    const [briefId, workSpecId, workItemId, catalog, activeExperts] = await Promise.all([
       nextId(canonicalRoot, "requirements", "REQ", now),
       nextId(canonicalRoot, "specs", "SPEC", now),
       nextId(canonicalRoot, "tasks", "TASK", now),
+      this.runtime.readCatalog(),
+      this.runtime.readActiveExperts(canonicalRoot),
     ]);
     const artifacts = createWorkArtifactsV2(draft, { briefId, workSpecId, workItemId });
+    const specialistPlan = proposeSpecialistPlanV2(catalog, {
+      workItemId,
+      workSpecId,
+      workSpecRevision: artifacts.workSpec.revision,
+      planRevision: 1,
+      workSpec: artifacts.workSpec.workSpec,
+      assessment: draft.specialistAssessment,
+    });
     return Object.freeze({
       ...artifacts,
-      approvalToken: workToken(canonicalRoot, context.state.revision, artifacts),
+      specialistPlan,
+      approvalToken: workToken(canonicalRoot, context.state.revision, artifacts, specialistPlan),
       workspaceRevision: context.state.revision,
       canonicalRoot,
       repository,
       state: context.state,
+      activeExperts,
+    });
+  }
+
+  private async prepareSpecialistReplan(
+    specialistAssessment: SpecialistAssessmentDraftV2,
+  ): Promise<PreparedSpecialistReplan> {
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan cannot use Specialist-only replan");
+    if (!["planned", "implementing"].includes(records.workItem.status)) {
+      throw new Error("Specialist-only replan requires a planned or implementing Work Item");
+    }
+    const previousPlan = records.specialistPlan;
+    if (previousPlan === null) throw new Error("active Work Item has no Specialist Plan to revise");
+    await assertNoUnfinishedDelegations(canonicalRoot, previousPlan);
+    const [catalog, activeExperts] = await Promise.all([
+      this.runtime.readCatalog(),
+      this.runtime.readActiveExperts(canonicalRoot),
+    ]);
+    const nextPlan = proposeSpecialistPlanV2(catalog, {
+      workItemId: records.workItem.id,
+      workSpecId: records.workSpec.id,
+      workSpecRevision: records.workSpec.revision,
+      planRevision: previousPlan.revision + 1,
+      workSpec: records.workSpec.workSpec,
+      assessment: specialistAssessment,
+    });
+    const diff = diffSpecialistPlansV2(previousPlan, nextPlan);
+    return Object.freeze({
+      workSpec: records.workSpec,
+      workItem: records.workItem,
+      previousPlan,
+      nextPlan,
+      diff,
+      blockers: nextPlan.blockers,
+      approvalToken: specialistReplanToken(
+        canonicalRoot,
+        context.state.revision,
+        previousPlan,
+        nextPlan,
+        diff,
+      ),
+      workspaceRevision: context.state.revision,
+      canonicalRoot,
+      repository,
+      state: context.state,
+      activeExperts,
     });
   }
 
@@ -1013,6 +1398,7 @@ export class ExpertTeamWorkflowService {
       brief: prepared.brief,
       workSpec: prepared.workSpec,
       workItem: prepared.workItem,
+      specialistPlan: prepared.specialistPlan,
       approvalToken: prepared.approvalToken,
       workspaceRevision: prepared.workspaceRevision,
     });
@@ -1024,6 +1410,14 @@ export class ExpertTeamWorkflowService {
     if (prepared.approvalToken !== input.approvalToken) {
       throw new Error("Work approval token no longer matches the current workspace or contract");
     }
+    if (prepared.specialistPlan.blockers.length > 0) {
+      throw new Error(`Specialist Plan has blockers: ${prepared.specialistPlan.blockers.join(", ")}`);
+    }
+    const activeExperts = addActiveSpecialists(prepared.activeExperts, prepared.specialistPlan);
+    const planPath = specialistPlanHistoryPath(
+      prepared.workItem.id,
+      prepared.specialistPlan.revision,
+    );
     const writes = [
       {
         relativePath: `requirements/${prepared.brief.id}.yaml`,
@@ -1037,8 +1431,19 @@ export class ExpertTeamWorkflowService {
         relativePath: `tasks/${prepared.workItem.id}.yaml`,
         content: serializeWorkItemArtifactV2(prepared.workItem),
       },
+      {
+        relativePath: planPath,
+        content: serializeSpecialistPlanV2(prepared.specialistPlan),
+      },
+      {
+        relativePath: "experts/active.yaml",
+        content: serializeActiveExperts(activeExperts),
+      },
     ];
-    await assertMissing(prepared.canonicalRoot, writes.map((write) => write.relativePath));
+    await assertMissing(
+      prepared.canonicalRoot,
+      writes.map((write) => write.relativePath).filter((path) => path !== "experts/active.yaml"),
+    );
     const nextState: WorkspaceState = {
       schemaVersion: 1,
       revision: prepared.state.revision + 1,
@@ -1063,14 +1468,178 @@ export class ExpertTeamWorkflowService {
         mode: prepared.workSpec.workSpec.mode,
         sliceCount: prepared.workItem.slices.length,
         criterionCount: prepared.workSpec.workSpec.acceptanceCriteria.length,
+        specialistDecision: prepared.specialistPlan.assessment.decision,
+        specialistPlanFingerprint: prepared.specialistPlan.planFingerprint,
+        specialistDelegationCount: prepared.specialistPlan.delegations.length,
       },
     );
     return Object.freeze({
       brief: prepared.brief,
       workSpec: prepared.workSpec,
       workItem: prepared.workItem,
+      specialistPlan: prepared.specialistPlan,
       workspaceRevision: nextState.revision,
     });
+  }
+
+  async specialistReplanPreview(inputValue: unknown): Promise<SpecialistReplanPreview> {
+    const input = parseSpecialistReplanPreviewInput(inputValue);
+    const prepared = await this.prepareSpecialistReplan(input.specialistAssessment);
+    return Object.freeze({
+      workSpec: prepared.workSpec,
+      workItem: prepared.workItem,
+      previousPlan: prepared.previousPlan,
+      nextPlan: prepared.nextPlan,
+      diff: prepared.diff,
+      blockers: prepared.blockers,
+      approvalToken: prepared.approvalToken,
+      workspaceRevision: prepared.workspaceRevision,
+    });
+  }
+
+  async specialistReplanApply(inputValue: unknown): Promise<AppliedSpecialistReplan> {
+    const input = parseSpecialistReplanApplyInput(inputValue);
+    const prepared = await this.prepareSpecialistReplan(input.specialistAssessment);
+    if (input.approvalToken !== prepared.approvalToken) {
+      throw new Error("Specialist replan approval token no longer matches the exact diff or workspace revision");
+    }
+    if (prepared.blockers.length > 0) {
+      throw new Error(`replacement Specialist Plan has blockers: ${prepared.blockers.join(", ")}`);
+    }
+    const activeExperts = replaceActiveSpecialists(
+      prepared.activeExperts,
+      prepared.previousPlan,
+      prepared.nextPlan,
+    );
+    const planPath = specialistPlanHistoryPath(
+      prepared.workItem.id,
+      prepared.nextPlan.revision,
+    );
+    await assertMissing(prepared.canonicalRoot, [planPath]);
+    const nextState: WorkspaceState = {
+      ...prepared.state,
+      revision: prepared.state.revision + 1,
+    };
+    await prepared.repository.commitMutation(
+      nextState,
+      prepared.state.revision,
+      "specialist-plan-replanned",
+      [
+        { relativePath: planPath, content: serializeSpecialistPlanV2(prepared.nextPlan) },
+        { relativePath: "experts/active.yaml", content: serializeActiveExperts(activeExperts) },
+      ],
+      {
+        workItemId: prepared.workItem.id,
+        workSpecId: prepared.workSpec.id,
+        specialistPlanRevision: prepared.nextPlan.revision,
+        previousPlanFingerprint: prepared.previousPlan.planFingerprint,
+        nextPlanFingerprint: prepared.nextPlan.planFingerprint,
+        addedCount: prepared.diff.added.length,
+        removedCount: prepared.diff.removed.length,
+        changedCount: prepared.diff.changed.length,
+        unchangedCount: prepared.diff.unchanged.length,
+      },
+    );
+    return Object.freeze({
+      workSpec: prepared.workSpec,
+      workItem: prepared.workItem,
+      previousPlan: prepared.previousPlan,
+      nextPlan: prepared.nextPlan,
+      diff: prepared.diff,
+      blockers: prepared.blockers,
+      workspaceRevision: nextState.revision,
+    });
+  }
+
+  async delegationStart(delegationId: string): Promise<DelegationStartResult> {
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan cannot use v2 Delegations");
+    const plan = records.specialistPlan;
+    if (plan === null) throw new Error("active Work Item has no approved Specialist Plan");
+    const delegation = plan.delegations.find(({ id }) => id === delegationId);
+    if (delegation === undefined) throw new Error("Delegation is not approved by the active Specialist Plan");
+    const slice = records.workItem.slices.find(({ id }) => id === delegation.sliceId);
+    if (slice?.status !== "executing") {
+      throw new Error("Delegation can only start while its Slice is executing");
+    }
+    const receipt = createDelegationStartReceipt(delegation, plan.planFingerprint, this.runtime.now());
+    const receiptPath = delegationStartReceiptPath(records.workItem.id, delegation.id);
+    await assertMissing(canonicalRoot, [receiptPath]);
+    const nextState: WorkspaceState = { ...context.state, revision: context.state.revision + 1 };
+    await repository.commitMutation(
+      nextState,
+      context.state.revision,
+      "delegation-started",
+      [{ relativePath: receiptPath, content: serializeDelegationStartReceipt(receipt) }],
+      {
+        workItemId: records.workItem.id,
+        workSpecId: records.workSpec.id,
+        sliceId: delegation.sliceId,
+        delegationId: delegation.id,
+        expertId: delegation.expertId,
+        specialistPlanFingerprint: plan.planFingerprint,
+      },
+    );
+    return Object.freeze({ delegation, receipt, receiptPath, workspaceRevision: nextState.revision });
+  }
+
+  async delegationComplete(
+    delegationId: string,
+    inputValue: unknown,
+  ): Promise<DelegationCompletionResult> {
+    const input: DelegationCompletionInput = parseDelegationCompletionInput(inputValue);
+    const { canonicalRoot, repository, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (records === null) throw new Error("active v1 Plan cannot use v2 Delegations");
+    const plan = records.specialistPlan;
+    if (plan === null) throw new Error("active Work Item has no approved Specialist Plan");
+    const delegation = plan.delegations.find(({ id }) => id === delegationId);
+    if (delegation === undefined) throw new Error("Delegation is not approved by the active Specialist Plan");
+    const slice = records.workItem.slices.find(({ id }) => id === delegation.sliceId);
+    if (slice?.status !== "executing") {
+      throw new Error("Delegation can only complete while its Slice is executing");
+    }
+    if (input.expertId !== delegation.expertId) {
+      throw new Error("Delegation completion expert does not match the approved Specialist");
+    }
+    if (input.planFingerprint !== plan.planFingerprint) {
+      throw new Error("Delegation completion uses a stale Specialist Plan fingerprint");
+    }
+    const start = await readDelegationStartReceipt(canonicalRoot, records.workItem.id, delegation.id);
+    if (start === null) throw new Error("Delegation must be started before completion");
+    if (start.delegationId !== delegation.id
+      || start.expertId !== delegation.expertId
+      || start.workItemId !== delegation.workItemId
+      || start.workSpecId !== delegation.workSpecId
+      || start.workSpecRevision !== delegation.workSpecRevision
+      || start.sliceId !== delegation.sliceId
+      || start.planFingerprint !== plan.planFingerprint) {
+      throw new Error("Delegation start receipt does not match the approved Specialist Plan");
+    }
+    const receiptPath = delegationCompletionReceiptPath(records.workItem.id, delegation.id);
+    await assertMissing(canonicalRoot, [receiptPath]);
+    const receipt = createDelegationCompletionReceipt(delegation, input, this.runtime.now());
+    const nextState: WorkspaceState = { ...context.state, revision: context.state.revision + 1 };
+    await repository.commitMutation(
+      nextState,
+      context.state.revision,
+      "delegation-completed",
+      [{ relativePath: receiptPath, content: serializeDelegationCompletionReceipt(receipt) }],
+      {
+        workItemId: records.workItem.id,
+        workSpecId: records.workSpec.id,
+        sliceId: delegation.sliceId,
+        delegationId: delegation.id,
+        expertId: delegation.expertId,
+        specialistPlanFingerprint: plan.planFingerprint,
+        delegationStatus: receipt.status,
+        evidencePointerCount: receipt.evidencePointers.length,
+      },
+    );
+    return Object.freeze({ receipt, receiptPath, workspaceRevision: nextState.revision });
   }
 
   async workReviewSlice(bundleValue: unknown): Promise<WorkSliceReviewResult> {
@@ -1095,10 +1664,12 @@ export class ExpertTeamWorkflowService {
       throw new Error("Slice dependencies must be accepted before Evidence review");
     }
     const coverage = reviewEvidenceCoverage(records.workSpec.workSpec, bundle);
+    const delegationCoverage = await reviewDelegationCoverage(canonicalRoot, records, bundle.sliceId);
+    const reviewComplete = coverage.complete && delegationCoverage.complete;
     const revision = records.workItem.revision + 1;
     const slices = records.workItem.slices.map((slice, index) => (
       index === sliceIndex
-        ? { ...slice, status: coverage.complete ? "accepted" as const : "revise" as const }
+        ? { ...slice, status: reviewComplete ? "accepted" as const : "revise" as const }
         : slice
     ));
     const allAccepted = slices.every(({ status }) => status === "accepted");
@@ -1137,11 +1708,14 @@ export class ExpertTeamWorkflowService {
         sliceId: bundle.sliceId,
         evidenceCount: bundle.entries.length,
         coverageComplete: coverage.complete,
+        delegationCoverageComplete: delegationCoverage.complete,
+        requiredDelegationCount: delegationCoverage.delegations.length,
       },
     );
     return Object.freeze({
       workItem,
       coverage,
+      delegationCoverage,
       evidencePath: path,
       workspaceRevision: nextState.revision,
     });
@@ -1254,6 +1828,10 @@ export class ExpertTeamWorkflowService {
       }
       const coverage = reviewEvidenceCoverage(records.workSpec.workSpec, latest.bundle);
       if (!coverage.complete) throw new Error("persisted Evidence no longer covers its Slice");
+      const delegationCoverage = await reviewDelegationCoverage(canonicalRoot, records, slice.id);
+      if (!delegationCoverage.complete) {
+        throw new Error("persisted Delegation receipts no longer cover their Slice");
+      }
       return latest;
     }));
     const evidencePaths = evidence.map(({ path }) => path);
@@ -1277,6 +1855,12 @@ export class ExpertTeamWorkflowService {
       revision: context.state.revision + 1,
       activeWorkItem: null,
     };
+    const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
+    const retiredExperts = retireActiveSpecialists(
+      activeExperts,
+      records.workItem.id,
+      records.specialistPlan,
+    );
     await assertMissing(canonicalRoot, [decisionPath]);
     await repository.commitMutation(
       nextState,
@@ -1285,12 +1869,16 @@ export class ExpertTeamWorkflowService {
       [
         { relativePath: `tasks/${workItem.id}.yaml`, content: serializeWorkItemArtifactV2(workItem) },
         { relativePath: decisionPath, content: decisionContents },
+        { relativePath: "experts/active.yaml", content: serializeActiveExperts(retiredExperts) },
       ],
       {
         workItemId: workItem.id,
         workSpecId: records.workSpec.id,
         workItemRevision: workItem.revision,
         evidenceBundleCount: evidencePaths.length,
+        retiredSpecialistCount: new Set(
+          records.specialistPlan?.delegations.map(({ expertId }) => expertId) ?? [],
+        ).size,
         decisionPath,
         decisionHash,
       },
@@ -1909,6 +2497,43 @@ export class ExpertTeamWorkflowService {
       throw new Error("active Task revision does not match expert team retirement request");
     }
     const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
+    const v2Records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
+    if (v2Records !== null) {
+      const workItem: WorkItemArtifactV2 = {
+        ...v2Records.workItem,
+        status: to,
+        revision: v2Records.workItem.revision + 1,
+      };
+      const retired = retireActiveSpecialists(
+        activeExperts,
+        v2Records.workItem.id,
+        v2Records.specialistPlan,
+      );
+      const nextState: WorkspaceState = {
+        ...context.state,
+        revision: context.state.revision + 1,
+        activeWorkItem: null,
+      };
+      await this.runtime.createRepository(canonicalRoot).commitMutation(
+        nextState,
+        context.state.revision,
+        "specialists-retired",
+        [
+          { relativePath: `tasks/${workItem.id}.yaml`, content: serializeWorkItemArtifactV2(workItem) },
+          { relativePath: "experts/active.yaml", content: serializeActiveExperts(retired) },
+        ],
+        {
+          workItemId: workItem.id,
+          terminalStatus: to,
+          workItemRevision: workItem.revision,
+          specialistPlanFingerprint: v2Records.specialistPlan?.planFingerprint ?? null,
+          retiredSpecialistCount: new Set(
+            v2Records.specialistPlan?.delegations.map(({ expertId }) => expertId) ?? [],
+          ).size,
+        },
+      );
+      return;
+    }
     const records = await readActiveRecords(canonicalRoot, context.state, activeExperts);
     const task: TaskArtifact = {
       ...records.task,
@@ -2035,8 +2660,16 @@ export class ExpertTeamWorkflowService {
     const { canonicalRoot, context } = await this.context(false);
     if (context.state.safeMode) throw new Error("workspace is in safe mode");
     if (context.state.activeWorkItem === null) return null;
+    if (await readActiveWorkRecordsV2(canonicalRoot, context.state) !== null) return null;
     const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
     return (await readActiveRecords(canonicalRoot, context.state, activeExperts)).team;
+  }
+
+  async activeSpecialistPlanRecord(): Promise<SpecialistPlanV2 | null> {
+    const { canonicalRoot, context } = await this.context(false);
+    if (context.state.safeMode) throw new Error("workspace is in safe mode");
+    if (context.state.activeWorkItem === null) return null;
+    return (await readActiveWorkRecordsV2(canonicalRoot, context.state))?.specialistPlan ?? null;
   }
 
   async knowledgeContext(queryValue: unknown): Promise<KnowledgeSelection> {
@@ -2062,6 +2695,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        specialists: null,
         journal: null,
         knowledge: [],
         blockers: ["project-context-corrupt"],
@@ -2081,6 +2715,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        specialists: null,
         journal: null,
         knowledge: [],
         blockers: ["knowledge-corrupt"],
@@ -2097,6 +2732,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        specialists: null,
         journal: null,
         knowledge,
         blockers: ["workspace-safe-mode"],
@@ -2113,6 +2749,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        specialists: null,
         journal: null,
         knowledge,
         blockers: [],
@@ -2123,6 +2760,55 @@ export class ExpertTeamWorkflowService {
       const v2Records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
       if (v2Records !== null) {
         const latestJournal = (await readWorkJournalEntries(canonicalRoot, v2Records.workItem.id)).at(-1);
+        let specialists: WorkflowResumeContext["specialists"];
+        if (v2Records.specialistPlan === null) {
+          specialists = {
+            status: "legacy-unassessed",
+            planRevision: null,
+            planFingerprint: null,
+            catalogFingerprint: null,
+            delegations: [],
+          };
+        } else if (v2Records.specialistPlan.assessment.decision === "not-needed") {
+          specialists = {
+            status: "not-needed",
+            planRevision: v2Records.specialistPlan.revision,
+            planFingerprint: v2Records.specialistPlan.planFingerprint,
+            catalogFingerprint: v2Records.specialistPlan.catalogFingerprint,
+            delegations: [],
+          };
+        } else {
+          const [catalog, activeExperts] = await Promise.all([
+            this.runtime.readCatalog(),
+            this.runtime.readActiveExperts(canonicalRoot),
+          ]);
+          if (v2Records.specialistPlan.catalogFingerprint !== catalog.fingerprint) {
+            throw new Error("Specialist Plan catalog fingerprint mismatch");
+          }
+          const projected = new Map(activeExperts.experts.map((expert) => [expert.id, expert]));
+          const delegations = v2Records.specialistPlan.delegations.map((delegation) => {
+            const expert = catalog.byId.get(delegation.expertId);
+            if (expert === undefined
+              || !projected.get(delegation.expertId)?.taskIds.includes(v2Records.workItem.id)) {
+              throw new Error("active expert projection does not match the Specialist Plan");
+            }
+            return {
+              id: delegation.id,
+              expertId: delegation.expertId,
+              nameZh: expert.nameZh,
+              sliceId: delegation.sliceId,
+              mode: delegation.mode,
+              reasons: delegation.reasons,
+            };
+          });
+          specialists = {
+            status: "ready",
+            planRevision: v2Records.specialistPlan.revision,
+            planFingerprint: v2Records.specialistPlan.planFingerprint,
+            catalogFingerprint: v2Records.specialistPlan.catalogFingerprint,
+            delegations,
+          };
+        }
         return freezeWorkflowResumeContext({
           workspaceRevision: context.state.revision,
           safeMode: false,
@@ -2162,6 +2848,7 @@ export class ExpertTeamWorkflowService {
             })),
           },
           team: null,
+          specialists,
           journal: latestJournal === undefined ? null : {
             sequence: latestJournal.sequence,
             sliceId: latestJournal.sliceId,
@@ -2169,7 +2856,7 @@ export class ExpertTeamWorkflowService {
             nextStep: latestJournal.nextStep,
           },
           knowledge,
-          blockers: [],
+          blockers: v2Records.specialistPlan?.blockers ?? [],
         });
       }
       const [catalog, activeExperts] = await Promise.all([
@@ -2230,6 +2917,7 @@ export class ExpertTeamWorkflowService {
           catalogFingerprint: records.team.catalogFingerprint,
           members,
         },
+        specialists: null,
         journal: null,
         knowledge,
         blockers: [],
@@ -2245,6 +2933,7 @@ export class ExpertTeamWorkflowService {
         spec: null,
         task: null,
         team: null,
+        specialists: null,
         journal: null,
         knowledge,
         blockers: ["active-plan-corrupt"],

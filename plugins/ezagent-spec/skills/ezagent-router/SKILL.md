@@ -45,6 +45,6 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 只使用最多 5 条摘要，确有需要才按 path 读取原记录；不传完整提示或聊天，不复制核心评分规则。用户要求共享项目上下文或晋升 Pattern 时转 `$ezagent-context`。
 
-Specialist 和多 Agent 不是 Work Mode 的默认前置。只有领域判断、上下文隔离、真正独立的并行 Slice 或独立审查能证明收益时才使用；不得固定人员、数量或岗位。历史 v1 Plan 的自动组队继续由其已批准团队和 `team-select-preview` / `plan-*` 兼容入口管理，新 v2 Work Contract 不为组队而组队。
+Specialist 和多 Agent 不是 Work Mode 的默认前置。对进入 Brief、Standard 或 Controlled 的新工作，在 Shared Design Concept 稳定后、生成 Work Contract 前必须做一次显式 Specialist Assessment：简单且能力充分的工作记录带理由的 `not-needed`；只有领域判断、上下文隔离、真正独立的并行 Slice 或独立审查能证明收益时才记录有界 Capability Needs。Assessment 只描述每个 Slice 需要的能力、领域、目的和隔离原因，不选择 expert ID，不为组队而组队；不得固定人员、数量或岗位。历史 v1 Plan 的自动组队继续由其已批准团队和 `team-select-preview` / `plan-*` 兼容入口管理。
 
 不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。

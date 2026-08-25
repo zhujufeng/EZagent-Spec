@@ -25,12 +25,13 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 - `brief`：请求摘要、预期结果、参与者、Canonical Terms、已确认决策、带来源的假设、未决问题和 Source Pointers。
 - `workSpec`：`brief` / `standard` / `controlled` 模式、范围、非目标、Deliverable Interfaces、Acceptance Criteria、Boundaries、Approval Points、Review Policy 和 Slice Plan。
+- `specialistAssessment`：每次都必须显式存在。能力和上下文已足够时用 `decision: not-needed`、有界 `reasons` 与空 `needs`；确有领域判断、上下文隔离、独立并行或独立审查需求时用 `decision: required`，并为每个需要填写 `id`、`sliceId`、`purpose`、`capabilities`、`domains`、`projectSignals` 和 `isolationReason`。
 - 每个 Acceptance Criterion 必须声明所需 Evidence kinds；每个 Criterion 至少被一个 Slice 覆盖。
 - 第一个 Tracer Slice 必须无依赖并尽快产出一个可验证的端到端结果；总 Slice 数保持在 1–15 个，优先小而完整的纵向切片。
 - Deliverable Interface 描述结构、不可破坏的约束和消费者，不预先臆造大段正文或实现细节。
 - 外部写入或发布只能进入 `controlled`，且目标必须有精确 Approval Point。Controlled Review 必须包含 human 或 mixed 判断以及 `human-approval` Evidence。
 
-Specialist 和多 Agent 是可选执行手段，不是 Work Contract 的必填字段。只有领域判断、上下文隔离、真正独立的并行 Slice 或独立审查能证明收益时才使用；不得固定人员、数量或岗位。任何多 Agent 委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
+Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAssessment` 是 Work Contract 的必填判断。Assessment 不得填写 expert ID、指定人数或借岗位名称预选团队；本地核心根据已批准的 Capability Needs 和运行时 Catalog 确定性生成 Specialist Plan。若需要独立审查，review need 必须使用 `independent-review`，并与同一 Slice 的实现者隔离。任何生成的委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
 
 把完全相同的 Work Contract JSON 从 stdin 先传给只读预览：
 
@@ -38,7 +39,7 @@ Specialist 和多 Agent 是可选执行手段，不是 Work Contract 的必填�
 ["node", "<absolute-cli-path>", "work-preview", "--root", "<absolute-project-root>"]
 ```
 
-向用户展示 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设和未决问题。`brief`、`standard`、`controlled` 都只确认这一份合并预览；Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
+向用户展示 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设和未决问题，并展示 Specialist Assessment、确定性生成的 delegations、未覆盖能力与 blockers。不得把 Specialist Plan 另拆成一次例行确认；`brief`、`standard`、`controlled` 都只确认这一份合并预览。存在 blocker 时先修正 Capability Need 或说明能力缺口，不得 Apply。Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
 
 用户批准后，把完全相同的 JSON 从 stdin 传入，并把预览 token 作为独立 argv 元素原子创建 Brief、Work Spec 与 Work Item：
 
@@ -46,7 +47,7 @@ Specialist 和多 Agent 是可选执行手段，不是 Work Contract 的必填�
 ["node", "<absolute-cli-path>", "work-apply", "--root", "<absolute-project-root>", "--approval-token", "<approval-token>"]
 ```
 
-Apply 后重新读取 `context`，确认 `sourceSchemaVersion: 2`，再转 `$ezagent-execute`。token 漂移或字段校验失败时重新预览，不猜测成功。
+Apply 会物化已批准的 project Agents，并返回 `specialistPlan` 与 `platformSyncStatus`。Apply 后重新读取 `context`，确认 `sourceSchemaVersion: 2`；存在 delegations 时还必须确认 `specialists.status: ready` 与 `platformSyncStatus: ready`，再转 `$ezagent-execute`。token 漂移、字段校验或平台同步失败时关闭失败并重新读取上下文，不猜测成功。
 
 ## 范围变化
 

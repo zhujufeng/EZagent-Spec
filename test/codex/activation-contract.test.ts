@@ -126,6 +126,8 @@ describe("Codex activation policy contract", () => {
     expect(initialize.body).toContain("integration-init");
     expect(initialize.body).toContain("用户明确同意");
     expect(agentsBlock).toContain("Specialist 与多 Agent 不是默认前置");
+    expect(agentsBlock).toContain("Specialist Assessment");
+    expect(agentsBlock).toMatch(/project Agent.*协调器.*(?:模拟|替换)/u);
   });
 
   test("routes bounded Quick work without creating a persisted workflow", async () => {

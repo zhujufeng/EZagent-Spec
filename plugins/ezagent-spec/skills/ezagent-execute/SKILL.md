@@ -25,7 +25,35 @@ description: 执行已批准的通用 EZagent Work Item：一次推进一个纵�
 
 每次只推进一个小而完整的纵向 Slice。先做最小 Tracer Slice，尽早验证 Source Pointer、交付接口和证据路径，再增加深度。不要按岗位拆成互不连通的大阶段，也不要为了“显得专业”创建专家团队。
 
-Specialist 和多 Agent 只在领域判断、上下文隔离、真正独立的并行 Slice 或独立审查有明确收益时使用；人员和数量不固定。任何委派都必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，不持久化完整提示，也不得回传完整提示。
+Specialist 与多 Agent 只按已批准计划执行，人员和数量不固定。若 `context.specialists.status: ready`，只处理当前 Slice 上已批准的 delegations；不得新增专家、替换 expert ID 或把委派静默改成协调器自执行。`work-start` 会对有委派的 Slice 检查 project Agents，`platformSyncStatus` 不是 `ready` 时只诊断并停止。
+
+对当前 Slice 的每个 `analysis` 或 `implement` delegation，先创建不可变 start receipt：
+
+```json
+["node", "<absolute-cli-path>", "delegation-start", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
+```
+
+然后必须调用与返回 `expertId` 对应的已生成 project Agent。发给它的任务只包含已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、必要输入指针、deliverables 和 Evidence requirements；不保存完整提示，不得发送完整聊天、完整用户提示、其他专家指令或未批准范围。Agent 只回传有界结果摘要、结果 hash 和最小 Evidence pointers。协调器验证绑定后，把 completion JSON 从 stdin 提交：
+
+```json
+["node", "<absolute-cli-path>", "delegation-complete", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
+```
+
+专家无法完成时提交 `status: blocked` 的真实回执并让 Slice 进入 `revise`；不得伪造 `completed`，协调器不得自行接管已批准委派。当前 Slice 有 `review` delegation 或 Review Policy 为 `independent-agent` / `mixed` 时，转 `$ezagent-review` 使用隔离的 reviewer project Agent；实现者和协调器都不得替代独立审查者。
+
+只有出现真实能力缺口且没有已开始但未完成的 receipt 时，才可提交只含新 `specialistAssessment` 的 Specialist-only replan 预览：
+
+```json
+["node", "<absolute-cli-path>", "specialist-replan-preview", "--root", "<absolute-project-root>"]
+```
+
+它不得改变 Outcome、Scope、Non-goals、Deliverable Interfaces、Acceptance Criteria、Boundaries 或 Approval Points。向用户精确展示 added、removed、changed、unchanged delegations；用户批准这份 diff 后才可 Apply：
+
+```json
+["node", "<absolute-cli-path>", "specialist-replan-apply", "--root", "<absolute-project-root>", "--approval-token", "<approval-token>"]
+```
+
+Apply 后必须确认新的 plan revision 与 project Agents 已同步；token 或 workspace 漂移就重新预览。不得用 replan 覆盖未完成委派或绕过原 Work Contract。
 
 ## Journal 与 Evidence
 
@@ -43,7 +71,7 @@ Specialist 和多 Agent 只在领域判断、上下文隔离、真正独立的�
 ["node", "<absolute-cli-path>", "work-review", "--root", "<absolute-project-root>"]
 ```
 
-`coverage.complete: false` 时只修正返回 missing 的 Criterion，Journal 记录失败方法后重新开始该 Slice；通过后继续下一个可执行 Slice。Review Policy 要求 independent-agent、human 或 mixed 时转 `$ezagent-review` 完成对应的独立或人工判断。
+`coverage.complete: false` 或 `delegationCoverage.complete: false` 时只修正返回的 missing Criterion 或未完成 delegation，Journal 记录失败方法后重新开始该 Slice；两类 coverage 都完整后才继续下一个可执行 Slice。Review Policy 要求 independent-agent、human 或 mixed 时转 `$ezagent-review` 完成对应的独立或人工判断。
 
 ## Controlled Side Effect
 

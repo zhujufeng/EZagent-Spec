@@ -45,6 +45,7 @@ function passingEvidence(): unknown {
     cases: [{
       id: "explicit-init",
       expectedPolicy: "initialize",
+      specialistExpectation: "not-evaluated",
       exitCode: 0,
       timedOut: false,
       workspaceChanged: false,
@@ -83,6 +84,27 @@ describe("Codex host evaluation corpus", () => {
       "follow-up",
     ]));
     expect(suite.cases.filter(({ followUpPrompt }) => followUpPrompt !== undefined)).toHaveLength(1);
+    expect(new Set(suite.cases.map(({ specialistExpectation }) => specialistExpectation)))
+      .toEqual(new Set([
+        "not-evaluated",
+        "not-needed",
+        "implementation-delegation",
+        "independent-review-delegation",
+      ]));
+    for (const expectation of [
+      "not-needed",
+      "implementation-delegation",
+      "independent-review-delegation",
+    ] as const) {
+      expect(suite.cases.filter((fixture) => fixture.specialistExpectation === expectation))
+        .toHaveLength(1);
+    }
+    const delegationCriteria = suite.cases
+      .filter(({ specialistExpectation }) => specialistExpectation.endsWith("delegation"))
+      .flatMap(({ reviewCriteria }) => reviewCriteria)
+      .join("\n");
+    expect(delegationCriteria).toMatch(/物化.*不等于.*实际委派/su);
+    expect(delegationCriteria).toMatch(/有界.*摘要/su);
     for (const fixture of suite.cases) {
       expect(fixture.prompt.trim(), fixture.id).not.toBe("");
       expect(fixture.reviewCriteria.length, fixture.id).toBeGreaterThan(0);
