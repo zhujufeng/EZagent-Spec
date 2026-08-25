@@ -91,7 +91,9 @@ Router 会先确认真正影响结果的少量问题，然后生成一份合并�
 
 ## 安装
 
-要求 Codex 和 Node.js 22+：
+三个宿主都要求 Node.js 22+。插件包含自足 CLI、兼容专家目录和运行时许可证，普通使用者不需要在业务项目执行 `npm install`。
+
+### Codex
 
 ```bash
 codex plugin marketplace add zhujufeng/EZagent-Spec
@@ -100,11 +102,32 @@ codex plugin add ezagent-spec@ezagent
 
 安装或更新后新建一个 Codex 任务，让新 Skills 生效。
 
+### Claude Code
+
+在 Claude Code 中执行：
+
+```text
+/plugin marketplace add zhujufeng/EZagent-Spec
+/plugin install ezagent-spec@ezagent
+```
+
+也可以在仓库 checkout 中临时验证：
+
+```bash
+claude --plugin-dir ./plugins/ezagent-spec
+```
+
+### OpenCode
+
+本仓库提供 `.opencode/skills/` 薄入口，直接从仓库根目录启动 OpenCode 即可；入口只负责加载 `plugins/ezagent-spec/skills` 中的 canonical Skill，不复制工作流逻辑。
+
+要在其他项目使用，把构建后的 `plugins/ezagent-spec` 包内容完整合并到目标项目的 `.opencode/`。包根级的 `skills/`、`dist/` 与 `catalog/` 会保持 Skills 所需的相对路径，OpenCode 会忽略同包的 Claude/Codex manifest。不要只复制单个 Skill；若 `.opencode/` 已存在，安装器必须逐项合并并拒绝覆盖既有同名文件。
+
 版本遵循语义化规则：兼容的新能力提升次版本，例如 `0.1.0 → 0.2.0`；后续兼容性修复依次使用 `0.2.1`、`0.2.2` 等小版本，避免相同版本号命中旧缓存。
 
-也可以把下面这句话交给 Codex：
+也可以把下面这句话交给当前宿主：
 
-> 请帮我安装这个 Codex 插件：https://github.com/zhujufeng/EZagent-Spec 。先检查 Codex CLI 与 Node.js 22+，在联网、安装软件或修改全局配置前征得我的确认。
+> 请帮我为当前 Agent 宿主安装 EZagent Work Harness：https://github.com/zhujufeng/EZagent-Spec 。先检查宿主 CLI 与 Node.js 22+，在联网、安装软件或修改全局配置前征得我的确认。
 
 更新：
 
@@ -121,7 +144,7 @@ codex plugin remove ezagent-spec@ezagent
 codex plugin marketplace remove ezagent
 ```
 
-插件不会静默安装 Node.js。普通使用者不需要在业务项目执行 `npm install`；插件包含自足 CLI、兼容专家目录和运行时许可证。
+插件不会静默安装 Node.js。
 
 ## 在项目中启用
 
@@ -135,7 +158,9 @@ codex plugin marketplace remove ezagent
 - `AGENTS.md#EZAGENT`
 - `.codex/agents/ezagent-*.toml`（v2 按需 Specialist 与旧 v1 专家兼容流程共用的受管 project Agents）
 
-每个项目只需初始化一次。之后直接描述需求；项目内受管 `AGENTS.md` 会自动调用 Router，不需要用户记忆或输入 CLI。这个机制是 Router Skill + 项目规则，不是 Codex lifecycle Hook。预览到确认期间应避免并发修改 `AGENTS.md`；token 过期时会重新预览，不覆盖并发修改。
+每个项目只需初始化一次。之后直接描述需求；Codex 与 OpenCode 会读取项目内受管 `AGENTS.md`，Claude Code 则通过插件中可自动调用的 Router Skill 使用同一流程，不需要用户记忆或输入 CLI。这个机制是 Router Skill + 项目规则，不依赖 lifecycle Hook。预览到确认期间应避免并发修改 `AGENTS.md`；token 过期时会重新预览，不覆盖并发修改。
+
+Codex 的按需 Specialist 继续使用受管 `.codex/agents/ezagent-*.toml`。Claude Code 与 OpenCode 在执行同一 delegation 时，从插件内 `catalog/experts.json` 精确加载匹配 `expertId` 的定义，并通过各自的原生隔离 subagent 执行；若宿主没有 subagent 能力则关闭失败，不由协调器模拟专家。
 
 ## 共享上下文与知识
 
@@ -147,7 +172,7 @@ codex plugin marketplace remove ezagent
 
 EZagent runtime 不会自动联网、发送遥测、安装软件、执行 Git 写操作、发布或上传项目。联网、安装、Git 写入和外部 Side Effect 都需要对应的明确授权。
 
-Local-only 只描述 EZagent runtime，不改变 Codex 的模型处理、账号、组织策略或数据保留方式。GitHub marketplace 安装、Codex 自身通信和开发者主动执行的依赖安装不属于 runtime 的离线行为。
+Local-only 只描述 EZagent runtime，不改变 Codex、Claude Code 或 OpenCode 的模型处理、账号、组织策略或数据保留方式。Marketplace / Git 安装、宿主自身通信和开发者主动执行的依赖安装不属于 runtime 的离线行为。
 
 状态只能由本地核心修改；Skill 不得直接编辑 `.ezagent/**`。revision、状态、证据、批准 token 或安全条件不匹配时关闭失败。如果初始化或受管文件发布返回 inspection、recovery 或 backup 路径，应保留现场并停止，不猜测成功。
 

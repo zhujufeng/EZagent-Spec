@@ -27,10 +27,10 @@ description: 当用户明确要求在当前项目启用、初始化或安装 EZa
 
 Node.js 缺失或低于 22 时，只说明需要受支持的 Node.js LTS；联网或调用系统安装机制必须先获得用户明确同意，完成后重新检测。
 
-2. 未初始化时只使用 Codex 明确提供的 workspace root。存在多个 root、嵌套 root 或无法确定时，展示绝对候选并让用户先确认；不得只把 cwd 当项目根。项目名也从这次确认结果中明确取得。
+2. 未初始化时只使用当前宿主明确提供的 workspace root。存在多个 root、嵌套 root 或无法确定时，展示绝对候选并让用户先确认；不得只把 cwd 当项目根。项目名也从这次确认结果中明确取得。
 
 ```json
-{"projectRootSelection":{"source":"codex-workspace-root","ambiguous":"show-absolute-candidates-and-confirm","cwdOnly":false,"projectNameSource":"confirmed-selection"}}
+{"projectRootSelection":{"source":"host-workspace-root","ambiguous":"show-absolute-candidates-and-confirm","cwdOnly":false,"projectNameSource":"confirmed-selection"}}
 ```
 
 3. 预览时逐项展示返回的精确 `paths` 和 `agentsToken`，只预览，不写入：

@@ -33,7 +33,7 @@ Specialist 与多 Agent 只按已批准计划执行，人员和数量不固定�
 ["node", "<absolute-cli-path>", "delegation-start", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
 ```
 
-然后必须调用与返回 `expertId` 对应的已生成 project Agent。发给它的任务只包含已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、必要输入指针、deliverables 和 Evidence requirements；不保存完整提示，不得发送完整聊天、完整用户提示、其他专家指令或未批准范围。Agent 只回传有界结果摘要、结果 hash 和最小 Evidence pointers。协调器验证绑定后，把 completion JSON 从 stdin 提交：
+然后必须在隔离的原生 subagent 中执行返回 `expertId` 对应的专家。Codex 优先调用已生成的 project Agent；Claude Code 或 OpenCode 若不能加载 Codex TOML，则从 `<plugin-root>/catalog/experts.json` 精确读取同一 `expertId` 的专家定义，并用宿主原生 subagent 工具创建隔离执行上下文。宿主没有可用 subagent 能力时必须提交 blocked 回执，不得由协调器模拟专家。发给 subagent 的任务只包含专家定义和已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、必要输入指针、deliverables 和 Evidence requirements；不保存完整提示，不得发送完整聊天、完整用户提示、其他专家指令或未批准范围。subagent 只回传有界结果摘要、结果 hash 和最小 Evidence pointers。协调器验证绑定后，把 completion JSON 从 stdin 提交：
 
 ```json
 ["node", "<absolute-cli-path>", "delegation-complete", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]

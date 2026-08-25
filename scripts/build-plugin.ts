@@ -43,8 +43,9 @@ const GENERATED_ENTRIES = [
   "THIRD_PARTY_NOTICES.md",
   "RUNTIME_DEPENDENCIES.md",
 ] as const;
-const ALL_ENTRIES = [".codex-plugin", "skills", ...GENERATED_ENTRIES] as const;
+const ALL_ENTRIES = [".claude-plugin", ".codex-plugin", "skills", ...GENERATED_ENTRIES] as const;
 const PLUGIN_FILES = [
+  ".claude-plugin/plugin.json",
   ".codex-plugin/plugin.json",
   "LICENSE",
   "RUNTIME_DEPENDENCIES.md",
@@ -60,6 +61,7 @@ const PLUGIN_FILES = [
   ...SKILLS.map((skill) => `skills/${skill}/SKILL.md`),
 ] as const;
 const ALLOWED_PLUGIN_DIRECTORIES = new Set([
+  ".claude-plugin",
   ".codex-plugin",
   "catalog",
   "dist",
@@ -249,6 +251,13 @@ export function auditBundleMetafile(metafile: Metafile): void {
 
 async function assembleStage(stage: string, options: BuildPluginOptions): Promise<void> {
   const hooks = options.stableReadHooks ?? {};
+  await copyStableFile(
+    SOURCE_PLUGIN_ROOT,
+    ".claude-plugin/plugin.json",
+    join(stage, ".claude-plugin", "plugin.json"),
+    MAX_SMALL_SOURCE_BYTES,
+    hooks,
+  );
   await copyStableFile(
     SOURCE_PLUGIN_ROOT,
     ".codex-plugin/plugin.json",

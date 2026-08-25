@@ -23,6 +23,7 @@ const WORKFLOW_PATH = join(REPOSITORY_ROOT, ".github", "workflows", "ci.yml");
 const CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 const SETUP_NODE_ACTION = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
 const EXPECTED_PLUGIN_FILES = [
+  ".claude-plugin/plugin.json",
   ".codex-plugin/plugin.json",
   "LICENSE",
   "RUNTIME_DEPENDENCIES.md",
@@ -585,10 +586,11 @@ describe.sequential("Codex plugin offline release smoke", () => {
     const readme = await readFile(join(REPOSITORY_ROOT, "README.md"), "utf8");
     expect(readme).toContain("codex plugin marketplace add zhujufeng/EZagent-Spec");
     expect(readme).toContain("codex plugin add ezagent-spec@ezagent");
-    expect(readme).toContain("请帮我安装这个 Codex 插件");
+    expect(readme).toContain("/plugin install ezagent-spec@ezagent");
+    expect(readme).toContain(".opencode/skills/");
     expect(readme).toContain("Node.js 22+");
     expect(readme).toContain("项目内受管 `AGENTS.md`");
-    expect(readme).toContain("不是 Codex lifecycle Hook");
+    expect(readme).toContain("不依赖 lifecycle Hook");
     expect(readme).toContain("Brief → Work Spec → 纵向 Slices → Evidence → Decision");
     expect(readme).toContain("Consult");
     expect(readme).toContain("Quick");

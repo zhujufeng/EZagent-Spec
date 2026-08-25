@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 - 2026-08-25
+
+### Claude Code 与 OpenCode
+
+- 新增 Claude Code 插件清单和仓库级 marketplace，可复用同一套 Skills 与自足 CLI。
+- 新增 OpenCode 配置与 Agent Skills 兼容验证；OpenCode 继续使用受管 `AGENTS.md` 自动路由。
+- Specialist 在 Claude Code / OpenCode 中使用宿主原生隔离 subagent，并按 `expertId` 从打包目录加载同一专家定义。
+
 ## 0.2.1 - 2026-08-25
 
 ### 按需 Specialist 编排

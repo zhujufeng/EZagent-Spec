@@ -18,7 +18,7 @@ describe("EZagent Work Harness Codex plugin metadata", () => {
 
     expect(manifest).toMatchObject({
       name: "ezagent-spec",
-      version: "0.2.1",
+      version: "0.3.0",
       author: { name: "zhujufeng" },
       license: "MIT",
       skills: "./skills/",
@@ -26,6 +26,7 @@ describe("EZagent Work Harness Codex plugin metadata", () => {
         displayName: "EZagent Work Harness",
         developerName: "zhujufeng",
         category: "Developer Tools",
+        websiteURL: "https://github.com/zhujufeng/EZagent-Spec",
       },
     });
     expect(manifest).not.toHaveProperty("hooks");

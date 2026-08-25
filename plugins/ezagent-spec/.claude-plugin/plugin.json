@@ -1,0 +1,19 @@
+{
+  "name": "ezagent-spec",
+  "displayName": "EZagent Work Harness",
+  "version": "0.3.0",
+  "description": "中文、本地优先的通用 Agent Work Harness。",
+  "author": {
+    "name": "zhujufeng"
+  },
+  "homepage": "https://github.com/zhujufeng/EZagent-Spec",
+  "repository": "https://github.com/zhujufeng/EZagent-Spec",
+  "license": "MIT",
+  "keywords": [
+    "agent-workflow",
+    "specification",
+    "evidence",
+    "local-first"
+  ],
+  "skills": "./skills/"
+}

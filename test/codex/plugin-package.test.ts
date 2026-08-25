@@ -180,7 +180,7 @@ afterEach(async () => {
   );
 });
 
-describe.sequential("self-contained Codex plugin package", () => {
+describe.sequential("self-contained multi-host plugin package", () => {
   test("builds the complete verified distribution twice with byte-for-byte stable output", async () => {
     const first = await temporaryDirectory("ezagent-plugin-first-");
     const second = await temporaryDirectory("ezagent-plugin-second-");
@@ -194,8 +194,9 @@ describe.sequential("self-contained Codex plugin package", () => {
     expect(await treeSnapshot(SOURCE_PLUGIN_ROOT)).toEqual(firstTree);
 
     const paths = firstTree.map((entry) => entry.path);
-    expect(paths).toHaveLength(20);
+    expect(paths).toHaveLength(21);
     expect(paths).toContain("LICENSE");
+    expect(paths).toContain(".claude-plugin/plugin.json");
     expect(paths).toContain(".codex-plugin/plugin.json");
     expect(paths.filter((path) => /^skills\/[^/]+\/SKILL\.md$/u.test(path))).toHaveLength(8);
     expect(paths).toContain("dist/ezagent-cli.mjs");
@@ -211,6 +212,9 @@ describe.sequential("self-contained Codex plugin package", () => {
 
     expect(await readFile(join(first, ".codex-plugin", "plugin.json"))).toEqual(
       await readFile(join(SOURCE_PLUGIN_ROOT, ".codex-plugin", "plugin.json")),
+    );
+    expect(await readFile(join(first, ".claude-plugin", "plugin.json"))).toEqual(
+      await readFile(join(SOURCE_PLUGIN_ROOT, ".claude-plugin", "plugin.json")),
     );
     expect(await readFile(join(first, "LICENSE"))).toEqual(
       await readFile(join(REPOSITORY_ROOT, "LICENSE")),

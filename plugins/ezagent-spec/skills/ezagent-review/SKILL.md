@@ -27,7 +27,7 @@ Review Policy 为 `independent-agent` 或 `mixed` 时，只能使用当前 Slice
 ["node", "<absolute-cli-path>", "delegation-start", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
 ```
 
-调用与 receipt 中 `expertId` 对应的 project Agent，只传已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、交付物指针、Criterion IDs 和 Evidence requirements。只接收有界审查摘要、结果 hash、Evidence pointers 与通过/失败结论，不传完整聊天、完整提示或实现者的私有上下文。随后从 stdin 提交 completion receipt：
+在隔离的原生 subagent 中调用 receipt 中 `expertId` 对应的专家。Codex 优先调用已生成的 reviewer project Agent；Claude Code 或 OpenCode 若不能加载 Codex TOML，则从 `<plugin-root>/catalog/experts.json` 精确读取同一 `expertId` 的专家定义，再用宿主原生 subagent 工具启动 reviewer。宿主没有可用 subagent 能力时必须提交 blocked 回执，协调器和实现者都不得模拟 reviewer。只传已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、交付物指针、Criterion IDs 和 Evidence requirements。只接收有界审查摘要、结果 hash、Evidence pointers 与通过/失败结论，不传完整聊天、完整提示或实现者的私有上下文。随后从 stdin 提交 completion receipt：
 
 ```json
 ["node", "<absolute-cli-path>", "delegation-complete", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]

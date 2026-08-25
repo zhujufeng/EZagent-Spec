@@ -330,7 +330,7 @@ describe("Codex Skill contracts", () => {
     const integrationInit = argvFor(initialize, "integration-init");
 
     expect(selection).toEqual({
-      source: "codex-workspace-root",
+      source: "host-workspace-root",
       ambiguous: "show-absolute-candidates-and-confirm",
       cwdOnly: false,
       projectNameSource: "confirmed-selection",
