@@ -43,6 +43,66 @@ describe("Work Contract v2", () => {
     })).toThrow(/unknown Slice/u);
   });
 
+  test("rejects a dependency cycle among downstream Slices", () => {
+    const tracer = genericWorkContractDraft.workSpec.slicePlan[0];
+    expect(() => parseWorkContractDraft({
+      ...genericWorkContractDraft,
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        slicePlan: [
+          tracer,
+          { ...tracer, id: "slice-two", title: "第二个切片", blockedBy: ["slice-three"] },
+          { ...tracer, id: "slice-three", title: "第三个切片", blockedBy: ["slice-two"] },
+        ],
+      },
+    })).toThrow(/Slice dependency cycle.*slice-two.*slice-three.*slice-two/u);
+  });
+
+  test("rejects duplicate Slice dependencies", () => {
+    const tracer = genericWorkContractDraft.workSpec.slicePlan[0];
+    expect(() => parseWorkContractDraft({
+      ...genericWorkContractDraft,
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        slicePlan: [
+          tracer,
+          {
+            ...tracer,
+            id: "slice-two",
+            title: "第二个切片",
+            blockedBy: ["slice-tracer", "slice-tracer"],
+          },
+        ],
+      },
+    })).toThrow(/Slice dependencies contain a duplicate.*slice-tracer/u);
+  });
+
+  test("requires human-approval Evidence for a human checkpoint Slice", () => {
+    expect(() => parseWorkContractDraft({
+      ...genericWorkContractDraft,
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        slicePlan: genericWorkContractDraft.workSpec.slicePlan.map((slice) => ({
+          ...slice,
+          humanCheckpoint: true,
+        })),
+      },
+    })).toThrow(/humanCheckpoint.*human-approval Evidence/u);
+  });
+
+  test("rejects an unsupported batched review cadence", () => {
+    expect(() => parseWorkContractDraft({
+      ...genericWorkContractDraft,
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        reviewPolicy: {
+          ...genericWorkContractDraft.workSpec.reviewPolicy,
+          reviewAfterSlices: 2,
+        },
+      },
+    })).toThrow(/reviews every Slice.*reviewAfterSlices must be 1/u);
+  });
+
   test("requires an independent review need for independent-agent and mixed review", () => {
     const controlled = controlledActionDraft();
     expect(() => parseWorkContractDraft({

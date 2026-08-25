@@ -311,6 +311,24 @@ describe("Agent Work Harness service", () => {
     expect(resumed.team).not.toBeNull();
   });
 
+  test("rejects Evidence review until the Slice has been explicitly started", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const preview = await fixture.service.workPreview(genericWorkContractDraft);
+    const applied = await fixture.service.workApply({
+      draft: genericWorkContractDraft,
+      approvalToken: preview.approvalToken,
+    });
+
+    await expect(fixture.service.workReviewSlice(genericEvidenceBundle(
+      applied.workItem.id,
+      applied.workSpec.id,
+    ))).rejects.toThrow(/executing Slice/u);
+    expect((await fixture.repository.readState()).activeWorkItem).toMatchObject({
+      status: "planned",
+      revision: 0,
+    });
+  });
+
   test("accepts a Slice only after its typed Evidence covers every criterion", async () => {
     const fixture = await createWorkflowTeamFixture();
     const preview = await fixture.service.workPreview(genericWorkContractDraft);
@@ -318,6 +336,7 @@ describe("Agent Work Harness service", () => {
       draft: genericWorkContractDraft,
       approvalToken: preview.approvalToken,
     });
+    await fixture.service.workStartSlice("slice-tracer");
 
     const reviewed = await fixture.service.workReviewSlice(genericEvidenceBundle(
       applied.workItem.id,
@@ -327,15 +346,15 @@ describe("Agent Work Harness service", () => {
     expect(reviewed.coverage.complete).toBe(true);
     expect(reviewed.workItem).toMatchObject({
       status: "verifying",
-      revision: 1,
+      revision: 2,
       slices: [{ id: "slice-tracer", status: "accepted" }],
     });
     expect(reviewed.evidencePath).toBe(
-      `quality/runs/${applied.workItem.id}/slice-tracer/000001.json`,
+      `quality/runs/${applied.workItem.id}/slice-tracer/000002.json`,
     );
     expect((await fixture.repository.readState()).activeWorkItem).toMatchObject({
       status: "verifying",
-      revision: 1,
+      revision: 2,
     });
   });
 
@@ -361,6 +380,31 @@ describe("Agent Work Harness service", () => {
     expect(started.id).toBe(applied.workItem.id);
   });
 
+  test("keeps at most one Slice executing at a time", async () => {
+    const fixture = await createWorkflowTeamFixture();
+    const tracer = genericWorkContractDraft.workSpec.slicePlan[0];
+    const draft = {
+      ...genericWorkContractDraft,
+      workSpec: {
+        ...genericWorkContractDraft.workSpec,
+        slicePlan: [
+          tracer,
+          { ...tracer, id: "slice-two", title: "第二个切片", blockedBy: [] },
+        ],
+      },
+    };
+    const preview = await fixture.service.workPreview(draft);
+    await fixture.service.workApply({ draft, approvalToken: preview.approvalToken });
+    await fixture.service.workStartSlice("slice-tracer");
+
+    await expect(fixture.service.workStartSlice("slice-two"))
+      .rejects.toThrow(/another Slice is executing/u);
+    expect((await fixture.service.resumeContext()).task?.slices).toMatchObject([
+      { id: "slice-tracer", status: "executing" },
+      { id: "slice-two", status: "pending" },
+    ]);
+  });
+
   test("returns an incomplete Slice to revise instead of treating partial Evidence as done", async () => {
     const fixture = await createWorkflowTeamFixture();
     const preview = await fixture.service.workPreview(genericWorkContractDraft);
@@ -368,6 +412,7 @@ describe("Agent Work Harness service", () => {
       draft: genericWorkContractDraft,
       approvalToken: preview.approvalToken,
     });
+    await fixture.service.workStartSlice("slice-tracer");
     const incomplete = genericEvidenceBundle(applied.workItem.id, applied.workSpec.id);
     incomplete.entries.splice(1, 1);
 
@@ -489,6 +534,7 @@ describe("Agent Work Harness service", () => {
       draft: genericWorkContractDraft,
       approvalToken: preview.approvalToken,
     });
+    await fixture.service.workStartSlice("slice-tracer");
     await fixture.service.workReviewSlice(genericEvidenceBundle(
       applied.workItem.id,
       applied.workSpec.id,
@@ -505,7 +551,7 @@ describe("Agent Work Harness service", () => {
 
     expect(completed).toMatchObject({
       state: { activeWorkItem: null },
-      workItem: { status: "completed", revision: 2 },
+      workItem: { status: "completed", revision: 3 },
       decision: { schemaVersion: 3, evidencePaths: [expect.stringContaining("quality/runs/")] },
       decisionPath: `knowledge/decisions/${applied.workSpec.id}.md`,
     });

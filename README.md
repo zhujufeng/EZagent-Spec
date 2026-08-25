@@ -54,9 +54,13 @@ Router 会先确认真正影响结果的少量问题，然后生成一份合并�
 1. 显式开始 Slice。
 2. 在已批准边界内产出一个可使用的纵向结果。
 3. 用 Journal 保存必要的恢复信息。
-4. 按 Criterion 收集 `command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval` 或 `external-record` Evidence。
+4. 按 Criterion 收集 `command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval` 或 `external-record` Evidence；`humanCheckpoint: true` 的 Slice 必须有要求 `human-approval` 的 Criterion。
 5. Evidence coverage 或已批准 Delegation 的 completion coverage 缺失，就把该 Slice 标记为 `revise`；两者完整才 `accepted`。
 6. 所有 Slice 通过后，由最新持久化 Evidence 生成 Decision 并完成 Work Item。
+
+当前版本逐 Slice Review，因此 `reviewAfterSlices` 只能为 `1`；不会接受一个看似支持批量反馈、实际却在运行期被忽略的 cadence。
+
+用户明确放弃进行中的工作时，Agent 使用最新 active Work Item revision 调用 `work-cancel`。取消会清空 active item 并退役该任务的托管专家，但保留 Plan、Receipt、Evidence 与 Journal 历史；随后可以创建新的 Work Contract。
 
 这就是本项目融入的 Spec 思想：Spec 不是一份越长越好的文档，而是“共同理解 + 明确接口和边界 + 小步交付 + 逐条证据”的可执行契约。
 

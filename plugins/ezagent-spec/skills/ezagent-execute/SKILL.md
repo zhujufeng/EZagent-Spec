@@ -15,6 +15,14 @@ description: 执行已批准的通用 EZagent Work Item：一次推进一个纵�
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
+若用户明确要求取消或放弃当前 active Work Item，先说明未完成 Slice 将终止而 Plan、Receipt、Evidence 与 Journal 历史保留。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`；active item 已为空时不得调用：
+
+```json
+["node", "<absolute-cli-path>", "work-cancel", "--root", "<absolute-project-root>", "--revision", "<active-work-item-revision>"]
+```
+
+取消后重新执行 `context`，确认 `state.activeWorkItem` 为 null 后停止本 Work Item。不得因为 Slice blocked、Evidence 缺失或能力不足而自行取消。
+
 仅接受 `sourceSchemaVersion: 2` 的 active Work Item。安全模式或 inspection-required 只诊断。核对 Mode、Outcome、Scope、Non-goals、Boundaries、Deliverable Interfaces、Acceptance Criteria、Review Policy、Slice 状态和最新 Work Journal。
 
 选择第一个依赖已 accepted 的 `pending` 或 `revise` Slice，并显式开始：

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { transitionWorkItem } from "../../src/domain/state-machine.js";
 import type { WorkItemState } from "../../src/domain/work-item.js";
 
-describe("work item state machine", () => {
+describe("legacy work item state machine", () => {
   const statuses = [
     "captured",
     "clarifying",

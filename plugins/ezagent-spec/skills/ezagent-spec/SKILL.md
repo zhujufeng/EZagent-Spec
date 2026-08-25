@@ -15,6 +15,14 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
+若用户明确要求取消或放弃当前 active Work Item，说明取消会停止继续执行但保留已有 Plan、Receipt、Evidence 与 Journal 历史。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`；active item 已为空时不得调用：
+
+```json
+["node", "<absolute-cli-path>", "work-cancel", "--root", "<absolute-project-root>", "--revision", "<active-work-item-revision>"]
+```
+
+取消后重新执行 `context`，确认 `state.activeWorkItem` 为 null 后，才可为变化后的范围形成新 Work Contract。未经用户明确放弃，不得用取消代替澄清或 replan。
+
 安全模式或 inspection-required 只做诊断。先用自然语言复述 Shared Design Concept：用户真正想改变什么、谁会使用结果、什么算成功、哪些事明确不做。只追问一个会实质改变结果的问题，并给出推荐答案；答案可以从项目和可信来源取得时不要询问。共同理解尚不稳定时，不急着生成完整资产。
 
 人员、岗位、部门和业务类型只进入 `actors`、交付物消费者或边界上下文，不得成为固定角色枚举。库存、运营、策划、人事、研发等只能作为非穷尽示例，不能决定流程。
@@ -28,6 +36,7 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 - `specialistAssessment`：每次都必须显式存在。能力和上下文已足够时用 `decision: not-needed`、有界 `reasons` 与空 `needs`；确有领域判断、上下文隔离、独立并行或独立审查需求时用 `decision: required`，并为每个需要填写 `id`、`sliceId`、`purpose`、`capabilities`、`domains`、`projectSignals` 和 `isolationReason`。
 - 每个 Acceptance Criterion 必须声明所需 Evidence kinds；每个 Criterion 至少被一个 Slice 覆盖。
 - 第一个 Tracer Slice 必须无依赖并尽快产出一个可验证的端到端结果；总 Slice 数保持在 1–15 个，优先小而完整的纵向切片。
+- 当前版本逐 Slice Review，`reviewAfterSlices` 必须为 `1`。标记 `humanCheckpoint: true` 的 Slice 必须至少有一个要求 `human-approval` Evidence 的 Criterion。
 - Deliverable Interface 描述结构、不可破坏的约束和消费者，不预先臆造大段正文或实现细节。
 - 外部写入或发布只能进入 `controlled`，且目标必须有精确 Approval Point。Controlled Review 必须包含 human 或 mixed 判断以及 `human-approval` Evidence。
 

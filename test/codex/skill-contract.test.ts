@@ -21,6 +21,13 @@ const TRANSITION_SKILLS = [
   "ezagent-implement",
   "ezagent-review",
 ] as const;
+const CANCELLATION_SKILLS = [
+  "ezagent-router",
+  "ezagent-spec",
+  "ezagent-execute",
+  "ezagent-implement",
+  "ezagent-review",
+] as const;
 const PLUGIN_ROOT_INSTRUCTION =
   "先取当前 `SKILL.md` 所在目录，再向上两级得到 `<plugin-root>`";
 
@@ -179,6 +186,19 @@ describe("Codex Skill contracts", () => {
         "最近一次 `context` JSON 的 `state.activeWorkItem.revision`",
       );
       expect(skill.body).toContain("绝不得使用 `state.revision`");
+    }
+  });
+
+  test("exposes an explicit abandonment exit from every active Work Item workflow", async () => {
+    const skills = await Promise.all(CANCELLATION_SKILLS.map(readSkill));
+
+    for (const skill of skills) {
+      const cancellation = argvFor(skill, "work-cancel");
+      expect(option(cancellation, "--root")).toBe("<absolute-project-root>");
+      expect(option(cancellation, "--revision")).toBe("<active-work-item-revision>");
+      expect(skill.body).toMatch(/用户.*明确.*(?:取消|放弃)/u);
+      expect(skill.body).toMatch(/取消.*重新执行 `context`/su);
+      expect(skill.body).toMatch(/active.*(?:为空|null)/su);
     }
   });
 

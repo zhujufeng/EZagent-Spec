@@ -16,7 +16,7 @@ import {
   type WorkSpecV2,
 } from "./work-contract.js";
 
-export type SliceStatus = "pending" | "executing" | "reviewing" | "accepted" | "revise" | "cancelled";
+export type SliceStatus = "pending" | "executing" | "accepted" | "revise" | "cancelled";
 
 export interface BriefArtifactV2 {
   readonly schemaVersion: 2;
@@ -112,7 +112,7 @@ function exactSlice(value: unknown): SliceArtifactV2 {
   ];
   const unsupported = Object.keys(record).find((key) => !allowed.includes(key));
   if (unsupported !== undefined) throw new TypeError(`unsupported Slice artifact field: ${unsupported}`);
-  const status = z.enum(["pending", "executing", "reviewing", "accepted", "revise", "cancelled"])
+  const status = z.enum(["pending", "executing", "accepted", "revise", "cancelled"])
     .parse(record.status);
   const plan = parseSlicePlan(Object.fromEntries(
     Object.entries(record).filter(([key]) => key !== "status"),

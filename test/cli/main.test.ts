@@ -571,6 +571,31 @@ describe.sequential("ezagent CLI", () => {
     });
   }, 30_000);
 
+  test("cancels an abandoned v2 Work Item and immediately allows a replacement contract", async () => {
+    const root = await temporaryProject();
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Cancellation Exit"]));
+    const preview = expectJsonSuccess(await runCli(
+      ["work-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericWorkContractDraft)}\n` },
+    )) as { readonly approvalToken: string };
+    const applied = expectJsonSuccess(await runCli(
+      ["work-apply", "--root", root, "--approval-token", preview.approvalToken],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericWorkContractDraft)}\n` },
+    )) as { readonly workItem: { readonly revision: number } };
+
+    expect(expectJsonSuccess(await runCli([
+      "work-cancel", "--root", root, "--revision", String(applied.workItem.revision),
+    ]))).toMatchObject({ activeWorkItem: null, platformSyncStatus: "none" });
+
+    expect(expectJsonSuccess(await runCli(
+      ["work-preview", "--root", root],
+      PROJECT_ROOT,
+      { input: `${JSON.stringify(genericWorkContractDraft)}\n` },
+    ))).toMatchObject({ workItem: { status: "planned" } });
+  }, 30_000);
+
   test("reconciles Specialists and blocks work-start when delegated Slice Agents drift", async () => {
     const root = await temporaryProject();
     const draft = specialistWorkContractDraft();
@@ -795,7 +820,7 @@ describe.sequential("ezagent CLI", () => {
   });
 
   test("emits stable usage for a missing or unknown command", async () => {
-    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
+    const usage = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-cancel|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]\n";
     const missing = await runCli([]);
     const unknown = await runCli(["unknown"]);
 

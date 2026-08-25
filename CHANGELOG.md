@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 - 2026-08-25
+
+### 工作流可靠性
+
+- 新增 `work-cancel`，允许显式取消废弃的 active Work Item、退役受管专家并继续创建新计划，同时保留完整审计历史。
+- Specialist Delegation Receipt 改为按 Plan revision 分代存储；replan 后可安全复用委派内容未变化的历史回执，也可为同 ID 的变更委派创建新一代不可变回执。
+- Work Contract 拒绝重复或成环的 `blockedBy` 依赖，并在错误中给出具体环路径。
+- 新增独立的 v2 生命周期状态机，禁止 pending Slice 直接评审、并发执行多个 Slice，以及在依赖未接受时启动下游 Slice。
+- `humanCheckpoint` 现在必须由要求 `human-approval` Evidence 的 Criterion 实际兑现。
+
+### 兼容性说明
+
+- 当前版本仍采用逐 Slice Review；`reviewAfterSlices` 仅接受 `1`。此前配置其他值但依赖其被静默忽略的 Work Contract 需要改为 `1`。
+- 旧版状态转换表明确限定为 v1 compatibility lifecycle；v2 Controlled Mode 不再与旧版 high-risk 转换限制混用。
+
 ## 0.3.0 - 2026-08-25
 
 ### Claude Code 与 OpenCode

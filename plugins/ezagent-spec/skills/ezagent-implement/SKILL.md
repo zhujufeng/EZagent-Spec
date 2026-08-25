@@ -17,6 +17,14 @@ description: 兼容执行 sourceSchemaVersion 1 的旧版编码 Spec Task：使�
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
+若用户明确要求取消或放弃当前 active Work Item，先说明取消会停止旧版 Task，但保留 Plan、Receipt 与已写入历史。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`；active item 已为空时不得调用：
+
+```json
+["node", "<absolute-cli-path>", "work-cancel", "--root", "<absolute-project-root>", "--revision", "<active-work-item-revision>"]
+```
+
+取消后重新执行 `context`，确认 `state.activeWorkItem` 为 null 后停止实施。不得把高风险关闭失败、同步失败或普通返工自行升级为取消。
+
 任何工作或 transition 前都应用状态门；kind 或 status 不匹配就关闭失败：
 
 ```json

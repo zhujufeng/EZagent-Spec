@@ -1,6 +1,8 @@
 import type { TransitionRequest, WorkItemState, WorkItemStatus } from "./work-item.js";
 
-const ALLOWED_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]> = {
+// Compatibility lifecycle for sourceSchemaVersion 1 and non-Task legacy items.
+// v2 Slice/Work Item transitions live in workflow/v2-state-machine.ts.
+const LEGACY_ALLOWED_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]> = {
   captured: ["clarifying", "cancelled"],
   clarifying: ["captured", "specified", "cancelled"],
   specified: ["clarifying", "approved", "cancelled"],
@@ -31,7 +33,7 @@ export function transitionWorkItem(
     throw new Error("work item must be approved before implementing");
   }
 
-  if (!ALLOWED_TRANSITIONS[current.status].includes(request.to)) {
+  if (!LEGACY_ALLOWED_TRANSITIONS[current.status].includes(request.to)) {
     throw new Error(`illegal transition: ${current.status} -> ${request.to}`);
   }
 

@@ -54,6 +54,7 @@ import {
   serializeSpecialistPlanV2,
   specialistPlanHistoryPath,
   type SpecialistAssessmentDraftV2,
+  type SpecialistDelegationV2,
   type SpecialistDelegationDiffV2,
   type SpecialistPlanV2,
 } from "./specialist-plan.js";
@@ -71,6 +72,12 @@ import {
   type WorkSpecArtifactV2,
   type WorkArtifactsV2,
 } from "./work-artifacts.js";
+import {
+  cancelV2WorkItem,
+  completeV2WorkItem,
+  reviewV2Slice,
+  startV2Slice,
+} from "./v2-state-machine.js";
 import {
   approvalToken,
   parseExpertTeamPlan,
@@ -781,6 +788,32 @@ async function latestTeamRecord(root: string, taskId: string): Promise<ExpertTea
   return team;
 }
 
+async function specialistPlanHistory(
+  root: string,
+  workItemId: string,
+): Promise<readonly SpecialistPlanV2[]> {
+  const directory = join(workspacePaths(root).root, "experts", "plans", workItemId);
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return Object.freeze([]);
+    throw error;
+  }
+  if (names.length === 0 || names.some((name) => !/^\d{6,}\.json$/u.test(name))) {
+    throw new Error("Specialist Plan history is missing or malformed");
+  }
+  return Object.freeze(await Promise.all([...names].sort(portableCompare).map(async (name) => {
+    const value: unknown = JSON.parse(await readBoundedText(join(directory, name)));
+    const plan = parseSpecialistPlanV2(value);
+    if (plan.workItemId !== workItemId
+      || name !== `${String(plan.revision).padStart(6, "0")}.json`) {
+      throw new Error("Specialist Plan history identity mismatch");
+    }
+    return plan;
+  })));
+}
+
 async function latestSpecialistPlan(
   root: string,
   workItemId: string,
@@ -810,8 +843,9 @@ async function readDelegationStartReceipt(
   root: string,
   workItemId: string,
   delegationId: string,
+  planRevision?: number,
 ): Promise<DelegationStartReceipt | null> {
-  const relativePath = delegationStartReceiptPath(workItemId, delegationId);
+  const relativePath = delegationStartReceiptPath(workItemId, delegationId, planRevision);
   try {
     return parseDelegationStartReceipt(JSON.parse(await readBoundedText(
       join(workspacePaths(root).root, ...relativePath.split("/")),
@@ -826,8 +860,9 @@ async function readDelegationCompletionReceipt(
   root: string,
   workItemId: string,
   delegationId: string,
+  planRevision?: number,
 ): Promise<DelegationCompletionReceipt | null> {
-  const relativePath = delegationCompletionReceiptPath(workItemId, delegationId);
+  const relativePath = delegationCompletionReceiptPath(workItemId, delegationId, planRevision);
   try {
     return parseDelegationCompletionReceipt(JSON.parse(await readBoundedText(
       join(workspacePaths(root).root, ...relativePath.split("/")),
@@ -838,6 +873,91 @@ async function readDelegationCompletionReceipt(
   }
 }
 
+function receiptPlanRevision(plan: SpecialistPlanV2): number | undefined {
+  return plan.revision === 1 ? undefined : plan.revision;
+}
+
+async function readCurrentDelegationStartReceipt(
+  root: string,
+  plan: SpecialistPlanV2,
+  delegationId: string,
+): Promise<DelegationStartReceipt | null> {
+  const current = await readDelegationStartReceipt(
+    root,
+    plan.workItemId,
+    delegationId,
+    receiptPlanRevision(plan),
+  );
+  if (current !== null || plan.revision === 1) return current;
+  const legacy = await readDelegationStartReceipt(root, plan.workItemId, delegationId);
+  return legacy?.planFingerprint === plan.planFingerprint ? legacy : null;
+}
+
+async function readCurrentDelegationCompletionReceipt(
+  root: string,
+  plan: SpecialistPlanV2,
+  delegationId: string,
+): Promise<DelegationCompletionReceipt | null> {
+  const current = await readDelegationCompletionReceipt(
+    root,
+    plan.workItemId,
+    delegationId,
+    receiptPlanRevision(plan),
+  );
+  if (current !== null || plan.revision === 1) return current;
+  const legacy = await readDelegationCompletionReceipt(root, plan.workItemId, delegationId);
+  return legacy?.planFingerprint === plan.planFingerprint ? legacy : null;
+}
+
+function receiptMatchesDelegation(
+  receipt: DelegationCompletionReceipt,
+  delegation: SpecialistDelegationV2,
+  planFingerprint: `sha256:${string}`,
+): boolean {
+  return receipt.planFingerprint === planFingerprint
+    && receipt.delegationId === delegation.id
+    && receipt.expertId === delegation.expertId
+    && receipt.workItemId === delegation.workItemId
+    && receipt.workSpecId === delegation.workSpecId
+    && receipt.workSpecRevision === delegation.workSpecRevision
+    && receipt.sliceId === delegation.sliceId;
+}
+
+async function readCompatibleDelegationCompletionReceipt(
+  root: string,
+  planHistory: readonly SpecialistPlanV2[],
+  activeDelegation: SpecialistDelegationV2,
+): Promise<DelegationCompletionReceipt | null> {
+  const [legacy, ...versioned] = await Promise.all([
+    readDelegationCompletionReceipt(root, activeDelegation.workItemId, activeDelegation.id),
+    ...planHistory.filter(({ revision }) => revision > 1).map(({ revision }) => (
+      readDelegationCompletionReceipt(
+        root,
+        activeDelegation.workItemId,
+        activeDelegation.id,
+        revision,
+      )
+    )),
+  ]);
+  const candidates = [legacy, ...versioned].filter(
+    (receipt): receipt is DelegationCompletionReceipt => receipt !== null,
+  ).map((receipt) => {
+    const originPlan = planHistory.find(({ planFingerprint }) => (
+      planFingerprint === receipt.planFingerprint
+    ));
+    const originDelegation = originPlan?.delegations.find(({ id }) => id === receipt.delegationId);
+    if (originPlan === undefined
+      || originDelegation === undefined
+      || !receiptMatchesDelegation(receipt, originDelegation, originPlan.planFingerprint)) {
+      throw new Error("Delegation completion receipt does not match its Specialist Plan history");
+    }
+    return { receipt, originPlan, originDelegation };
+  }).sort((left, right) => right.originPlan.revision - left.originPlan.revision);
+  return candidates.find(({ originDelegation }) => (
+    JSON.stringify(originDelegation) === JSON.stringify(activeDelegation)
+  ))?.receipt ?? null;
+}
+
 async function reviewDelegationCoverage(
   root: string,
   records: ActiveWorkRecordsV2,
@@ -845,20 +965,12 @@ async function reviewDelegationCoverage(
 ): Promise<DelegationCoverage> {
   const plan = records.specialistPlan;
   if (plan === null) return Object.freeze({ complete: true, delegations: Object.freeze([]) });
+  const planHistory = await specialistPlanHistory(root, plan.workItemId);
   const required = plan.delegations.filter((delegation) => delegation.sliceId === sliceId);
   const delegations = await Promise.all(required.map(async (delegation): Promise<DelegationCoverageEntry> => {
-    const receipt = await readDelegationCompletionReceipt(root, plan.workItemId, delegation.id);
+    const receipt = await readCompatibleDelegationCompletionReceipt(root, planHistory, delegation);
     if (receipt === null) {
       return Object.freeze({ delegationId: delegation.id, expertId: delegation.expertId, status: "missing" });
-    }
-    if (receipt.delegationId !== delegation.id
-      || receipt.expertId !== delegation.expertId
-      || receipt.workItemId !== delegation.workItemId
-      || receipt.workSpecId !== delegation.workSpecId
-      || receipt.workSpecRevision !== delegation.workSpecRevision
-      || receipt.sliceId !== delegation.sliceId
-      || receipt.planFingerprint !== plan.planFingerprint) {
-      throw new Error("Delegation completion receipt does not match the approved Specialist Plan");
     }
     return Object.freeze({
       delegationId: delegation.id,
@@ -878,8 +990,8 @@ async function assertNoUnfinishedDelegations(
 ): Promise<void> {
   for (const delegation of plan.delegations) {
     const [start, completion] = await Promise.all([
-      readDelegationStartReceipt(root, plan.workItemId, delegation.id),
-      readDelegationCompletionReceipt(root, plan.workItemId, delegation.id),
+      readCurrentDelegationStartReceipt(root, plan, delegation.id),
+      readCurrentDelegationCompletionReceipt(root, plan, delegation.id),
     ]);
     if (completion !== null && start === null) {
       throw new Error("Delegation receipt history is inconsistent");
@@ -1565,7 +1677,14 @@ export class ExpertTeamWorkflowService {
       throw new Error("Delegation can only start while its Slice is executing");
     }
     const receipt = createDelegationStartReceipt(delegation, plan.planFingerprint, this.runtime.now());
-    const receiptPath = delegationStartReceiptPath(records.workItem.id, delegation.id);
+    const receiptPath = delegationStartReceiptPath(
+      records.workItem.id,
+      delegation.id,
+      receiptPlanRevision(plan),
+    );
+    if (await readCurrentDelegationStartReceipt(canonicalRoot, plan, delegation.id) !== null) {
+      throw new Error(`Core artifact already exists: ${receiptPath}`);
+    }
     await assertMissing(canonicalRoot, [receiptPath]);
     const nextState: WorkspaceState = { ...context.state, revision: context.state.revision + 1 };
     await repository.commitMutation(
@@ -1608,7 +1727,7 @@ export class ExpertTeamWorkflowService {
     if (input.planFingerprint !== plan.planFingerprint) {
       throw new Error("Delegation completion uses a stale Specialist Plan fingerprint");
     }
-    const start = await readDelegationStartReceipt(canonicalRoot, records.workItem.id, delegation.id);
+    const start = await readCurrentDelegationStartReceipt(canonicalRoot, plan, delegation.id);
     if (start === null) throw new Error("Delegation must be started before completion");
     if (start.delegationId !== delegation.id
       || start.expertId !== delegation.expertId
@@ -1619,7 +1738,14 @@ export class ExpertTeamWorkflowService {
       || start.planFingerprint !== plan.planFingerprint) {
       throw new Error("Delegation start receipt does not match the approved Specialist Plan");
     }
-    const receiptPath = delegationCompletionReceiptPath(records.workItem.id, delegation.id);
+    const receiptPath = delegationCompletionReceiptPath(
+      records.workItem.id,
+      delegation.id,
+      receiptPlanRevision(plan),
+    );
+    if (await readCurrentDelegationCompletionReceipt(canonicalRoot, plan, delegation.id) !== null) {
+      throw new Error(`Core artifact already exists: ${receiptPath}`);
+    }
     await assertMissing(canonicalRoot, [receiptPath]);
     const receipt = createDelegationCompletionReceipt(delegation, input, this.runtime.now());
     const nextState: WorkspaceState = { ...context.state, revision: context.state.revision + 1 };
@@ -1653,33 +1779,11 @@ export class ExpertTeamWorkflowService {
       || bundle.workSpecRevision !== records.workSpec.revision) {
       throw new Error("Evidence bundle does not match the active Work Contract revision");
     }
-    const sliceIndex = records.workItem.slices.findIndex(({ id }) => id === bundle.sliceId);
-    const currentSlice = records.workItem.slices[sliceIndex];
-    if (currentSlice === undefined || !["pending", "executing", "accepted", "revise"].includes(currentSlice.status)) {
-      throw new Error("Slice is not ready for Evidence review");
-    }
-    if (currentSlice.blockedBy.some((id) => (
-      records.workItem.slices.find((slice) => slice.id === id)?.status !== "accepted"
-    ))) {
-      throw new Error("Slice dependencies must be accepted before Evidence review");
-    }
     const coverage = reviewEvidenceCoverage(records.workSpec.workSpec, bundle);
     const delegationCoverage = await reviewDelegationCoverage(canonicalRoot, records, bundle.sliceId);
     const reviewComplete = coverage.complete && delegationCoverage.complete;
-    const revision = records.workItem.revision + 1;
-    const slices = records.workItem.slices.map((slice, index) => (
-      index === sliceIndex
-        ? { ...slice, status: reviewComplete ? "accepted" as const : "revise" as const }
-        : slice
-    ));
-    const allAccepted = slices.every(({ status }) => status === "accepted");
-    const workItem: WorkItemArtifactV2 = {
-      ...records.workItem,
-      status: allAccepted ? "verifying" : "implementing",
-      revision,
-      slices,
-    };
-    const path = evidenceBundlePath(workItem.id, bundle.sliceId, revision);
+    const workItem = reviewV2Slice(records.workItem, bundle.sliceId, reviewComplete);
+    const path = evidenceBundlePath(workItem.id, bundle.sliceId, workItem.revision);
     await assertMissing(canonicalRoot, [path]);
     const nextState: WorkspaceState = {
       ...context.state,
@@ -1726,24 +1830,7 @@ export class ExpertTeamWorkflowService {
     if (context.state.safeMode) throw new Error("workspace is in safe mode");
     const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
     if (records === null) throw new Error("active v1 Plan cannot use the v2 Slice lifecycle");
-    const sliceIndex = records.workItem.slices.findIndex(({ id }) => id === sliceId);
-    const currentSlice = records.workItem.slices[sliceIndex];
-    if (currentSlice === undefined || !["pending", "revise"].includes(currentSlice.status)) {
-      throw new Error("Slice is not ready to start");
-    }
-    if (currentSlice.blockedBy.some((id) => (
-      records.workItem.slices.find((slice) => slice.id === id)?.status !== "accepted"
-    ))) {
-      throw new Error("Slice dependencies must be accepted before execution");
-    }
-    const workItem: WorkItemArtifactV2 = {
-      ...records.workItem,
-      status: "implementing",
-      revision: records.workItem.revision + 1,
-      slices: records.workItem.slices.map((slice, index) => (
-        index === sliceIndex ? { ...slice, status: "executing" } : slice
-      )),
-    };
+    const workItem = startV2Slice(records.workItem, sliceId);
     const nextState: WorkspaceState = {
       ...context.state,
       revision: context.state.revision + 1,
@@ -1814,10 +1901,7 @@ export class ExpertTeamWorkflowService {
     if (context.state.safeMode) throw new Error("workspace is in safe mode");
     const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
     if (records === null) throw new Error("active v1 Plan must use legacy Task completion");
-    if (records.workItem.status !== "verifying"
-      || records.workItem.slices.some(({ status }) => status !== "accepted")) {
-      throw new Error("every Slice must be accepted before Work Item completion");
-    }
+    const workItem = completeV2WorkItem(records.workItem);
     const evidence = await Promise.all(records.workItem.slices.map(async (slice) => {
       const latest = await readLatestEvidenceBundle(canonicalRoot, records.workItem.id, slice.id);
       if (latest.bundle.workItemId !== records.workItem.id
@@ -1845,11 +1929,6 @@ export class ExpertTeamWorkflowService {
     const decisionContents = serializeKnowledgeRecord(decision);
     parseKnowledgeRecordMarkdown(decisionContents);
     const decisionHash = knowledgeContentHash(decisionContents);
-    const workItem: WorkItemArtifactV2 = {
-      ...records.workItem,
-      status: "completed",
-      revision: records.workItem.revision + 1,
-    };
     const nextState: WorkspaceState = {
       ...context.state,
       revision: context.state.revision + 1,
@@ -2499,11 +2578,7 @@ export class ExpertTeamWorkflowService {
     const activeExperts = await this.runtime.readActiveExperts(canonicalRoot);
     const v2Records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
     if (v2Records !== null) {
-      const workItem: WorkItemArtifactV2 = {
-        ...v2Records.workItem,
-        status: to,
-        revision: v2Records.workItem.revision + 1,
-      };
+      const workItem = cancelV2WorkItem(v2Records.workItem);
       const retired = retireActiveSpecialists(
         activeExperts,
         v2Records.workItem.id,

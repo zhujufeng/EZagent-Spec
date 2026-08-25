@@ -27,7 +27,7 @@ import {
 } from "../workflow/service.js";
 import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
 
-const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
+const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-cancel|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu;
 const WORK_ITEM_STATUSES = [
@@ -51,6 +51,7 @@ type Command =
   | "integration-init"
   | "work-preview"
   | "work-apply"
+  | "work-cancel"
   | "work-start"
   | "delegation-start"
   | "delegation-complete"
@@ -119,6 +120,11 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     valueOptions: ["--root", "--approval-token"],
     booleanOptions: [],
     requiredOptions: ["--root", "--approval-token"],
+  },
+  "work-cancel": {
+    valueOptions: ["--root", "--revision"],
+    booleanOptions: [],
+    requiredOptions: ["--root", "--revision"],
   },
   "work-start": {
     valueOptions: ["--root", "--slice"],
@@ -430,6 +436,30 @@ export async function runCli(
   }
 
   const workflow = runtime.createWorkflowService(root);
+
+  if (parsed.command === "work-cancel") {
+    const revision = canonicalRevision(requiredValueOption(parsed, "--revision"));
+    const context = await repository.readContext();
+    if (context.state.safeMode) throw new Error("workspace is in safe mode; cancellation is disabled");
+    const active = context.state.activeWorkItem;
+    if (active === null) throw new Error("no active work item");
+    if (active.kind !== "task") throw new Error("work-cancel requires an active Task");
+    const [specialistPlan, legacyTeam] = await Promise.all([
+      workflow.activeSpecialistPlanRecord(),
+      workflow.activeTeamRecord(),
+    ]);
+    await workflow.retireTeam(active.id, revision, "cancelled");
+    const synchronized = (specialistPlan === null || specialistPlan.delegations.length === 0)
+      && legacyTeam === null
+      ? { files: Object.freeze([]) }
+      : await runtime.reconcileCodexTeam(root, await runtime.readRuntimeCatalog());
+    writeJson(io, {
+      ...(await repository.readState()),
+      platformSyncStatus: "none",
+      files: synchronized.files,
+    });
+    return;
+  }
 
   if (parsed.command === "work-preview") {
     writeJson(io, await workflow.workPreview(await readBoundedJsonInput(runtime.stdin)));

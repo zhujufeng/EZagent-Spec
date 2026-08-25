@@ -403,7 +403,7 @@ interface SliceV2 {
   readonly criterionIds: readonly string[];
   readonly blockedBy: readonly string[];
   readonly humanCheckpoint: boolean;
-  readonly status: "pending" | "executing" | "reviewing" | "accepted" | "revise" | "cancelled";
+  readonly status: "pending" | "executing" | "accepted" | "revise" | "cancelled";
 }
 ```
 
@@ -411,7 +411,10 @@ Slice 规则：
 
 - 第一条 Slice 默认是 Tracer Slice，证明完整路径可工作。
 - 一个 Slice 必须能独立展示或验证，不得只完成某一内部层。
+- 当前版本同一 Work Item 最多一个 Slice 为 `executing`；开始下一个 Slice 前必须先完成当前 Slice 的 Review。
 - Slice 之间有强共享中间状态时优先顺序执行，不为了并行而拆 Agent。
+- `humanCheckpoint: true` 必须由该 Slice 上要求 `human-approval` 的 Criterion 实现；没有匹配 Evidence 就不能 accepted。
+- `work-review` 原子完成 coverage 判断和 Slice 转换，不持久化一个无法恢复的中间 `reviewing` Slice 状态。
 - `revise` 只回到当前 Slice；影响 Work Spec 契约时必须 Replan。
 
 ### 8.7 Work Journal
@@ -461,6 +464,7 @@ any non-terminal state -> cancelled
 - `executing`：只执行当前 active Slice。
 - `reviewing`：检查当前 Slice 或最终 Acceptance coverage。
 - `completed`：全部 criteria 有有效 Evidence，最终 Deliverable 可读取，Decision Record 已原子写入。
+- 用户明确放弃时通过 `work-cancel` 使用最新 active Work Item revision 进入 `cancelled`；取消保留 Plan、Receipt、Evidence 与 Journal 历史。
 
 `blocked` 不作为可长期停留的成功状态；阻塞原因作为 blocker 保存在上下文，解除后继续原状态。无法安全恢复时进入 inspection-required。
 
@@ -580,7 +584,7 @@ interface ReviewPolicy {
 - 可机器验证且低影响的 Brief Mode 可 self review。
 - 主观策略、品牌、人员、法律和高影响决策至少需要 human 或 mixed。
 - 独立 Agent Review 必须只读，且不能复用执行者未压缩的内部上下文作为结论依据。
-- `reviewAfterSlices` 约束反馈间隔，不能只在所有工作结束后 Review。
+- 当前实现逐 Slice Review，因此 `reviewAfterSlices` 必须为 `1`。未来若支持批量 cadence，必须先引入可恢复的持久化 Review checkpoint，不能只扩展 schema 数值。
 
 ## 13. Side Effects and Approval
 

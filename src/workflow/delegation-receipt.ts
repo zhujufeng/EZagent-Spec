@@ -204,16 +204,33 @@ export function serializeDelegationCompletionReceipt(value: DelegationCompletion
   return `${JSON.stringify(parseDelegationCompletionReceipt(value), null, 2)}\n`;
 }
 
-function receiptBasePath(workItemId: string, delegationId: string): string {
+function receiptBasePath(
+  workItemId: string,
+  delegationId: string,
+  planRevision?: number,
+): string {
   taskIdSchema.parse(workItemId);
   identifierSchema.parse(delegationId);
-  return `experts/receipts/${workItemId}/${delegationId}`;
+  const base = `experts/receipts/${workItemId}/${delegationId}`;
+  if (planRevision === undefined) return base;
+  if (!Number.isSafeInteger(planRevision) || planRevision < 1) {
+    throw new TypeError("Delegation receipt Plan revision must be a positive safe integer");
+  }
+  return `${base}/revisions/${String(planRevision).padStart(6, "0")}`;
 }
 
-export function delegationStartReceiptPath(workItemId: string, delegationId: string): string {
-  return `${receiptBasePath(workItemId, delegationId)}/start.json`;
+export function delegationStartReceiptPath(
+  workItemId: string,
+  delegationId: string,
+  planRevision?: number,
+): string {
+  return `${receiptBasePath(workItemId, delegationId, planRevision)}/start.json`;
 }
 
-export function delegationCompletionReceiptPath(workItemId: string, delegationId: string): string {
-  return `${receiptBasePath(workItemId, delegationId)}/completion.json`;
+export function delegationCompletionReceiptPath(
+  workItemId: string,
+  delegationId: string,
+  planRevision?: number,
+): string {
+  return `${receiptBasePath(workItemId, delegationId, planRevision)}/completion.json`;
 }

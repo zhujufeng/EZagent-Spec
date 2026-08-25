@@ -75,7 +75,7 @@ export const genericWorkContractDraft = {
         deliverableInterfaceIds: ["deliverable-analysis"],
         criterionIds: ["criterion-explained"],
         blockedBy: [],
-        humanCheckpoint: true,
+        humanCheckpoint: false,
       },
     ],
   },
@@ -185,6 +185,7 @@ export function controlledActionDraft() {
       slicePlan: [{
         ...genericWorkContractDraft.workSpec.slicePlan[0],
         deliverableInterfaceIds: ["deliverable-publish-draft"],
+        humanCheckpoint: true,
       }],
     },
   };

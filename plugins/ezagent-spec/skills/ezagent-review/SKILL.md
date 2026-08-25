@@ -15,6 +15,14 @@ description: 按 Acceptance Criterion 审查通用 Work Item 的真实 Evidence 
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
+若用户明确要求取消或放弃当前 active Work Item，先说明取消会停止审查，但保留 Plan、Receipt、Evidence 与 Journal 历史。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`；active item 已为空时不得调用：
+
+```json
+["node", "<absolute-cli-path>", "work-cancel", "--root", "<absolute-project-root>", "--revision", "<active-work-item-revision>"]
+```
+
+取消后重新执行 `context`，确认 `state.activeWorkItem` 为 null 后停止审查。不得因审查失败或 Evidence 不足自行取消。
+
 安全模式或 inspection-required 只诊断。`sourceSchemaVersion: 2` 走通用 Evidence 审查；`sourceSchemaVersion: 1` 才走文末的旧编码适配器。不得虚构证据、状态、命令或人工结论。
 
 ## v2：Criterion-by-Criterion Review

@@ -250,9 +250,18 @@ const workSpecSchema = z.object({
   };
   const deliverables = uniqueIds(spec.deliverableInterfaces, "deliverableInterfaces");
   const criteria = uniqueIds(spec.acceptanceCriteria, "acceptanceCriteria");
+  const criteriaById = new Map(spec.acceptanceCriteria.map((criterion) => [criterion.id, criterion]));
   uniqueIds(spec.boundaries, "boundaries");
   uniqueIds(spec.approvalPoints, "approvalPoints");
   const slices = uniqueIds(spec.slicePlan, "slicePlan");
+
+  if (spec.reviewPolicy.reviewAfterSlices !== 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["reviewPolicy", "reviewAfterSlices"],
+      message: "the current Work Harness reviews every Slice; reviewAfterSlices must be 1",
+    });
+  }
 
   if (spec.mode === "controlled"
     && spec.reviewPolicy.method !== "human"
@@ -305,11 +314,60 @@ const workSpecSchema = z.object({
         context.addIssue({ code: "custom", path: ["slicePlan", index, "criterionIds"], message: `unknown Acceptance Criterion: ${id}` });
       }
     }
+    if (slice.humanCheckpoint && !slice.criterionIds.some((id) => (
+      criteriaById.get(id)?.requiredEvidenceKinds.includes("human-approval") === true
+    ))) {
+      context.addIssue({
+        code: "custom",
+        path: ["slicePlan", index, "humanCheckpoint"],
+        message: "humanCheckpoint requires human-approval Evidence on a Slice criterion",
+      });
+    }
+    const seenDependencies = new Set<string>();
     for (const id of slice.blockedBy) {
+      if (seenDependencies.has(id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["slicePlan", index, "blockedBy"],
+          message: `Slice dependencies contain a duplicate: ${id}`,
+        });
+      }
+      seenDependencies.add(id);
       if (!slices.has(id) || id === slice.id) {
         context.addIssue({ code: "custom", path: ["slicePlan", index, "blockedBy"], message: `invalid Slice dependency: ${id}` });
       }
     }
+  }
+  const dependencies = new Map(spec.slicePlan.map((slice) => [slice.id, slice.blockedBy]));
+  const visitState = new Map<string, "visiting" | "visited">();
+  const stack: string[] = [];
+  let dependencyCycle: string[] | null = null;
+  const visit = (sliceId: string): void => {
+    if (dependencyCycle !== null) return;
+    const state = visitState.get(sliceId);
+    if (state === "visited") return;
+    if (state === "visiting") {
+      const start = stack.indexOf(sliceId);
+      dependencyCycle = [...stack.slice(start), sliceId];
+      return;
+    }
+    visitState.set(sliceId, "visiting");
+    stack.push(sliceId);
+    for (const dependencyId of dependencies.get(sliceId) ?? []) {
+      if (dependencies.has(dependencyId)) visit(dependencyId);
+    }
+    stack.pop();
+    visitState.set(sliceId, "visited");
+  };
+  for (const slice of spec.slicePlan) visit(slice.id);
+  const detectedCycle = dependencyCycle as string[] | null;
+  if (detectedCycle !== null) {
+    const firstSliceIndex = spec.slicePlan.findIndex(({ id }) => id === detectedCycle[0]);
+    context.addIssue({
+      code: "custom",
+      path: ["slicePlan", firstSliceIndex, "blockedBy"],
+      message: `Slice dependency cycle: ${detectedCycle.join(" -> ")}`,
+    });
   }
   if (spec.slicePlan[0]?.blockedBy.length !== 0) {
     context.addIssue({ code: "custom", path: ["slicePlan", 0, "blockedBy"], message: "the Tracer Slice must be unblocked" });

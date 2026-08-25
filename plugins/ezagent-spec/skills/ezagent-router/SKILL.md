@@ -21,6 +21,14 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
 
+若用户明确要求取消或放弃当前 active Work Item，先展示将终止的 Work Item、当前状态，以及 Plan、Receipt、Evidence 与 Journal 历史仍会保留；不得把范围变化或执行困难自行解释为取消。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`，active item 已为空时不得调用取消命令：
+
+```json
+["node", "<absolute-cli-path>", "work-cancel", "--root", "<absolute-project-root>", "--revision", "<active-work-item-revision>"]
+```
+
+取消后重新执行 `context`，只有确认 `state.activeWorkItem` 为 null 且平台同步状态不再有该任务的 active Agents，才可为新请求继续路由。
+
 安全模式或 `inspection-required` 只做诊断。若存在 active Work Item：
 
 - `sourceSchemaVersion: 2` 且有 pending、executing 或 revise Slice：转 `$ezagent-execute`。
