@@ -316,7 +316,15 @@ describe.sequential("Codex plugin offline release smoke", () => {
       "--agents-token",
       preview.agentsToken,
     ]);
-    expect(initialized).toEqual({ initialized: true, root: projectRoot });
+    expect(initialized).toEqual({
+      initialized: true,
+      root: projectRoot,
+      continuation: {
+        agentsInstructions: "next-run",
+        sameRun: "invoke-ezagent-router-if-request-remains",
+        fallback: "start-new-run",
+      },
+    });
 
     const agents = await readFile(join(projectRoot, "AGENTS.md"), "utf8");
     expect(count(agents, "<!-- EZAGENT:START -->")).toBe(1);

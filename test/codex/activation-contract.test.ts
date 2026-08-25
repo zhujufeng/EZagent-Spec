@@ -130,6 +130,24 @@ describe("Codex activation policy contract", () => {
     expect(agentsBlock).toMatch(/project Agent.*协调器.*(?:模拟|替换)/u);
   });
 
+  test("hands unfinished same-run work from initialization to the Router", async () => {
+    const agentsBlock = mergeEzagentAgentsBlock("");
+    const initialize = await readSkill("ezagent-initialize");
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+
+    expect(initialize.body).toMatch(/初始化成功后.*原始请求.*剩余目标/su);
+    expect(initialize.body).toMatch(/有剩余目标.*显式.*\$ezagent-router/su);
+    expect(initialize.body).toMatch(/不得.*恢复.*初始化前.*主工作流/su);
+    expect(initialize.body).toMatch(/初始化.*批准.*不.*Work Contract.*批准/su);
+    expect(initialize.body).toMatch(/宿主.*无法.*Router.*新任务/su);
+    expect(router.body).toMatch(/context.*准备.*不.*完成.*路由/su);
+    expect(router.body).toMatch(/模式.*理由.*下一个 Skill.*实际转交/su);
+    expect(spec.body).toMatch(/Router.*同一任务.*context.*复用.*不得重复/su);
+    expect(agentsBlock).toMatch(/Router.*顶层工作流/su);
+    expect(agentsBlock).toMatch(/context.*不.*完成.*路由/su);
+  });
+
   test("routes bounded Quick work without creating a persisted workflow", async () => {
     const router = await readSkill("ezagent-router");
     const light = await readSkill("ezagent-light");

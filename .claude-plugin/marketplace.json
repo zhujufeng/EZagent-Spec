@@ -8,7 +8,7 @@
       "name": "ezagent-spec",
       "source": "./plugins/ezagent-spec",
       "description": "中文、本地优先的通用 Agent Work Harness。",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "category": "Developer Tools"
     }
   ]

@@ -1,6 +1,6 @@
 {
   "name": "@ezagent/spec",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -44,6 +44,8 @@
     "plugin:verify": "npm run catalog:verify && npm run plugin:check && npm run plugin:validate && npm run test:codex",
     "plugin:host-eval": "node --import tsx scripts/codex-host-eval.ts run",
     "plugin:host-eval:verify": "node --import tsx scripts/codex-host-eval.ts verify",
+    "plugin:post-init-eval": "node --import tsx scripts/codex-post-init-eval.ts run",
+    "plugin:post-init-eval:verify": "node --import tsx scripts/codex-post-init-eval.ts verify",
     "verify": "npm run check && npm run test && npm run build"
   },
   "dependencies": {

@@ -796,7 +796,15 @@ describe.sequential("ezagent CLI", () => {
     expect(expectJsonSuccess(await runCli([
       "integration-init", "--root", root, "--name", " Demo ",
       "--agents-token", preview.agentsToken,
-    ]))).toEqual({ initialized: true, root });
+    ]))).toEqual({
+      initialized: true,
+      root,
+      continuation: {
+        agentsInstructions: "next-run",
+        sameRun: "invoke-ezagent-router-if-request-remains",
+        fallback: "start-new-run",
+      },
+    });
 
     const agents = await readFile(join(root, "AGENTS.md"), "utf8");
     expect(agents.startsWith("# User rules\n")).toBe(true);

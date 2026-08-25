@@ -116,10 +116,20 @@ describe("open-source release contract", () => {
     expect(packageJson.scripts["plugin:host-eval:verify"]).toBe(
       "node --import tsx scripts/codex-host-eval.ts verify",
     );
+    expect(packageJson.scripts["plugin:post-init-eval"]).toBe(
+      "node --import tsx scripts/codex-post-init-eval.ts run",
+    );
+    expect(packageJson.scripts["plugin:post-init-eval:verify"]).toBe(
+      "node --import tsx scripts/codex-post-init-eval.ts verify",
+    );
     expect(workflow).not.toContain("plugin:host-eval");
+    expect(workflow).not.toContain("plugin:post-init-eval");
     expect(guide).toContain("codex plugin add ezagent-spec@ezagent");
+    expect(guide).toContain("npm run plugin:post-init-eval");
+    expect(guide).toContain("npm run plugin:post-init-eval:verify");
     expect(guide).toContain("git tag -s");
     expect(guide).toContain("git verify-tag");
     expect(ignore).toContain(".artifacts/codex-host-eval/");
+    expect(ignore).toContain(".artifacts/codex-post-init-eval/");
   });
 });

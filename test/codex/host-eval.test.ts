@@ -15,9 +15,19 @@ import {
   threadIdFromJsonl,
   verifyHostEvalEvidence,
 } from "../../scripts/codex-host-eval.js";
+import {
+  buildCodexPostInitExecArgv,
+  ezagentCommandSequenceFromJsonl,
+  loadPostInitEvalSuite,
+  unexpectedPostInitWorkspacePaths,
+  verifyPostInitEvalEvidence,
+} from "../../scripts/codex-post-init-eval.js";
 
 const SUITE_PATH = fileURLToPath(
   new URL("../fixtures/codex-host-eval.json", import.meta.url),
+);
+const POST_INIT_SUITE_PATH = fileURLToPath(
+  new URL("../fixtures/codex-post-init-eval.json", import.meta.url),
 );
 const COMMIT = "a".repeat(40);
 const TRANSCRIPT_HASH = "b".repeat(64);
@@ -57,6 +67,47 @@ function passingEvidence(): unknown {
         reason: "Entered initialization preview and requested confirmation before writes.",
       },
     }],
+  };
+}
+
+function passingPostInitEvidence(): unknown {
+  return {
+    schemaVersion: 1,
+    suiteSchemaVersion: 1,
+    runId: "2026-08-25T010203Z",
+    createdAt: "2026-08-24T17:02:03.000Z",
+    platform: "win32-x64",
+    codexVersion: "codex-cli 0.190.0",
+    plugin: {
+      pluginId: "ezagent-spec@ezagent",
+      version: "0.4.1",
+    },
+    commit: COMMIT,
+    case: {
+      id: "combined-init-go-planning",
+      exitCode: 0,
+      timedOut: false,
+      initialWorkspaceChanged: false,
+      workspaceBeforeSha256: "a".repeat(64),
+      workspaceAfterInitialSha256: "a".repeat(64),
+      workspaceAfterFollowUpSha256: "c".repeat(64),
+      transcriptSha256: TRANSCRIPT_HASH,
+      initialized: true,
+      workspaceRevision: 0,
+      activeWorkItemPresent: false,
+      observedCommandSequence: [
+        "integration-preview",
+        "integration-init",
+        "context",
+        "work-preview",
+      ],
+      forbiddenCommandsObserved: [],
+      unexpectedWorkspacePaths: [],
+      review: {
+        status: "pass",
+        reason: "Router selected Standard and actually handed the request to ezagent-spec.",
+      },
+    },
   };
 }
 
@@ -110,6 +161,25 @@ describe("Codex host evaluation corpus", () => {
       expect(fixture.reviewCriteria.length, fixture.id).toBeGreaterThan(0);
     }
   });
+
+  test("defines the combined initialization and planning regression sequence", async () => {
+    const suite = await loadPostInitEvalSuite(POST_INIT_SUITE_PATH);
+
+    expect(suite.schemaVersion).toBe(1);
+    expect(suite.pluginId).toBe("ezagent-spec@ezagent");
+    expect(suite.case.expectedCommandSequence).toEqual([
+      "integration-preview",
+      "integration-init",
+      "context",
+      "work-preview",
+    ]);
+    expect(suite.case.forbiddenCommands).toContain("work-apply");
+    expect(suite.case.forbiddenWorkspacePrefixes).toContain("docs/superpowers/");
+    expect(`${suite.case.initialPrompt}\n${suite.case.confirmationPrompt}`)
+      .not.toMatch(/Router|context|work-preview|Work Preview/iu);
+    expect(suite.case.reviewCriteria.join("\n")).toMatch(/context.*不.*完成.*路由/su);
+    expect(suite.case.reviewCriteria.join("\n")).toMatch(/初始化.*批准.*不.*Work Contract/su);
+  });
 });
 
 describe("Codex host evaluation safety", () => {
@@ -153,6 +223,119 @@ describe("Codex host evaluation safety", () => {
       timeout: 240_000,
       forceKillAfterDelay: 10_000,
     });
+  });
+
+  test("builds an isolated workspace-write argv for post-initialization continuation", () => {
+    expect(buildCodexPostInitExecArgv(
+      "/tmp/post-init-case",
+      "启用 EZagent，然后规划 Go 工具",
+      "/tmp/post-init-final.txt",
+    )).toEqual([
+      "exec",
+      "--json",
+      "--sandbox",
+      "workspace-write",
+      "--cd",
+      "/tmp/post-init-case",
+      "--output-last-message",
+      "/tmp/post-init-final.txt",
+      "启用 EZagent，然后规划 Go 工具",
+    ]);
+  });
+
+  test("extracts only executed EZagent CLI commands from Codex JSONL", () => {
+    const jsonl = [
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "node /plugin/dist/ezagent-cli.mjs integration-preview --root /tmp/project",
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "agent_message", text: "I will not run work-apply." },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "node '/plugin/dist/ezagent-cli.mjs' 'integration-init' --root '/tmp/project'",
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "node /plugin/dist/ezagent-cli.mjs context --root /tmp/project --json",
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "node /plugin/dist/ezagent-cli.mjs work-preview --root /tmp/project",
+        },
+      }),
+    ].join("\n");
+
+    expect(ezagentCommandSequenceFromJsonl(jsonl)).toEqual([
+      "integration-preview",
+      "integration-init",
+      "context",
+      "work-preview",
+    ]);
+  });
+
+  test("accepts post-init evidence only after the exact safe continuation", async () => {
+    const suite = await loadPostInitEvalSuite(POST_INIT_SUITE_PATH);
+
+    expect(verifyPostInitEvalEvidence(passingPostInitEvidence(), suite, COMMIT))
+      .toMatchObject({ commit: COMMIT });
+  });
+
+  test("allows only integration-managed paths in the post-init workspace", async () => {
+    const suite = await loadPostInitEvalSuite(POST_INIT_SUITE_PATH);
+
+    expect(unexpectedPostInitWorkspacePaths([
+      "AGENTS.md",
+      ".ezagent/project.yaml",
+      ".ezagent/state/workspace.json",
+      ".codex/agents/ezagent-reviewer.toml",
+      "docs/superpowers/plans/portpeek.md",
+      "README.md",
+    ], suite)).toEqual([
+      "README.md",
+      "docs/superpowers/plans/portpeek.md",
+    ]);
+  });
+
+  test.each([
+    ["writes before approval", {
+      initialWorkspaceChanged: true,
+      workspaceAfterInitialSha256: "d".repeat(64),
+    }, /before initialization approval/iu],
+    ["stops after context", {
+      observedCommandSequence: ["integration-preview", "integration-init", "context"],
+    }, /command sequence/iu],
+    ["applies a Work Contract", {
+      workspaceRevision: 1,
+      activeWorkItemPresent: true,
+    }, /approval boundary/iu],
+    ["writes a Superpowers plan", {
+      unexpectedWorkspacePaths: ["docs/superpowers/plans/portpeek.md"],
+    }, /unexpected paths/iu],
+    ["has no completed manual review", {
+      review: { status: "pending", reason: "" },
+    }, /manual review/iu],
+  ] as const)("rejects post-init evidence that %s", async (_name, caseOverride, pattern) => {
+    const suite = await loadPostInitEvalSuite(POST_INIT_SUITE_PATH);
+    const base = passingPostInitEvidence() as {
+      readonly case: Readonly<Record<string, unknown>>;
+    } & Readonly<Record<string, unknown>>;
+    const evidence = { ...base, case: { ...base.case, ...caseOverride } };
+
+    expect(() => verifyPostInitEvalEvidence(evidence, suite, COMMIT)).toThrow(pattern);
   });
 
   test("requires the exact installed and enabled plugin", () => {

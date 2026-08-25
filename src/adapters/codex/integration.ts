@@ -29,6 +29,11 @@ const MANAGED_PATHS = [
   "AGENTS.md#EZAGENT",
   ".codex/agents/ezagent-*.toml",
 ] as const;
+const POST_INITIALIZATION_CONTINUATION = Object.freeze({
+  agentsInstructions: "next-run",
+  sameRun: "invoke-ezagent-router-if-request-remains",
+  fallback: "start-new-run",
+} as const);
 const AGENTS_READ_POLICY: BoundedReadPolicy = Object.freeze({
   maximumBytes: MAX_AGENTS_BYTES,
   invalidMessage: "AGENTS.md must be a bounded regular file",
@@ -718,7 +723,11 @@ export async function initializeCodexIntegration(
   name: string,
   expectedToken: string,
   runtime: CodexIntegrationRuntime = nodeCodexIntegrationRuntime,
-): Promise<{ readonly initialized: true; readonly root: string }> {
+): Promise<{
+  readonly initialized: true;
+  readonly root: string;
+  readonly continuation: typeof POST_INITIALIZATION_CONTINUATION;
+}> {
   const before = await readAgents(projectRoot, runtime);
   if (agentsToken(before.bytes) !== expectedToken) {
     throw new Error("AGENTS.md preview is stale; preview again");
@@ -763,7 +772,11 @@ export async function initializeCodexIntegration(
       }
       throw error;
     }
-    return { initialized: true, root: projectRoot };
+    return {
+      initialized: true,
+      root: projectRoot,
+      continuation: POST_INITIALIZATION_CONTINUATION,
+    };
   }
 
   const intendedRecoveryPath = join(projectRoot, ".ezagent", "backups", "agents-md");
@@ -822,5 +835,9 @@ export async function initializeCodexIntegration(
       error,
     );
   }
-  return { initialized: true, root: projectRoot };
+  return {
+    initialized: true,
+    root: projectRoot,
+    continuation: POST_INITIALIZATION_CONTINUATION,
+  };
 }

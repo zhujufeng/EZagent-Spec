@@ -1,5 +1,6 @@
 .worktrees/
 .artifacts/codex-host-eval/
+.artifacts/codex-post-init-eval/
 .pnpm-store/
 node_modules/
 dist/

@@ -11,6 +11,8 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 必须使用支持 argv 数组的进程执行接口，禁止拼接 shell 字符串。每个动态值必须作为一个独立 argv 元素。若宿主只支持 shell 字符串，必须按当前 shell 的 literal 规则完整编码每个参数；无法证明编码正确就关闭失败，不得仅自行添加双引号。
 
+若由 Router 在同一任务实际转交，Router 已提供针对同一项目根、刚刚取得的完整 `context`，且两者之间没有任何状态变化，必须复用该可信 context，不得重复执行。缺少完整结果、项目根不同、发生过状态变化或无法证明仍新鲜时，才执行：
+
 ```json
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```

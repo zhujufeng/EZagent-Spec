@@ -5,9 +5,10 @@
 ## 安全边界
 
 - 只使用 `test/fixtures/codex-host-eval.json` 中的合成请求，不放入真实项目数据、密钥或内部地址。
-- 每个场景在独立的系统临时 Git 项目中执行，Codex sandbox 固定为 `read-only`。
+- 普通激活场景在独立的系统临时 Git 项目中执行，Codex sandbox 固定为 `read-only`。
+- 初始化连续性场景使用另一个空白临时 Git 项目和 `workspace-write` sandbox；确认前摘要必须保持不变，确认后只允许 `.ezagent/**`、`AGENTS.md` 与受管 `.codex/agents/ezagent-*.toml`。
 - 执行器不自动安装插件、不修改 Codex 全局配置、不提交、不推送、不发布。
-- 原始 JSONL、stderr 和最终消息只保存在被 Git 忽略的 `.artifacts/codex-host-eval/`，不得提交。
+- 原始 JSONL、stderr 和最终消息只保存在被 Git 忽略的 `.artifacts/codex-host-eval/` 与 `.artifacts/codex-post-init-eval/`，不得提交。
 - 模型文本不会自动判为通过；每个场景都需要人工阅读并填写理由。
 
 ## 1. 预检
@@ -60,6 +61,28 @@ npm run plugin:host-eval:verify
 ```
 
 验证器只接受：被测提交仍是当前 `HEAD`、场景集合完整且唯一、命令全部退出 `0`、临时工作区字节摘要未变化、transcript 哈希有效、全部人工复核为 `pass`。
+
+### 初始化后同任务交接回归
+
+普通只读场景通过后，再运行专用的可变工作区评测：
+
+```bash
+npm run plugin:post-init-eval
+```
+
+该评测固定使用“启用 EZagent，然后规划 Go 云服务器端口检测工具”的组合请求。第一轮只能执行初始化预览并请求确认，工作区摘要不得变化；第二轮确认后必须观察到以下精确命令序列：
+
+```text
+integration-preview → integration-init → context → work-preview
+```
+
+评测器自动拒绝 `work-apply`、确认前写入、持久化 active Work Item，以及 `docs/superpowers/` 等非 EZagent 管理路径。逐项阅读 `initial.jsonl`、`follow-up.jsonl` 和最终消息，确认 Router 明确给出模式、理由、下一个 Skill 并实际转交，且没有把 `context` 当成路由完成。然后填写 `evidence.json` 的人工复核结果并运行：
+
+```bash
+npm run plugin:post-init-eval:verify
+```
+
+验证器只接受当前 `HEAD` 和当前安装插件版本完全匹配、命令序列精确、初始化批准没有越过 Work Contract 批准边界、工作区写入范围正确且人工复核通过的证据。
 
 ## 4. 提交脱敏摘要
 

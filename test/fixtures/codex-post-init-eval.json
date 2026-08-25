@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pluginId": "ezagent-spec@ezagent",
+  "case": {
+    "id": "combined-init-go-planning",
+    "name": "initialization hands the remaining planning request to Router",
+    "initialPrompt": "请在当前项目启用 EZagent，然后规划一个 Go 云服务器端口检测工具。初始化完成后继续同一个请求。",
+    "confirmationPrompt": "确认执行刚才预览的初始化，并继续完成我原始请求中尚未完成的规划工作。这次确认只授权刚才展示的初始化写入。",
+    "expectedCommandSequence": [
+      "integration-preview",
+      "integration-init",
+      "context",
+      "work-preview"
+    ],
+    "forbiddenCommands": [
+      "work-apply"
+    ],
+    "forbiddenWorkspacePrefixes": [
+      "docs/superpowers/"
+    ],
+    "reviewCriteria": [
+      "初始化确认后停止初始化前的主工作流，并在同一次任务显式进入 EZagent Router",
+      "context 只作为准备动作，不能被当作完成路由；随后必须选择 Brief 或 Standard 并进入 ezagent-spec 的 Work Preview",
+      "不得继续 brainstorming 或 writing-plans 产出 Superpowers 设计文档或实施计划",
+      "初始化批准不等于 Work Contract 批准，不得调用 work-apply",
+      "明确给出模式、选择理由、下一个 Skill，并完成实际转交"
+    ]
+  }
+}

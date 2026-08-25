@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.1 - 2026-08-25
+
+### 初始化连续性
+
+- 修复“初始化 EZagent 并继续规划”组合请求在同一次任务中恢复旧工作流的问题；初始化成功后会重新提取剩余目标并显式交给 Router。
+- Router 新增完成不变量：`context` 只负责读取可信上下文，只有明确模式、理由、下一个 Skill 并实际转交后才算完成路由。
+- 生成的 `AGENTS.md` 明确 Router 是相关请求的顶层工作流所有者；其他 brainstorming、planning、coding 与 review 能力只能作为路由后的辅助能力。
+- `integration-init` 新增机器可读 `continuation`，区分下一任务自动加载、同任务显式 Router 交接和无法交接时的新任务兜底。
+- 初始化批准与 Work Contract 批准保持独立；组合请求最多生成 Work Preview，不会自动调用 `work-apply`。
+
+### 回归验证
+
+- 新增隔离式双轮 Codex post-init Host Eval，自动验证确认前零写入、`integration-preview → integration-init → context → work-preview` 精确序列、无 `work-apply`，以及仅写 EZagent 管理路径。
+- 新增组合请求语料和交接契约测试，覆盖曾发生路由错误的 Go 云服务器工具规划场景。
+
+### 兼容性说明
+
+- `integration-init` 的成功 JSON 响应新增 `continuation` 字段；按完整对象做深度相等判断的调用方需要接受该新增字段。
+
 ## 0.4.0 - 2026-08-25
 
 ### 工作流可靠性

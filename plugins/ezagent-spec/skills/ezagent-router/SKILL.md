@@ -1,6 +1,6 @@
 ---
 name: ezagent-router
-description: 在已初始化项目中，把编码、分析、文档、策划及其他 Agent 工作路由到最轻且足够可靠的 EZagent Work Mode；只读咨询不创建工作项。
+description: 在已初始化项目中，把编码、分析、文档、策划及其他 Agent 工作路由到最轻且足够可靠的 EZagent Work Mode，并实际转交到对应 Skill；只读咨询不创建工作项。
 ---
 
 # EZagent Router
@@ -20,6 +20,10 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 ```json
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
+
+`context` 只是路由的准备动作，不代表完成路由。Router 是当前请求的顶层工作流所有者；其他 brainstorming、planning、coding 或 review 能力只能在 Router 选定模式并实际转交后作为辅助能力使用。
+
+一次 Router 决策只有在明确记录模式、选择理由、下一个 Skill，并实际转交后才算完成：Consult 直接回答；Quick 转 `$ezagent-light`；Brief、Standard 或 Controlled 转 `$ezagent-spec`；已有 active Work Item 按下述状态转 `$ezagent-execute`、`$ezagent-implement` 或 `$ezagent-review`。不得只重复执行 `context` 后继续旧工作流或结束任务。
 
 若用户明确要求取消或放弃当前 active Work Item，先展示将终止的 Work Item、当前状态，以及 Plan、Receipt、Evidence 与 Journal 历史仍会保留；不得把范围变化或执行困难自行解释为取消。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`，active item 已为空时不得调用取消命令：
 

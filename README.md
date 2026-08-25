@@ -164,6 +164,8 @@ codex plugin marketplace remove ezagent
 
 每个项目只需初始化一次。之后直接描述需求；Codex 与 OpenCode 会读取项目内受管 `AGENTS.md`，Claude Code 则通过插件中可自动调用的 Router Skill 使用同一流程，不需要用户记忆或输入 CLI。这个机制是 Router Skill + 项目规则，不依赖 lifecycle Hook。预览到确认期间应避免并发修改 `AGENTS.md`；token 过期时会重新预览，不覆盖并发修改。
 
+如果同一请求同时包含“初始化 EZagent”和后续工作，初始化成功是当前任务的工作流边界：Initialize Skill 会重新提取剩余目标并显式交给 Router，不会继续初始化前的 brainstorming、writing-plans 或其他主工作流。新写入的 `AGENTS.md` 从下一次任务自动加载；只有宿主无法在当前任务调用 Router 时，才会停止并提示开启新任务。`context` 只是路由准备动作，不等于完成路由；Router 必须明确模式、理由和下一个 Skill，并实际转交。初始化批准也不会被复用为 Work Contract 批准。
+
 Codex 的按需 Specialist 继续使用受管 `.codex/agents/ezagent-*.toml`。Claude Code 与 OpenCode 在执行同一 delegation 时，从插件内 `catalog/experts.json` 精确加载匹配 `expertId` 的定义，并通过各自的原生隔离 subagent 执行；若宿主没有 subagent 能力则关闭失败，不由协调器模拟专家。
 
 ## 共享上下文与知识

@@ -359,7 +359,15 @@ describe("Codex integration initialization", () => {
 
     await expect(
       initializeCodexIntegration(root, "Demo", preview.agentsToken, runtime),
-    ).resolves.toEqual({ initialized: true, root });
+    ).resolves.toEqual({
+      initialized: true,
+      root,
+      continuation: {
+        agentsInstructions: "next-run",
+        sameRun: "invoke-ezagent-router-if-request-remains",
+        fallback: "start-new-run",
+      },
+    });
     await expect(access(join(root, ".ezagent", "project.yaml"))).resolves.toBeUndefined();
   });
 
