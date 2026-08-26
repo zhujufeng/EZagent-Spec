@@ -22,6 +22,7 @@
 - Work Preview 必须把 expert ID 标为“计划匹配”，并明确批准前尚未物化 Agent、尚未实际委派或完成独立审查；同时向用户说明批准后的最小 dispatch 与有界结果回传边界。
 - `required` Specialist 预览的最终答复新增不可省略的“委派边界”三项说明：当前未执行、批准后的最小 dispatch、匹配隔离 project Agent 的真实调用与有界回传；协调器不得模拟专家。
 - Standard 分析参考模板会从自然语言能力需求生成无 expert ID 的 `analysis` Need，并由 Core 在完整 265 人 Catalog 上确定性匹配 delegation；测试同时要求零 uncovered capability 和零 blocker。
+- `domains` 现在按真实 Specialist Catalog token 关闭失败：若 Need 使用目录中不存在的领域词，Core 返回 `domain-unmatched:<token>` blocker 且不生成 delegation，避免未知主题词静默落到 UX 等无关专家；软件工程参考模板固定使用稳定的 `engineering` 领域词。
 
 ### Workspace 文件系统加固
 

@@ -42,5 +42,9 @@ describe("Work Contract v2 Skill reference", () => {
     expect(plan.uncoveredCapabilities).toEqual([]);
     expect(plan.delegations).toHaveLength(1);
     expect(plan.delegations[0]).toMatchObject({ mode: "analysis", sliceId: "slice-tracer" });
+    expect(plan.delegations[0]!.expertId).toMatch(/^ezagent\.engineering\./u);
+    expect(reference).toMatch(/软件系统.*domains.*engineering.*不得.*自造/su);
+    expect(reference).toMatch(/projectSignals.*没有.*精确.*空数组/su);
+    expect(reference).toMatch(/resources.*inputPointers.*sourcePointers.*未知.*空数组/su);
   });
 });

@@ -116,4 +116,32 @@ describe("v2 Specialist selection", () => {
     expect(plan.uncoveredCapabilities).toEqual(["quantum-ledger"]);
     expect(plan.blockers).toContain("capability-uncovered:quantum-ledger");
   });
+
+  test("blocks unknown domains instead of selecting an unrelated expert", () => {
+    const input = selectionInput();
+    const plan = proposeSpecialistPlanV2(catalog, {
+      ...input,
+      assessment: {
+        decision: "required",
+        reasons: ["需求带有目录无法验证的领域词"],
+        needs: [{
+          id: "need-unknown-domain",
+          sliceId: "slice-tracer",
+          purpose: "implementation",
+          capabilities: ["api-design"],
+          domains: ["refund-domain"],
+          projectSignals: [],
+          isolationReason: "domain-judgment",
+        }],
+      },
+      workSpec: {
+        ...input.workSpec,
+        reviewPolicy: { method: "self", reasons: ["测试领域保护"], reviewAfterSlices: 1 },
+      },
+    });
+
+    expect(plan.delegations).toEqual([]);
+    expect(plan.uncoveredCapabilities).toEqual([]);
+    expect(plan.blockers).toEqual(["domain-unmatched:refund-domain"]);
+  });
 });

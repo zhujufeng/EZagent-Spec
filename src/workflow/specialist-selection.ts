@@ -101,8 +101,17 @@ export function proposeSpecialistPlanV2(
       uncovered.add(capability);
       blockers.add(`capability-uncovered:${capability}`);
     }
+    const unmatchedDomains = need.domains.filter((domain) => !catalog.domains.has(domain));
+    for (const domain of unmatchedDomains) blockers.add(`domain-unmatched:${domain}`);
     if (need.purpose === "review" && result.selected.length === 0) {
       blockers.add(`independent-reviewer-missing:${need.id}`);
+    }
+
+    // Domains are exact catalog tokens, but remain soft ranking hints once known.
+    // Never turn an invented token into a delegation to an unrelated Specialist.
+    if (unmatchedDomains.length > 0) {
+      assignedBySlice.set(need.sliceId, assigned);
+      continue;
     }
 
     const evidenceRequirements = unique(slice.criterionIds.flatMap((criterionId) => (
