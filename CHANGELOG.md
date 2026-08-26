@@ -11,6 +11,7 @@
 - 同时要求实施与“未参与实现的独立 Agent 审查”时至少进入 Standard，不再因为只有 1–2 个 Slice 而误降为 Brief。
 - Work Contract 默认收敛为 1–3 个 Slice、1–3 个交付接口和 3–6 条验收条件，并合并同 Slice 的重复 Capability Need；真实 Codex 发布验收仍有界，但复杂 Specialist 预览的单回合上限从 4 分钟调整为 7 分钟。
 - Specialist 规划禁止遍历完整专家 Catalog、根据名称二次猜测 Core 的确定性匹配或使用 shell 管道内联大段 JSON；只允许依据 Core 明确返回的能力缺口修正一次，并在 Codex PTY 中强制使用项目外 `--input-file`，避免预览上下文膨胀和无界重试。
+- 真实宿主验收改用 `workspace-write` 配合前后目录哈希证明批准前零项目写入，使 Codex 能在项目外安全创建 `--input-file`；若宿主同时禁止临时文件和可关闭 EOF 的 stdin，Skills 会立即报告 blocker，不再用 PTY 重启 JSON 命令直至超时。
 
 ### Specialist 可审计委派
 

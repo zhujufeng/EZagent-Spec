@@ -196,7 +196,7 @@ describe("Codex host evaluation corpus", () => {
 });
 
 describe("Codex host evaluation safety", () => {
-  test("builds read-only argv without a shell or sandbox bypass", () => {
+  test("builds workspace-write argv while evidence still enforces zero project changes", () => {
     expect(buildCodexExecArgv(
       "/tmp/host-case",
       "帮我实现登录页",
@@ -207,7 +207,7 @@ describe("Codex host evaluation safety", () => {
       "--json",
       "--ephemeral",
       "--sandbox",
-      "read-only",
+      "workspace-write",
       "--cd",
       "/tmp/host-case",
       "--output-last-message",

@@ -154,7 +154,7 @@ export function buildCodexExecArgv(
     "--json",
     ...(ephemeral ? ["--ephemeral"] : []),
     "--sandbox",
-    "read-only",
+    "workspace-write",
     "--cd",
     root,
     "--output-last-message",

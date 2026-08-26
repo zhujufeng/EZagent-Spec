@@ -193,6 +193,8 @@ describe("Codex Skill contracts", () => {
       expect(skill.body).toMatch(/操作系统临时目录.*项目根目录之外/su);
       expect(skill.body).toMatch(/预览.*Apply.*完全相同.*文件/su);
       expect(skill.body).toMatch(/不得.*shell.*重定向/u);
+      expect(skill.body).toMatch(/临时文件.*禁止写入.*stdin.*EOF.*关闭失败.*不得启动.*JSON 命令/su);
+      expect(skill.body).toMatch(/不得退回 PTY 试探/u);
     }
   });
 
@@ -329,6 +331,7 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/不得.*二次猜测.*Core.*确定性匹配/su);
     expect(spec.body).toMatch(/uncoveredCapabilities.*blockers.*最多.*一次/su);
     expect(spec.body).toMatch(/Codex.*不得.*printf.*shell 管道.*--input-file/su);
+    expect(spec.body).toMatch(/同一份合同.*不得重复启动.*work-preview/su);
   });
 
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {
