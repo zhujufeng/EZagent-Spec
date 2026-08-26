@@ -1,6 +1,6 @@
 ---
 name: ezagent-router
-description: 在已初始化项目中，把编码、分析、文档、策划及其他 Agent 工作路由到最轻且足够可靠的 EZagent Work Mode，并实际转交到对应 Skill；只读咨询不创建工作项。
+description: 在已初始化项目中，把编码、分析、文档、策划及其他 Agent 工作路由到最轻且足够可靠的 EZagent Work Mode，并在需要时选择先规划后实施；只读咨询不创建工作项。
 ---
 
 # EZagent Router
@@ -54,6 +54,16 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 - `Controlled`：敏感信息、对外沟通、发布、预算、生产系统、人员判断或难回滚动作；转 `$ezagent-spec`，每个 Side Effect 仍单独批准。
 
 Work Mode 绑定用户这次要求执行的动作和边界，不绑定主题名称。退款、支付、资金等领域风险本身不得自动升级为 Controlled；请求仅包含分析、规划或本地草拟，且不包含生产写入或外部动作时，默认按实际复杂度进入 Brief 或 Standard。只有这份 Work Contract 本身要求访问真实敏感数据、写入生产或外部系统、发布、预算承诺、人员判断或难回滚动作时才进入 Controlled；未来可能发生的 Side Effect 不得反向抬高当前只读规划的模式。
+
+## Planning-first 自适应策略
+
+Planning-first 是 Work Contract 内的切片与审批策略，不是第六种 Work Mode。它先交付必要的规划材料并取得真实人工认可，再允许实施 Slice 开始。
+
+用户明确要求 PRD、技术设计、实施计划或“先规划后编码 / 先规划后实施”时，必须选择 Planning-first，并按实际影响进入 Brief、Standard 或 Controlled，不得走 Quick。只要求其中一种规划材料时只交付那一种；不得擅自补成三件套。
+
+对包含实施的软件请求，如果仍有会改变范围的未决决策，并且涉及跨系统、数据或 API 边界、多个消费者或多个交付物，应推荐 Planning-first。仅凭用户说“复杂”“大型”或任务看起来工作量大，不得自动选择 Planning-first。目标清楚的 Quick 和不需要设计闸门的简单 Brief 不得附加 PRD、技术设计、实施计划等规划文档包。
+
+如果是否统一多个平台、兼容哪些消费者、迁移边界或发布切片会改变范围，只问最关键的一个问题并给出推荐答案；该范围问题必须在 Work Preview 之前解决。没有这类实质不确定性时，直接把 Planning-first 理由、规划交付物、人工闸门和后续依赖放进同一份 Work Preview，不增加第二次例行预览批准。
 
 不确定时优先问一个会改变结果的问题并给出推荐答案；不要用一轮长问卷。Shared Design Concept 尚未形成时，不急于生成完整资产。
 

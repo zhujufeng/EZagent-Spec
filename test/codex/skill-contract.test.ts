@@ -287,6 +287,30 @@ describe("Codex Skill contracts", () => {
     expect(review.body).toMatch(/v1.*旧编码.*适配/su);
   });
 
+  test("selects Planning-first explicitly or adaptively without inflating small work", async () => {
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+    const execute = await readSkill("ezagent-execute");
+
+    expect(router.body).toMatch(/Planning-first.*PRD.*技术设计.*实施计划.*先规划后(?:编码|实施)/su);
+    expect(router.body).toMatch(/明确要求.*Planning-first.*不得.*Quick/su);
+    expect(router.body).toMatch(/跨系统.*数据.*API.*多个消费者.*多个交付物.*推荐.*Planning-first/su);
+    expect(router.body).toMatch(/仅凭.*复杂.*不得.*Planning-first/su);
+    expect(router.body).toMatch(/Quick.*简单 Brief.*不得.*规划文档包/su);
+    expect(router.body).toMatch(/范围.*问题.*Work Preview.*之前/su);
+
+    expect(spec.body).toMatch(/Planning-first.*references\/planning-first\.md.*完整读取/su);
+    expect(spec.body).toMatch(/项目既有.*文档约定.*没有.*docs\//su);
+    expect(spec.body).toMatch(/规划.*Slice.*humanCheckpoint: true.*human-approval/su);
+    expect(spec.body).toMatch(/实施.*Slice.*blockedBy.*规划.*Slice/su);
+    expect(spec.body).toMatch(/只要求.*规划.*不得.*实施 Slice/su);
+    expect(spec.body).toMatch(/不得.*自动创建.*PRD.*技术设计.*实施计划/su);
+    expect(execute.body).toMatch(/humanCheckpoint: true.*非人工.*Evidence.*交付物.*停止.*明确批准/su);
+    expect(execute.body).toMatch(/不得.*Work Preview.*批准.*human-approval/su);
+    expect(execute.body).toMatch(/用户.*明确认可.*human-approval.*work-review/su);
+    expect(execute.body).toMatch(/拒绝.*不得.*human-approval.*revise/su);
+  });
+
   test("keeps personnel open-ended and specialists optional", async () => {
     const router = await readSkill("ezagent-router");
     const spec = await readSkill("ezagent-spec");
@@ -512,7 +536,7 @@ describe("Codex Skill contracts", () => {
     expect(execute.body).toMatch(/不得用 replan 覆盖未完成委派/u);
   });
 
-  test("ships only the intentional Work Contract reference without placeholders", async () => {
+  test("ships only the intentional Work Contract references without placeholders", async () => {
     for (const directory of EXPECTED_SKILLS) {
       const skillDirectory = `${SKILLS_ROOT}${directory}/`;
       expect((await readdir(skillDirectory)).sort()).toEqual(
@@ -522,11 +546,13 @@ describe("Codex Skill contracts", () => {
       const contents = await readFile(path, "utf8");
       expect(contents).not.toMatch(/TODO|TBD|\[TODO:/u);
     }
-    expect(await readdir(`${SKILLS_ROOT}ezagent-spec/references/`))
-      .toEqual(["work-contract-v2.md"]);
-    expect(await readFile(
-      `${SKILLS_ROOT}ezagent-spec/references/work-contract-v2.md`,
-      "utf8",
-    )).not.toMatch(/TODO|TBD|\[TODO:/u);
+    expect((await readdir(`${SKILLS_ROOT}ezagent-spec/references/`)).sort())
+      .toEqual(["planning-first.md", "work-contract-v2.md"]);
+    for (const reference of ["planning-first.md", "work-contract-v2.md"]) {
+      expect(await readFile(
+        `${SKILLS_ROOT}ezagent-spec/references/${reference}`,
+        "utf8",
+      )).not.toMatch(/TODO|TBD|\[TODO:/u);
+    }
   });
 });

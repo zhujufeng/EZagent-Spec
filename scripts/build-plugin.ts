@@ -36,6 +36,7 @@ const SKILLS = [
   "ezagent-review",
 ] as const;
 const SKILL_REFERENCES = [
+  "skills/ezagent-spec/references/planning-first.md",
   "skills/ezagent-spec/references/work-contract-v2.md",
 ] as const;
 const GENERATED_ENTRIES = [

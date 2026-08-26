@@ -75,6 +75,8 @@ Apply 后必须确认新的 plan revision 与 project Agents 已同步；token �
 
 完成 Slice 后，按其 Criterion 收集真实 Evidence。可用 kinds 为 `command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval`、`external-record`；每条 Evidence 必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID` 和 Criterion IDs。不要把“我认为完成了”当 Evidence。
 
+当前 Slice 为 `humanCheckpoint: true` 时，先完成并收集所有非人工 Evidence，向用户展示可审查的交付物、准确路径、对应 Criterion 和仍缺少的人工判断，然后停止并请求明确批准。不得把 Work Preview 的合同批准、初始化批准、沉默或含糊回复记录成 `human-approval`。用户后续明确认可当前交付物版本时，才把该决定作为绑定当前 Slice 与 Criterion 的 `human-approval` Evidence，并随完整 Evidence Bundle 调用 `work-review`。用户拒绝或要求修改时不得创建 `human-approval`；记录反馈、修正交付物，并让 Slice 保持 executing 或经正常 Review 进入 `revise`，不得启动任何依赖它的下游 Slice。
+
 把完整 Evidence Bundle 从 stdin 提交给本地核心：
 
 ```json

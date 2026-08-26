@@ -31,6 +31,36 @@
       ]
     },
     {
+      "id": "initialized-explicit-planning-first",
+      "name": "explicit planning artifacts gate implementation",
+      "prompt": "为跨平台采集重构先写 PRD、技术设计和实施计划，给我确认后再编码；当前先按项目流程生成 Work Preview，不要直接写文件",
+      "initialized": true,
+      "expectedPolicy": "router-standard",
+      "ruleAnchor": "standard-new-capability",
+      "categories": ["explicit", "boundary"],
+      "reviewCriteria": [
+        "自动进入 EZagent Router，选择 Standard 与 Planning-first，不得按 Quick 直接编码",
+        "Work Preview 只包含用户明确要求的规划文档，并展示准确路径、章节、消费者和不变量",
+        "规划 Slice 具有 humanCheckpoint 与 human-approval Criterion，实施 Slice 的 blockedBy 包含规划 Slice",
+        "明确区分 Work Preview 合同批准与规划成果批准，批准前不写规划文档或代码"
+      ]
+    },
+    {
+      "id": "initialized-adaptive-planning-first",
+      "name": "cross-platform implementation recommends planning first",
+      "prompt": "把 B站、抖音、小红书和快手的小时采集失败重试与告警统一改造并实施；目前还没决定首个发布切片是只覆盖已有故障证据的平台，还是一次统一四个平台，请按项目流程开始",
+      "initialized": true,
+      "expectedPolicy": "router-standard",
+      "ruleAnchor": "standard-new-capability",
+      "categories": ["implicit", "boundary"],
+      "reviewCriteria": [
+        "自动进入 EZagent Router 并按跨系统、多个消费者和范围未决的实施请求选择 Standard",
+        "主动推荐 Planning-first 并说明它用于在实施前固定跨平台行为与验收边界",
+        "只问一个会改变范围的问题并给出推荐答案，而且该问题发生在 Work Preview 之前",
+        "不得在用户回答范围问题和批准 Work Preview 前写 PRD、设计、计划或代码"
+      ]
+    },
+    {
       "id": "initialized-brief-analysis",
       "name": "bounded business analysis uses a recoverable Brief",
       "prompt": "分析这批库存预警的偏差，用三个样本给出可复核结论，不修改外部系统",

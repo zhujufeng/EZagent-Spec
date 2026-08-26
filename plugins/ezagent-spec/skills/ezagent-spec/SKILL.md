@@ -1,6 +1,6 @@
 ---
 name: ezagent-spec
-description: 在已初始化项目中，把需要跨步骤、跨会话或受控执行的任意 Agent 请求整理为 Brief、Work Spec、Slices、Evidence 与 Approval Points，并在一次预览后创建通用 Work Item。
+description: 在已初始化项目中，把需要跨步骤、跨会话或受控执行的任意 Agent 请求整理为 Brief、Work Spec、Slices、Evidence 与 Approval Points；支持先交付规划材料、人工确认后再实施。
 ---
 
 # EZagent Spec
@@ -33,7 +33,7 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 ## 形成通用 Work Contract
 
-生成 Work Contract 前必须把 [references/work-contract-v2.md](references/work-contract-v2.md) 完整读取一次，并严格复用其中的字段名、枚举、稳定 Capability 词表和最接近的有效模板；不得再从 CLI 报错、`--help`、Catalog 或 `dist` 猜 schema。
+生成 Work Contract 前必须把 [references/work-contract-v2.md](references/work-contract-v2.md) 完整读取一次，并严格复用其中的字段名、枚举、稳定 Capability 词表和最接近的有效模板；不得再从 CLI 报错、`--help`、Catalog 或 `dist` 猜 schema。Router 选择 Planning-first 时，还必须把 [references/planning-first.md](references/planning-first.md) 完整读取一次；未选择时不要加载该参考。
 
 根据 Router 已选模式生成 `schemaVersion: 2` 的单个 JSON：
 
@@ -47,6 +47,14 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 - 外部写入或发布只能进入 `controlled`，且目标必须有精确 Approval Point。Controlled Review 必须包含 human 或 mixed 判断以及 `human-approval` Evidence。
 
 合同必须保持最小必要：默认使用 1–3 个 Slice、1–3 个 Deliverable Interface 和 3–6 条 Acceptance Criteria；只有真实依赖或安全边界证明需要时才增加。每个字段写可验证的最短内容，不重复同一风险、范围或证据要求。对同一 Slice 中 purpose 相同、能力与隔离原因相同的工作，合并为一个 Capability Need；不要按设计、编码、测试等阶段机械复制专家，也不要为每条 Criterion 单独建 Need。实现与 `independent-review` purpose 必须保持分离，不能为了缩短合同而合并。
+
+### Planning-first 合同映射
+
+Planning-first 不新增 schema 字段。只为用户明确要求的规划材料，或 Router 推荐且用户接受纳入本次 Outcome 的规划材料，创建 `kind: document` 的 Deliverable Interface；不得自动创建 PRD、技术设计、实施计划三件套。文档位置优先遵守项目既有的文档约定；没有约定时才建议 `docs/` 下的清晰路径，并在 Work Preview 中逐项展示准确路径、必需章节、消费者和不变量。
+
+把规划材料放在第一个可交付的规划 Slice。若本 Work Item 还包含实施，该规划 Slice 必须设置 `humanCheckpoint: true`，并覆盖至少一个要求 `human-approval` Evidence 的 Criterion；实施 Slice 的 `blockedBy` 必须包含这个规划 Slice。不得把 Work Preview 的合同批准冒充规划成果批准，也不得在缺少该 Evidence 时开始实施。用户只要求规划，包括调研、PRD、技术设计或实施计划时，不得为了“以后可能会做”增加实施 Slice。
+
+规划材料可以由同一个 Slice 共同交付，只有真实依赖才拆成多段；选择 Specialist 仍按能力与隔离收益判断，不能因为启用 Planning-first 就机械增加专家。会改变交付范围的唯一问题必须在 Work Preview 前提出；规划执行中发现新的实质范围变化时遵守本 Skill 的范围变化规则。
 
 Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAssessment` 是 Work Contract 的必填判断。Assessment 不得填写 expert ID、指定人数或借岗位名称预选团队；本地核心根据已批准的 Capability Needs 和运行时 Catalog 确定性生成 Specialist Plan。若需要独立审查，review need 必须使用 `independent-review`，并与同一 Slice 的实现者隔离。任何生成的委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
 

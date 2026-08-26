@@ -195,11 +195,12 @@ describe.sequential("self-contained multi-host plugin package", () => {
     expect(await treeSnapshot(SOURCE_PLUGIN_ROOT)).toEqual(firstTree);
 
     const paths = firstTree.map((entry) => entry.path);
-    expect(paths).toHaveLength(22);
+    expect(paths).toHaveLength(23);
     expect(paths).toContain("LICENSE");
     expect(paths).toContain(".claude-plugin/plugin.json");
     expect(paths).toContain(".codex-plugin/plugin.json");
     expect(paths.filter((path) => /^skills\/[^/]+\/SKILL\.md$/u.test(path))).toHaveLength(8);
+    expect(paths).toContain("skills/ezagent-spec/references/planning-first.md");
     expect(paths).toContain("skills/ezagent-spec/references/work-contract-v2.md");
     expect(paths).toContain("dist/ezagent-cli.mjs");
     expect(paths).toContain("catalog/experts.json");
@@ -235,19 +236,21 @@ describe.sequential("self-contained multi-host plugin package", () => {
         await readFile(join(SOURCE_PLUGIN_ROOT, "skills", skill, "SKILL.md")),
       );
     }
-    expect(await readFile(join(
-      first,
-      "skills",
-      "ezagent-spec",
-      "references",
-      "work-contract-v2.md",
-    ))).toEqual(await readFile(join(
-      SOURCE_PLUGIN_ROOT,
-      "skills",
-      "ezagent-spec",
-      "references",
-      "work-contract-v2.md",
-    )));
+    for (const reference of ["planning-first.md", "work-contract-v2.md"]) {
+      expect(await readFile(join(
+        first,
+        "skills",
+        "ezagent-spec",
+        "references",
+        reference,
+      ))).toEqual(await readFile(join(
+        SOURCE_PLUGIN_ROOT,
+        "skills",
+        "ezagent-spec",
+        "references",
+        reference,
+      )));
+    }
 
     expect(await readFile(join(first, "catalog", "experts.json"))).toEqual(
       await readFile(join(REPOSITORY_ROOT, "catalog", "normalized", "experts.json")),

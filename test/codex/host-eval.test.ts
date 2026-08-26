@@ -124,6 +124,12 @@ describe("Codex host evaluation corpus", () => {
     const independent = selectHostEvalCases(suite, "initialized-independent-review")[0]!;
     expect(independent.reviewCriteria.join("\n"))
       .toMatch(/一次 work-preview.*engineering-senior-developer.*engineering-code-reviewer/su);
+    const explicitPlanning = selectHostEvalCases(suite, "initialized-explicit-planning-first")[0]!;
+    expect(explicitPlanning.reviewCriteria.join("\n"))
+      .toMatch(/规划 Slice.*human-approval.*实施 Slice.*blockedBy/su);
+    const adaptivePlanning = selectHostEvalCases(suite, "initialized-adaptive-planning-first")[0]!;
+    expect(adaptivePlanning.reviewCriteria.join("\n"))
+      .toMatch(/推荐 Planning-first.*范围.*问题.*Work Preview/su);
     expect(selectHostEvalCases(suite).map(({ id }) => id))
       .toEqual(suite.cases.map(({ id }) => id));
     expect(() => selectHostEvalCases(suite, "missing-case"))

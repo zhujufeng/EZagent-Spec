@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.1 - Unreleased
+
+### Planning-first 自适应策略
+
+- Router 新增先规划后实施策略：用户明确要求 PRD、技术设计、实施计划或“先规划后编码 / 实施”时强制启用，复杂跨系统、数据或 API 边界且仍有范围决策的实施请求会得到有理由的推荐。
+- Planning-first 不是新的 Work Mode，也不会让普通 Quick 或简单 Brief 自动膨胀；只按用户明确要求或已接受的推荐创建必要文档，不会擅自补齐 PRD、技术设计、实施计划三件套。
+- 规划交付物继续使用现有 `document` Deliverable Interface；规划 Slice 使用 `humanCheckpoint` 和 `human-approval` Evidence，实施 Slice 通过 `blockedBy` 等待规划成果被人工认可。Work Preview 批准不再可能被误当成规划成果批准。
+- Execute 在人工检查点会先展示交付物并暂停；只有用户明确认可当前版本才记录 `human-approval`，拒绝、含糊回复或旧的初始化 / Work Preview 批准都不能解锁下游实施。
+- 新增按需读取的 Planning-first 参考模板，并由真实 Work Contract parser 验证文档接口、人工闸门和 Slice 依赖，而不是只靠提示词文本断言。
+- Codex 宿主验收语料新增“明确要求三份规划材料”和“跨平台实施应自适应推荐”两条边界用例，供发布前执行真实路由回归。
+- README 新增面向非开发同事的自然语言用法、适用边界、两次确认说明和可观察的正确行为。
+
+### 兼容性说明
+
+- 没有新增 schema、CLI 命令或持久化字段；现有 v2 Work Contract、旧工作项和 0.5.0 调用方式保持兼容。
+- 这是路由与合同生成行为增强。正式分发前仍需发布新的带版本标签 Release；已安装的 0.5.0 不会自动获得本项规则。
+
 ## 0.5.0 - 2026-08-26
 
 ### Agent 宿主可靠性

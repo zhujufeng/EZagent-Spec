@@ -11,12 +11,40 @@ const REFERENCE_PATH = fileURLToPath(new URL(
   "../../plugins/ezagent-spec/skills/ezagent-spec/references/work-contract-v2.md",
   import.meta.url,
 ));
+const PLANNING_FIRST_REFERENCE_PATH = fileURLToPath(new URL(
+  "../../plugins/ezagent-spec/skills/ezagent-spec/references/planning-first.md",
+  import.meta.url,
+));
 const CATALOG_PATH = fileURLToPath(new URL(
   "../../plugins/ezagent-spec/catalog/experts.json",
   import.meta.url,
 ));
 
 describe("Work Contract v2 Skill reference", () => {
+  test("ships a valid Planning-first contract with a real human gate before implementation", async () => {
+    const reference = await readFile(PLANNING_FIRST_REFERENCE_PATH, "utf8");
+    const match = /<!-- PLANNING_FIRST_TEMPLATE -->\s*```json\s*([\s\S]*?)\s*```/u.exec(reference);
+    expect(match).not.toBeNull();
+    const contract = parseWorkContractDraft(JSON.parse(match![1]!) as unknown);
+    const planningSlice = contract.workSpec.slicePlan.find(({ id }) => id === "slice-planning");
+    const implementationSlice = contract.workSpec.slicePlan.find(
+      ({ id }) => id === "slice-implementation",
+    );
+    const planningCriteria = contract.workSpec.acceptanceCriteria.filter(({ id }) =>
+      planningSlice?.criterionIds.includes(id)
+    );
+
+    expect(contract.workSpec.mode).toBe("standard");
+    expect(contract.workSpec.deliverableInterfaces.filter(({ kind }) => kind === "document"))
+      .toHaveLength(3);
+    expect(planningSlice).toMatchObject({ humanCheckpoint: true, blockedBy: [] });
+    expect(planningCriteria.some(({ requiredEvidenceKinds }) =>
+      requiredEvidenceKinds.includes("human-approval")
+    )).toBe(true);
+    expect(implementationSlice?.blockedBy).toContain("slice-planning");
+    expect(implementationSlice?.deliverableInterfaceIds).toContain("deliverable-implementation");
+  });
+
   test("ships one valid Standard analysis template that Core can delegate without blockers", async () => {
     const reference = await readFile(REFERENCE_PATH, "utf8");
     const match = /<!-- STANDARD_ANALYSIS_TEMPLATE -->\s*```json\s*([\s\S]*?)\s*```/u.exec(reference);
