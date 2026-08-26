@@ -118,6 +118,9 @@ describe("Codex host evaluation corpus", () => {
 
     expect(selectHostEvalCases(suite, "initialized-indirect-expert-request"))
       .toEqual([expect.objectContaining({ id: "initialized-indirect-expert-request" })]);
+    const indirect = selectHostEvalCases(suite, "initialized-indirect-expert-request")[0]!;
+    expect(indirect.reviewCriteria.join("\n"))
+      .toMatch(/一次 work-preview.*engineering-backend-architect/su);
     expect(selectHostEvalCases(suite).map(({ id }) => id))
       .toEqual(suite.cases.map(({ id }) => id));
     expect(() => selectHostEvalCases(suite, "missing-case"))

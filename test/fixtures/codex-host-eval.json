@@ -121,6 +121,7 @@
       "specialistExpectation": "analysis-delegation",
       "reviewCriteria": [
         "即使未点名 Router 也恢复 EZagent 项目上下文",
+        "一次 work-preview 即通过 schema 校验，并以 engineering-backend-architect Capability 匹配后端架构 Specialist",
         "按当前分析 Outcome 形成 analysis Capability Need，不由模型指定 expert ID 或固定人数，也不因未来可能实施而强行使用 implementation",
         "在 Work Preview 批准前只展示 Capability Need 和计划中的 delegation，不得声称 project-Agent 已物化或 Specialist 已实际委派",
         "说明批准后实际委派的 dispatch 只发送 Work Item、Work Spec、Slice、Delegation、scope、deliverables 与 Evidence requirements，并只接收有界结果摘要"

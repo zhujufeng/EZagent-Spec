@@ -35,16 +35,22 @@ describe("Work Contract v2 Skill reference", () => {
 
     expect(contract.workSpec.mode).toBe("standard");
     expect(contract.specialistAssessment.needs).toEqual([
-      expect.objectContaining({ purpose: "analysis", capabilities: ["architecture-design"] }),
+      expect.objectContaining({
+        purpose: "analysis",
+        capabilities: ["engineering-backend-architect"],
+      }),
     ]);
     expect(JSON.stringify(raw)).not.toMatch(/expertId|ezagent\./u);
     expect(plan.blockers).toEqual([]);
     expect(plan.uncoveredCapabilities).toEqual([]);
     expect(plan.delegations).toHaveLength(1);
     expect(plan.delegations[0]).toMatchObject({ mode: "analysis", sliceId: "slice-tracer" });
-    expect(plan.delegations[0]!.expertId).toMatch(/^ezagent\.engineering\./u);
+    expect(plan.delegations[0]!.expertId)
+      .toBe("ezagent.engineering.engineering-backend-architect");
     expect(reference).toMatch(/软件系统.*domains.*engineering.*不得.*自造/su);
     expect(reference).toMatch(/projectSignals.*没有.*精确.*空数组/su);
     expect(reference).toMatch(/resources.*inputPointers.*sourcePointers.*未知.*空数组/su);
+    expect(reference).toMatch(/Boundary 顶层.*不得.*access/su);
+    expect(reference).toMatch(/access.*只属于.*resources.*resource 元素/su);
   });
 });

@@ -9,7 +9,7 @@
 - `purpose`: `analysis`、`implementation`、`review`。
 - `isolationReason`: `domain-judgment`、`context-isolation`、`parallel-work`、`independent-review`。
 - `review` 必须搭配 `independent-review`；其他 purpose 不得使用 `independent-review`。
-- 不填写 expert ID。不要发明主题专属 capability。优先从稳定通用词表选一个最小能力：分析用 `architecture-design`、`evidence-analysis`、`decision-support` 或 `structured-planning`；实施用 `production-implementation` 或 `workflow-execution`；审查用 `quality-review` 或 `evidence-based-review`。
+- 不填写 expert ID。不要发明主题专属 capability。优先从稳定通用词表选一个最小能力：后端服务、API、数据库、事务或分布式一致性分析使用 `engineering-backend-architect`；只有无法进一步归类的通用系统分析才使用 `architecture-design`；其他分析可用 `evidence-analysis`、`decision-support` 或 `structured-planning`；实施用 `production-implementation` 或 `workflow-execution`；审查用 `quality-review` 或 `evidence-based-review`。
 - `domains` 只能使用目录中的稳定领域词。软件系统、服务、API、数据库和工程架构任务使用 `domains: ["engineering"]`，不得自造 `refund-domain`、`distributed-consistency`、`payment-integration` 等主题词；主题细节写进 reasons、Scope、Criterion 和交付接口。
 - `projectSignals` 只填写已从项目或目录精确观察到的 kebab-case token；没有精确观察值时使用空数组 `[]`，不得填写自然语言句子或猜测 token。
 - 仅要求分析时使用 `analysis`，不要为了将来可能实施而改成 `implementation`。只有用户明确要求实施，或本 Work Item 的 Outcome 本身包含代码、配置、数据或业务资产变更时，才使用 `implementation`。
@@ -22,7 +22,7 @@
 - `workSpec` 精确字段：`mode`、`outcome`、`scope`、`nonGoals`、`deliverableInterfaces`、`acceptanceCriteria`、`boundaries`、`approvalPoints`、`reviewPolicy`、`slicePlan`。
 - Deliverable kind: `code`、`document`、`analysis`、`dataset`、`visual`、`draft-action`、`other`。
 - Evidence kind 只能是：`command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval`、`external-record`。
-- Boundary dimension: `resource`、`data`、`people`、`time`、`budget`、`system`、`operation`。resource 还需 `access`: `read`、`draft`、`write`、`publish`。
+- Boundary dimension: `resource`、`data`、`people`、`time`、`budget`、`system`、`operation`。Boundary 顶层始终只有 `id`、`dimension`、`rule`、`resources`，不得在 Boundary 顶层填写 `access`。`access` 只属于 `resources` 中的 resource 元素；非空元素精确形状为 `{kind,locator,purpose,access}`，其中 access 为 `read`、`draft`、`write` 或 `publish`。
 - Review method: `self`、`independent-agent`、`human`、`mixed`；`reviewAfterSlices` 固定为 `1`。
 - Slice 精确字段：`id`、`title`、`intendedOutcome`、`inputPointers`、`deliverableInterfaceIds`、`criterionIds`、`blockedBy`、`humanCheckpoint`。`inputPointers` 必须是 pointer 对象数组。
 - `resources`、`inputPointers`、`sourcePointers` 未知时一律使用空数组 `[]`；不得把它们改成字符串数组或增加未列出的字段。
@@ -30,7 +30,7 @@
 
 ## Standard 分析模板
 
-只替换自然语言文字，保留字段形状与枚举。软件系统分析保留 `capabilities: ["architecture-design"]`、`domains: ["engineering"]`、`projectSignals: []`。没有精确观察到来源、资源或 pointer 时，`resources`、`inputPointers`、`sourcePointers` 保持空数组。默认保留一个 tracer Slice；只有存在真实依赖或审批边界时才增加 Slice，不要复制 Capability Need。
+只替换自然语言文字，保留字段形状与枚举。后端服务、API、数据库、事务或分布式一致性分析保留 `capabilities: ["engineering-backend-architect"]`、`domains: ["engineering"]`、`projectSignals: []`。没有精确观察到来源、资源或 pointer 时，`resources`、`inputPointers`、`sourcePointers` 保持空数组。默认保留一个 tracer Slice；只有存在真实依赖或审批边界时才增加 Slice，不要复制 Capability Need。
 
 <!-- STANDARD_ANALYSIS_TEMPLATE -->
 ```json
@@ -44,7 +44,7 @@
         "id": "need-analysis",
         "sliceId": "slice-tracer",
         "purpose": "analysis",
-        "capabilities": ["architecture-design"],
+        "capabilities": ["engineering-backend-architect"],
         "domains": ["engineering"],
         "projectSignals": [],
         "isolationReason": "domain-judgment"
