@@ -80,6 +80,18 @@ export const hostEvalSuiteSchema = z.strictObject({
 
 export type HostEvalSuite = z.infer<typeof hostEvalSuiteSchema>;
 
+export function selectHostEvalCases(
+  suite: HostEvalSuite,
+  caseId?: string,
+): HostEvalSuite["cases"] {
+  if (caseId === undefined) return suite.cases;
+  const selected = suite.cases.filter(({ id }) => id === caseId);
+  if (selected.length !== 1) {
+    throw new Error(`unknown Codex host evaluation case: ${caseId}`);
+  }
+  return selected;
+}
+
 export async function loadHostEvalSuite(path: string): Promise<HostEvalSuite> {
   return hostEvalSuiteSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
 }
@@ -390,8 +402,9 @@ export async function createArtifactRunRoot(base: string, runId: string): Promis
   return runRoot;
 }
 
-async function runHostEvaluation(): Promise<string> {
+async function runHostEvaluation(caseId?: string): Promise<string> {
   const suite = await loadHostEvalSuite(SUITE_PATH);
+  const fixtures = selectHostEvalCases(suite, caseId);
   const codexVersion = (await checkedCommand("codex", ["--version"], REPOSITORY_ROOT)).stdout.trim();
   const pluginList = await checkedCommand("codex", ["plugin", "list", "--json"], REPOSITORY_ROOT);
   const plugin = installedPlugin(JSON.parse(pluginList.stdout) as unknown);
@@ -411,7 +424,7 @@ async function runHostEvaluation(): Promise<string> {
   const runRoot = await createArtifactRunRoot(ARTIFACT_ROOT, runId);
   const results: HostEvalEvidence["cases"][number][] = [];
 
-  for (const fixture of suite.cases) {
+  for (const fixture of fixtures) {
     const caseRoot = join(runRoot, fixture.id);
     await mkdir(caseRoot);
     const workspaceRoot = await prepareWorkspace(fixture.initialized);
@@ -490,13 +503,14 @@ async function newestEvidencePath(): Promise<string> {
   return join(ARTIFACT_ROOT, newest, "evidence.json");
 }
 
-async function verifyEvidence(path?: string): Promise<string> {
+async function verifyEvidence(path?: string, caseId?: string): Promise<string> {
   const suite = await loadHostEvalSuite(SUITE_PATH);
+  const fixtures = selectHostEvalCases(suite, caseId);
   const evidencePath = path === undefined ? await newestEvidencePath() : resolve(path);
   const currentCommit = (await checkedCommand("git", ["rev-parse", "HEAD"], REPOSITORY_ROOT)).stdout.trim();
   verifyHostEvalEvidence(
     JSON.parse(await readFile(evidencePath, "utf8")) as unknown,
-    suite.cases.map(({ id }) => id),
+    fixtures.map(({ id }) => id),
     currentCommit,
   );
   return evidencePath;
@@ -506,6 +520,11 @@ async function main(args: readonly string[]): Promise<void> {
   const command = args[0];
   if (command === "run" && args.length === 1) {
     const evidencePath = await runHostEvaluation();
+    process.stdout.write(`Codex host evaluation evidence: ${evidencePath}\n`);
+    return;
+  }
+  if (command === "run" && args.length === 3 && args[1] === "--case") {
+    const evidencePath = await runHostEvaluation(args[2]);
     process.stdout.write(`Codex host evaluation evidence: ${evidencePath}\n`);
     return;
   }
@@ -520,8 +539,24 @@ async function main(args: readonly string[]): Promise<void> {
       process.stdout.write(`Codex host evaluation evidence verified: ${evidencePath}\n`);
       return;
     }
+    if (args.length === 3 && args[1] === "--case") {
+      const evidencePath = await verifyEvidence(undefined, args[2]);
+      process.stdout.write(`Codex host evaluation evidence verified: ${evidencePath}\n`);
+      return;
+    }
+    if (
+      args.length === 5
+      && args[1] === "--case"
+      && args[3] === "--evidence"
+    ) {
+      const evidencePath = await verifyEvidence(args[4], args[2]);
+      process.stdout.write(`Codex host evaluation evidence verified: ${evidencePath}\n`);
+      return;
+    }
   }
-  throw new Error("usage: codex-host-eval <run|verify [--evidence path]>");
+  throw new Error(
+    "usage: codex-host-eval <run [--case id]|verify [--case id] [--evidence path]>",
+  );
 }
 
 const entryPath = process.argv[1];

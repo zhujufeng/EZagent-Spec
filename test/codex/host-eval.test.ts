@@ -12,6 +12,7 @@ import {
   hostEvalProcessOptions,
   installedPlugin,
   loadHostEvalSuite,
+  selectHostEvalCases,
   threadIdFromJsonl,
   verifyHostEvalEvidence,
 } from "../../scripts/codex-host-eval.js";
@@ -112,6 +113,17 @@ function passingPostInitEvidence(): unknown {
 }
 
 describe("Codex host evaluation corpus", () => {
+  test("selects one named case for bounded regression runs", async () => {
+    const suite = await loadHostEvalSuite(SUITE_PATH);
+
+    expect(selectHostEvalCases(suite, "initialized-indirect-expert-request"))
+      .toEqual([expect.objectContaining({ id: "initialized-indirect-expert-request" })]);
+    expect(selectHostEvalCases(suite).map(({ id }) => id))
+      .toEqual(suite.cases.map(({ id }) => id));
+    expect(() => selectHostEvalCases(suite, "missing-case"))
+      .toThrow(/unknown.*missing-case/iu);
+  });
+
   test("covers every activation policy and behavioral category", async () => {
     const suite = await loadHostEvalSuite(SUITE_PATH);
 
