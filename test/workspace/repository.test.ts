@@ -182,7 +182,7 @@ describe("WorkspaceRepository.initialize", () => {
     }
 
     const repository = new WorkspaceRepository(linked);
-    expect(repository.projectRoot).toBe(await realpath(actual));
+    expect(repository.projectRoot).toBe(await realpath(linked));
     await repository.initialize(demoConfig);
     await expect(readFile(join(actual, ".ezagent", "project.yaml"), "utf8"))
       .resolves.toContain("name: Demo");
