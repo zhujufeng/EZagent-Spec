@@ -8,6 +8,7 @@
 - 五个会提交 JSON 的 canonical Skills 统一要求：优先使用会关闭 EOF 的非交互 stdin；必要时只在项目根目录之外的操作系统临时目录创建权限受限、非符号链接的普通文件，并让 Preview 与 Apply 复用完全相同的输入字节，结束后清理，避免污染同事的业务目录。
 - Router 现在先按用户要求的 Outcome、影响和可逆性定模式；源码、样本、写权限或 CodeGraph 等辅助工具缺失只会成为后续 blocker，不再把 Brief/Standard/Controlled 错降为 Consult。新增导出、可复核多样本分析，以及“询问协作角色并要求开始项目流程”等边界也给出明确判定。
 - Work Mode 现在按本次获批动作而不是风险主题名称判断：退款、支付等内部分析或本地规划在明确排除真实生产/外部动作时保持 Brief/Standard；只有合同本身包含敏感数据、生产写入、发布、预算、人员判断或难回滚动作才进入 Controlled。
+- 同时要求实施与“未参与实现的独立 Agent 审查”时至少进入 Standard，不再因为只有 1–2 个 Slice 而误降为 Brief。
 - Work Contract 默认收敛为 1–3 个 Slice、1–3 个交付接口和 3–6 条验收条件，并合并同 Slice 的重复 Capability Need；真实 Codex 发布验收仍有界，但复杂 Specialist 预览的单回合上限从 4 分钟调整为 7 分钟。
 
 ### Specialist 可审计委派

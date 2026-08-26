@@ -308,6 +308,7 @@ describe("Codex Skill contracts", () => {
     expect(router.body).toMatch(/not-needed.*Capability Needs/su);
     expect(router.body).toMatch(/资金.*领域风险.*本身.*不得.*Controlled/su);
     expect(router.body).toMatch(/仅.*分析.*规划.*不包含.*生产.*外部.*Standard/su);
+    expect(router.body).toMatch(/实现.*未参与实现.*独立 Agent 审查.*至少.*Standard/su);
     expect(assessment).toBeGreaterThan(shared);
     expect(preview).toBeGreaterThan(assessment);
     expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
