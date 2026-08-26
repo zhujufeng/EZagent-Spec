@@ -321,6 +321,8 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/批准前.*尚未.*实际委派.*尚未.*独立审查/su);
     expect(spec.body).toMatch(/不得声称.*已完成审查/u);
     expect(spec.body).toMatch(/批准后.*dispatch.*Work Item ID.*Evidence requirements.*有界.*摘要/su);
+    expect(spec.body).toMatch(/Specialist Assessment.*required.*最终答复.*委派边界.*不得省略/su);
+    expect(spec.body).toMatch(/匹配的隔离 project Agent.*协调器.*不得.*模拟/su);
   });
 
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {

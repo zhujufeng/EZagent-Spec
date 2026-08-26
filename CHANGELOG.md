@@ -17,6 +17,7 @@
 - 新生成的 start/completion receipt 升级为 schema v2，并用 `dispatchFingerprint` 绑定 Work Item、Work Spec、Slice、专家、范围、交付接口、Criterion 与 Evidence requirements。
 - completion 必须回填 start receipt 的同一指纹；计划、专家或 dispatch 漂移会在写入回执前关闭失败。既有 schema v1 receipt 继续兼容读取与完成。
 - Work Preview 必须把 expert ID 标为“计划匹配”，并明确批准前尚未物化 Agent、尚未实际委派或完成独立审查；同时向用户说明批准后的最小 dispatch 与有界结果回传边界。
+- `required` Specialist 预览的最终答复新增不可省略的“委派边界”三项说明：当前未执行、批准后的最小 dispatch、匹配隔离 project Agent 的真实调用与有界回传；协调器不得模拟专家。
 
 ### Workspace 文件系统加固
 
