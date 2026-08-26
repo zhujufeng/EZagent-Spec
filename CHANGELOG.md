@@ -12,6 +12,7 @@
 - Work Contract 默认收敛为 1–3 个 Slice、1–3 个交付接口和 3–6 条验收条件，并合并同 Slice 的重复 Capability Need；真实 Codex 发布验收仍有界，但复杂 Specialist 预览的单回合上限从 4 分钟调整为 7 分钟。
 - Specialist 规划禁止遍历完整专家 Catalog、根据名称二次猜测 Core 的确定性匹配、扫描 `dist` 反推 schema 或用 PTY 反复试探 JSON；只允许依据 Core 明确返回的能力缺口修正一次，避免预览上下文膨胀和无界重试。
 - 真实宿主验收改用 `workspace-write` 配合前后目录哈希证明批准前零项目写入。Codex 文件能力拒绝项目外临时文件时，Skills 会改用为 Windows 命令行预留余量的 24,576-byte `--input-json`；该 argv 通道可能被宿主记录，因此敏感内容关闭失败，stdin 与 `--input-file` 仍是首选。
+- `ezagent-spec` 新增按需读取的精确 Work Contract v2 参考：字段、枚举、Evidence、Slice 指针与稳定 Capability 词表都由真实 Core 测试验证，避免靠校验报错逐层猜 schema。仅要求分析时生成 `analysis` Need；只有当前 Work Item 明确包含实施或资产变更才生成 `implementation` Need。
 
 ### Specialist 可审计委派
 
@@ -20,6 +21,7 @@
 - completion 必须回填 start receipt 的同一指纹；计划、专家或 dispatch 漂移会在写入回执前关闭失败。既有 schema v1 receipt 继续兼容读取与完成。
 - Work Preview 必须把 expert ID 标为“计划匹配”，并明确批准前尚未物化 Agent、尚未实际委派或完成独立审查；同时向用户说明批准后的最小 dispatch 与有界结果回传边界。
 - `required` Specialist 预览的最终答复新增不可省略的“委派边界”三项说明：当前未执行、批准后的最小 dispatch、匹配隔离 project Agent 的真实调用与有界回传；协调器不得模拟专家。
+- Standard 分析参考模板会从自然语言能力需求生成无 expert ID 的 `analysis` Need，并由 Core 在完整 265 人 Catalog 上确定性匹配 delegation；测试同时要求零 uncovered capability 和零 blocker。
 
 ### Workspace 文件系统加固
 

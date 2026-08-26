@@ -35,6 +35,9 @@ const SKILLS = [
   "ezagent-implement",
   "ezagent-review",
 ] as const;
+const SKILL_REFERENCES = [
+  "skills/ezagent-spec/references/work-contract-v2.md",
+] as const;
 const GENERATED_ENTRIES = [
   "dist",
   "catalog",
@@ -59,6 +62,7 @@ const PLUGIN_FILES = [
   "licenses/npm/yaml@2.9.0/LICENSE",
   "licenses/npm/zod@4.4.3/LICENSE",
   ...SKILLS.map((skill) => `skills/${skill}/SKILL.md`),
+  ...SKILL_REFERENCES,
 ] as const;
 const ALLOWED_PLUGIN_DIRECTORIES = new Set([
   ".claude-plugin",
@@ -71,6 +75,7 @@ const ALLOWED_PLUGIN_DIRECTORIES = new Set([
   "licenses/npm/zod@4.4.3",
   "skills",
   ...SKILLS.map((skill) => `skills/${skill}`),
+  "skills/ezagent-spec/references",
 ]);
 const MAX_SMALL_SOURCE_BYTES = 4 * 1_048_576;
 const MAX_PLUGIN_FILE_BYTES = 32 * 1_048_576;
@@ -277,6 +282,15 @@ async function assembleStage(stage: string, options: BuildPluginOptions): Promis
       SOURCE_PLUGIN_ROOT,
       `skills/${skill}/SKILL.md`,
       join(stage, "skills", skill, "SKILL.md"),
+      MAX_SMALL_SOURCE_BYTES,
+      hooks,
+    );
+  }
+  for (const reference of SKILL_REFERENCES) {
+    await copyStableFile(
+      SOURCE_PLUGIN_ROOT,
+      reference,
+      join(stage, reference),
       MAX_SMALL_SOURCE_BYTES,
       hooks,
     );

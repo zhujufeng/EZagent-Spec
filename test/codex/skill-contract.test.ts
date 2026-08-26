@@ -315,7 +315,8 @@ describe("Codex Skill contracts", () => {
     expect(router.body).toMatch(/仅.*分析.*规划.*不包含.*生产.*外部.*Standard/su);
     expect(router.body).toMatch(/实现.*未参与实现.*独立 Agent 审查.*至少.*Standard/su);
     expect(router.body).toMatch(/询问.*角色.*开始分析.*行为.*数据契约.*至少.*Standard/su);
-    expect(router.body).toMatch(/至少一个.*implementation.*Capability Need/su);
+    expect(router.body).toMatch(/仅.*明确要求实施.*Work Item.*Outcome.*变更.*implementation/su);
+    expect(router.body).toMatch(/仅.*分析.*analysis.*不得.*未来.*implementation/su);
     expect(router.body).toMatch(/Work Contract.*定义.*不得.*CodeGraph.*枚举.*业务文件.*Tracer Slice/su);
     expect(assessment).toBeGreaterThan(shared);
     expect(preview).toBeGreaterThan(assessment);
@@ -337,6 +338,7 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/Codex.*不得.*printf.*shell 管道.*--input-file/su);
     expect(spec.body).toMatch(/同一份合同.*不得重复启动.*work-preview/su);
     expect(spec.body).toMatch(/公开.*stdin.*--input-file.*--input-json.*不得.*--help.*dist/su);
+    expect(spec.body).toMatch(/生成 Work Contract 前.*references\/work-contract-v2\.md.*完整读取/su);
   });
 
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {
@@ -510,13 +512,21 @@ describe("Codex Skill contracts", () => {
     expect(execute.body).toMatch(/不得用 replan 覆盖未完成委派/u);
   });
 
-  test("does not create optional Skill scaffolding or placeholders", async () => {
+  test("ships only the intentional Work Contract reference without placeholders", async () => {
     for (const directory of EXPECTED_SKILLS) {
       const skillDirectory = `${SKILLS_ROOT}${directory}/`;
-      expect(await readdir(skillDirectory)).toEqual(["SKILL.md"]);
+      expect((await readdir(skillDirectory)).sort()).toEqual(
+        directory === "ezagent-spec" ? ["SKILL.md", "references"] : ["SKILL.md"],
+      );
       const path = `${skillDirectory}SKILL.md`;
       const contents = await readFile(path, "utf8");
       expect(contents).not.toMatch(/TODO|TBD|\[TODO:/u);
     }
+    expect(await readdir(`${SKILLS_ROOT}ezagent-spec/references/`))
+      .toEqual(["work-contract-v2.md"]);
+    expect(await readFile(
+      `${SKILLS_ROOT}ezagent-spec/references/work-contract-v2.md`,
+      "utf8",
+    )).not.toMatch(/TODO|TBD|\[TODO:/u);
   });
 });

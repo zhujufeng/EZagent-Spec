@@ -1,0 +1,120 @@
+# Work Contract v2 精确输入契约
+
+生成 `work-preview` 输入时只使用本页字段名和枚举。所有对象都是 strict object，不得增加解释性字段。所有 ID 使用小写 kebab-case；数组按最小必要填写。
+
+## Specialist Assessment
+
+- `decision`: `not-needed` 或 `required`。前者的 `needs` 必须为空；后者至少一个 Need。
+- Need 必填：`id`、`sliceId`、`purpose`、`capabilities`、`domains`、`projectSignals`、`isolationReason`。
+- `purpose`: `analysis`、`implementation`、`review`。
+- `isolationReason`: `domain-judgment`、`context-isolation`、`parallel-work`、`independent-review`。
+- `review` 必须搭配 `independent-review`；其他 purpose 不得使用 `independent-review`。
+- 不填写 expert ID。不要发明主题专属 capability。优先从稳定通用词表选一个最小能力：分析用 `architecture-design`、`evidence-analysis`、`decision-support` 或 `structured-planning`；实施用 `production-implementation` 或 `workflow-execution`；审查用 `quality-review` 或 `evidence-based-review`。领域细节写进 `domains`、交付接口、Scope 和 Criterion。
+- 仅要求分析时使用 `analysis`，不要为了将来可能实施而改成 `implementation`。只有用户明确要求实施，或本 Work Item 的 Outcome 本身包含代码、配置、数据或业务资产变更时，才使用 `implementation`。
+
+## Brief 与 Work Spec
+
+- `brief` 精确字段：`requestSummary`、`intendedOutcome`、`actors`、`canonicalTerms[{name,meaning}]`、`decisions`、`assumptions[{statement,source,confirmed}]`、`openQuestions`、`sourcePointers[{kind,locator,purpose}]`。
+- assumption source: `user`、`project`、`agent-recommendation`。
+- pointer kind: `file`、`document`、`dataset`、`application`、`external-system`、`other`。
+- `workSpec` 精确字段：`mode`、`outcome`、`scope`、`nonGoals`、`deliverableInterfaces`、`acceptanceCriteria`、`boundaries`、`approvalPoints`、`reviewPolicy`、`slicePlan`。
+- Deliverable kind: `code`、`document`、`analysis`、`dataset`、`visual`、`draft-action`、`other`。
+- Evidence kind 只能是：`command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval`、`external-record`。
+- Boundary dimension: `resource`、`data`、`people`、`time`、`budget`、`system`、`operation`。resource 还需 `access`: `read`、`draft`、`write`、`publish`。
+- Review method: `self`、`independent-agent`、`human`、`mixed`；`reviewAfterSlices` 固定为 `1`。
+- Slice 精确字段：`id`、`title`、`intendedOutcome`、`inputPointers`、`deliverableInterfaceIds`、`criterionIds`、`blockedBy`、`humanCheckpoint`。`inputPointers` 必须是 pointer 对象数组，未知时用空数组。
+- 第一个 Slice 的 `blockedBy` 必须为空；每个 Criterion 必须被 Slice 覆盖。`humanCheckpoint: true` 的 Slice 必须覆盖要求 `human-approval` 的 Criterion。
+
+## Standard 分析模板
+
+只替换领域文字、指针和边界；保留字段形状与枚举。需要更多 Slice 时逐个增加，不要复制 Capability Need。
+
+<!-- STANDARD_ANALYSIS_TEMPLATE -->
+```json
+{
+  "schemaVersion": 2,
+  "specialistAssessment": {
+    "decision": "required",
+    "reasons": ["跨接口与数据边界的分析需要隔离的系统设计判断"],
+    "needs": [
+      {
+        "id": "need-analysis",
+        "sliceId": "slice-tracer",
+        "purpose": "analysis",
+        "capabilities": ["architecture-design"],
+        "domains": ["engineering"],
+        "projectSignals": [],
+        "isolationReason": "domain-judgment"
+      }
+    ]
+  },
+  "brief": {
+    "requestSummary": "按项目流程分析一个跨接口与数据边界的需求",
+    "intendedOutcome": "形成可复核的现状、方案边界和验证建议",
+    "actors": ["需求提出者", "系统维护者", "结果审查者"],
+    "canonicalTerms": [
+      { "name": "业务意图", "meaning": "需要在重复或并发请求中保持一致的逻辑操作" }
+    ],
+    "decisions": ["本轮只分析并形成决策材料，不执行生产或外部动作"],
+    "assumptions": [
+      { "statement": "源码发现可在首个 Slice 中完成", "source": "agent-recommendation", "confirmed": false }
+    ],
+    "openQuestions": [],
+    "sourcePointers": []
+  },
+  "workSpec": {
+    "mode": "standard",
+    "outcome": "形成有证据支撑的跨边界需求分析与验证建议",
+    "scope": ["定位相关接口与数据边界", "比较候选方案并记录风险"],
+    "nonGoals": ["不修改代码、生产数据或外部系统"],
+    "deliverableInterfaces": [
+      {
+        "id": "deliverable-analysis",
+        "kind": "analysis",
+        "description": "一份供系统维护者审查的需求分析",
+        "requiredSections": ["现状", "边界", "候选方案", "风险", "验证建议"],
+        "invariants": ["事实、假设和建议分开表达"],
+        "consumer": "系统维护者与结果审查者"
+      }
+    ],
+    "acceptanceCriteria": [
+      {
+        "id": "criterion-boundaries",
+        "statement": "相关接口、数据状态和外部边界均有可追溯说明",
+        "requiredEvidenceKinds": ["artifact", "citation"]
+      },
+      {
+        "id": "criterion-options",
+        "statement": "候选方案按一致性、失败恢复和验证方式完成比较",
+        "requiredEvidenceKinds": ["artifact", "comparison"]
+      }
+    ],
+    "boundaries": [
+      {
+        "id": "boundary-read-only",
+        "dimension": "operation",
+        "rule": "本 Work Item 只读分析，不执行真实外部动作",
+        "resources": []
+      }
+    ],
+    "approvalPoints": [],
+    "reviewPolicy": {
+      "method": "self",
+      "reasons": ["当前只形成分析材料，按 Criterion 逐 Slice 复核"],
+      "reviewAfterSlices": 1
+    },
+    "slicePlan": [
+      {
+        "id": "slice-tracer",
+        "title": "建立端到端边界与方案基线",
+        "intendedOutcome": "用最小证据路径形成可审查的现状与候选方案比较",
+        "inputPointers": [],
+        "deliverableInterfaceIds": ["deliverable-analysis"],
+        "criterionIds": ["criterion-boundaries", "criterion-options"],
+        "blockedBy": [],
+        "humanCheckpoint": false
+      }
+    ]
+  }
+}
+```

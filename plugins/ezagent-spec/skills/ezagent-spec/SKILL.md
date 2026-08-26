@@ -33,6 +33,8 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 ## 形成通用 Work Contract
 
+生成 Work Contract 前必须把 [references/work-contract-v2.md](references/work-contract-v2.md) 完整读取一次，并严格复用其中的字段名、枚举、稳定 Capability 词表和最接近的有效模板；不得再从 CLI 报错、`--help`、Catalog 或 `dist` 猜 schema。
+
 根据 Router 已选模式生成 `schemaVersion: 2` 的单个 JSON：
 
 - `brief`：请求摘要、预期结果、参与者、Canonical Terms、已确认决策、带来源的假设、未决问题和 Source Pointers。

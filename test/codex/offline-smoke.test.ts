@@ -44,6 +44,7 @@ const EXPECTED_PLUGIN_FILES = [
   "skills/ezagent-review/SKILL.md",
   "skills/ezagent-router/SKILL.md",
   "skills/ezagent-spec/SKILL.md",
+  "skills/ezagent-spec/references/work-contract-v2.md",
 ] as const;
 const MANAGED_PATHS = [
   ".ezagent/**",

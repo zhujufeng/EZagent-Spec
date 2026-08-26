@@ -151,12 +151,12 @@ describe("Codex host evaluation corpus", () => {
       .toEqual(new Set([
         "not-evaluated",
         "not-needed",
-        "implementation-delegation",
+        "analysis-delegation",
         "independent-review-delegation",
       ]));
     for (const expectation of [
       "not-needed",
-      "implementation-delegation",
+      "analysis-delegation",
       "independent-review-delegation",
     ] as const) {
       expect(suite.cases.filter((fixture) => fixture.specialistExpectation === expectation))

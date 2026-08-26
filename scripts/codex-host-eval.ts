@@ -44,7 +44,7 @@ const categorySchema = z.enum([
 const specialistExpectationSchema = z.enum([
   "not-evaluated",
   "not-needed",
-  "implementation-delegation",
+  "analysis-delegation",
   "independent-review-delegation",
 ]);
 
