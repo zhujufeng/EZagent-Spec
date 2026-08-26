@@ -3,7 +3,6 @@ import {
   mkdtemp,
   mkdir,
   readFile,
-  realpath,
   readlink,
   readdir,
   rm,
@@ -182,7 +181,13 @@ describe("WorkspaceRepository.initialize", () => {
     }
 
     const repository = new WorkspaceRepository(linked);
-    expect(repository.projectRoot).toBe(await realpath(linked));
+    const [canonicalRoot, actualRoot] = await Promise.all([
+      lstat(repository.projectRoot, { bigint: true }),
+      lstat(actual, { bigint: true }),
+    ]);
+    expect(canonicalRoot.isDirectory()).toBe(true);
+    expect({ dev: canonicalRoot.dev, ino: canonicalRoot.ino })
+      .toEqual({ dev: actualRoot.dev, ino: actualRoot.ino });
     await repository.initialize(demoConfig);
     await expect(readFile(join(actual, ".ezagent", "project.yaml"), "utf8"))
       .resolves.toContain("name: Demo");
