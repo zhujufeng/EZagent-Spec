@@ -5,7 +5,8 @@
 ## 安全边界
 
 - 只使用 `test/fixtures/codex-host-eval.json` 中的合成请求，不放入真实项目数据、密钥或内部地址。
-- 普通激活场景在独立的系统临时 Git 项目中执行，Codex sandbox 固定为 `read-only`。
+- 普通激活场景在独立的系统临时 Git 项目中执行，Codex sandbox 固定为 `workspace-write`；初始化项目中的 Consult、Quick、Brief、Standard、Controlled 和 Specialist 预览仍必须保持前后工作区摘要一致。
+- `no-workflow` 场景用于证明未初始化项目不会被 EZagent 劫持。宿主可以按原始用户请求处理普通业务文件；人工复核必须确认没有创建 `.ezagent/**`、`AGENTS.md#EZAGENT` 或受管 project Agent。当前发布语料使用只读建议请求，减少把宿主实现质量误算成插件路由质量的噪声。
 - 初始化连续性场景使用另一个空白临时 Git 项目和 `workspace-write` sandbox；确认前摘要必须保持不变，确认后只允许 `.ezagent/**`、`AGENTS.md` 与受管 `.codex/agents/ezagent-*.toml`。
 - 执行器不自动安装插件、不修改 Codex 全局配置、不提交、不推送、不发布。
 - 原始 JSONL、stderr 和最终消息只保存在被 Git 忽略的 `.artifacts/codex-host-eval/` 与 `.artifacts/codex-post-init-eval/`，不得提交。
@@ -56,7 +57,7 @@ npm run plugin:host-eval
 
 只有全部条件满足时，才把对应结果的 `review.status` 改为 `pass`，并在 `review.reason` 写入具体、非空的判定依据。失败或不确定时写 `fail`，保留证据并停止发布。
 
-这组场景固定为只读且不会替用户批准 Work Preview，因此 Specialist 场景只验收：Capability Need 是否正确、实现/独立审查是否隔离、预览是否没有谎称 Agent 已物化或已经执行，以及批准后的 dispatch/receipt 边界是否说明清楚。它不得要求或接受未批准的实际委派；批准后的真实委派、独立 reviewer 调用和有界回执由 v2 Specialist E2E 与 delegation receipt 门禁验证。
+EZagent 路由场景不会替用户批准 Work Preview，因此 Specialist 场景只验收：Capability Need 是否正确、实现/独立审查是否隔离、预览是否没有谎称 Agent 已物化或已经执行，以及批准后的 dispatch/receipt 边界是否说明清楚。后端场景还必须检查分析、实施和独立代码审查分别匹配 `engineering-backend-architect`、`engineering-senior-developer` 和 `engineering-code-reviewer`，不得只看 expert ID 是否属于 `engineering`。它不得要求或接受未批准的实际委派；批准后的真实委派、独立 reviewer 调用和有界回执由 v2 Specialist E2E 与 delegation receipt 门禁验证。
 
 完成复核后运行：
 
@@ -64,7 +65,7 @@ npm run plugin:host-eval
 npm run plugin:host-eval:verify
 ```
 
-验证器只接受：被测提交仍是当前 `HEAD`、场景集合完整且唯一、命令全部退出 `0`、临时工作区字节摘要未变化、transcript 哈希有效、全部人工复核为 `pass`。
+验证器只接受：被测提交仍是当前 `HEAD`、场景集合完整且唯一、命令全部退出 `0`、没有超时、transcript 哈希有效、全部人工复核为 `pass`。所有 EZagent 路由和初始化预览场景还必须保持临时工作区字节摘要不变；`no-workflow` 可由普通宿主完成原请求，但人工复核必须证明 EZagent 没有介入或初始化。
 
 ### 初始化后同任务交接回归
 
@@ -94,12 +95,12 @@ npm run plugin:post-init-eval:verify
 
 ## 5. 签名并保护未来发布标签
 
-`v0.1.0` 已发布且未签名，不移动、不重签、不改写。从下一版本开始，只有在本地发布门、真实宿主验收和 macOS/Windows CI 全部通过后，才创建签名 annotated tag。以 `v0.1.1` 为例：
+既有发布标签不移动、不重签、不改写。从 `v0.5.0` 开始，只有在本地发布门、真实宿主验收和 macOS/Windows CI 全部通过后，才创建签名 annotated tag：
 
 ```bash
-git tag -s v0.1.1 -m "EZagent Spec v0.1.1"
-git verify-tag v0.1.1
-git push origin v0.1.1
+git tag -s v0.5.0 -m "EZagent Spec v0.5.0"
+git verify-tag v0.5.0
+git push origin v0.5.0
 ```
 
 `git verify-tag` 必须成功后才能推送。GitHub 的 `Protect release tags` ruleset 负责阻止 `v*` 标签删除或更新；它不能替代签名验证。
