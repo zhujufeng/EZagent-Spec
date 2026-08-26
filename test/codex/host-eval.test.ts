@@ -80,7 +80,7 @@ function passingPostInitEvidence(): unknown {
     codexVersion: "codex-cli 0.190.0",
     plugin: {
       pluginId: "ezagent-spec@ezagent",
-      version: "0.4.1",
+      version: "0.5.0",
     },
     commit: COMMIT,
     case: {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { lstatSync, realpathSync } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import {
@@ -10,10 +11,17 @@ import {
   type AuditMetadata,
 } from "../audit/events.js";
 import { CANONICAL_INITIAL_STATE, recoverState } from "../audit/recovery.js";
+import {
+  lstatBigint,
+  stableFileIdentity,
+  type StableFileIdentity,
+} from "../filesystem/stats.js";
 
 import { atomicWriteText } from "./atomic-write.js";
 import { workspaceCommitRuntime } from "./commit-runtime.js";
 import {
+  assertWorkspaceDirectoryBinding,
+  captureExistingWorkspaceDirectoryBinding,
   ensureWorkspaceDirectoryChains,
   nodeWorkspaceDirectoryRuntime,
   validateExistingWorkspaceDirectoryChains,
@@ -26,6 +34,7 @@ import {
 import { WORKSPACE_DIRECTORIES, workspacePaths, type WorkspacePaths } from "./layout.js";
 import { withWorkspaceLock } from "./lock.js";
 import {
+  artifactParentDirectories,
   artifactHashesMatch,
   createPendingMutation,
   ensureArtifactBoundaries,
@@ -279,7 +288,38 @@ function invalidPendingMutation(paths: Readonly<WorkspacePaths>, cause?: unknown
 export type { WorkspaceMutationWrite } from "./mutation.js";
 
 export class WorkspaceRepository {
-  constructor(readonly projectRoot: string) {}
+  readonly projectRoot: string;
+  private readonly projectRootIdentity: StableFileIdentity;
+
+  constructor(projectRoot: string) {
+    if (typeof projectRoot !== "string" || projectRoot.length === 0 || projectRoot.includes("\0")) {
+      throw new TypeError("project root must be a non-empty path");
+    }
+    this.projectRoot = realpathSync(resolve(projectRoot));
+    const observed = lstatSync(this.projectRoot, { bigint: true });
+    const identity = stableFileIdentity(observed);
+    if (!observed.isDirectory() || identity === undefined) {
+      throw new TypeError("project root must be a real directory with a stable identity");
+    }
+    this.projectRootIdentity = identity;
+  }
+
+  private async assertProjectRootIdentity(): Promise<void> {
+    try {
+      const observed = await lstatBigint(this.projectRoot);
+      const identity = stableFileIdentity(observed);
+      if (!observed.isDirectory()
+        || identity === undefined
+        || identity.dev !== this.projectRootIdentity.dev
+        || identity.ino !== this.projectRootIdentity.ino) {
+        throw new Error("identity mismatch");
+      }
+    } catch (error: unknown) {
+      throw new WorkspaceCorruptError(`project root identity changed: ${this.projectRoot}`, {
+        cause: error,
+      });
+    }
+  }
 
   async initialize(config: ProjectConfig, options?: WorkspaceInitializeOptions): Promise<void> {
     const normalized = normalizeProjectConfig(config);
@@ -290,6 +330,7 @@ export class WorkspaceRepository {
     let hasContended = false;
 
     for (;;) {
+      await this.assertProjectRootIdentity();
       normalizedOptions.signal?.throwIfAborted();
       if (hasContended) {
         const completed = await readExistingProjectWithinBoundaries(paths, WORKSPACE_DIRECTORIES);
@@ -304,6 +345,7 @@ export class WorkspaceRepository {
       }
       try {
         await withWorkspaceLock(this.projectRoot, async () => {
+          await this.assertProjectRootIdentity();
           const existing = await readExistingProjectWithinBoundaries(paths, WORKSPACE_DIRECTORIES);
           if (existing !== undefined) {
             assertSameProjectConfig(existing, normalized);
@@ -317,13 +359,25 @@ export class WorkspaceRepository {
             paths.root,
             WORKSPACE_DIRECTORIES,
           );
+          const directoryBinding = await captureExistingWorkspaceDirectoryBinding(
+            nodeWorkspaceDirectoryRuntime,
+            paths.root,
+            WORKSPACE_DIRECTORIES,
+          );
           if (!stateExists) {
+            await this.assertProjectRootIdentity();
             await atomicWriteText(paths.state, `${JSON.stringify(INITIAL_STATE, null, 2)}\n`);
+            await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
           }
           if (!auditExists) {
+            await this.assertProjectRootIdentity();
             await atomicWriteText(paths.audit, "");
+            await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
           }
+          await this.assertProjectRootIdentity();
           await atomicWriteText(paths.project, serializeProjectConfig(normalized));
+          await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
+          await this.assertProjectRootIdentity();
         });
         return;
       } catch (error: unknown) {
@@ -350,6 +404,7 @@ export class WorkspaceRepository {
   }
 
   async readProject(): Promise<ProjectConfig> {
+    await this.assertProjectRootIdentity();
     const paths = workspacePaths(this.projectRoot);
     await validateExistingWorkspaceDirectoryChains(nodeWorkspaceDirectoryRuntime, paths.root, []);
     const projectFile = await readWorkspaceText(paths.project, "workspace project");
@@ -360,7 +415,9 @@ export class WorkspaceRepository {
     }
 
     try {
-      return parseProjectConfig(projectFile.contents);
+      const project = parseProjectConfig(projectFile.contents);
+      await this.assertProjectRootIdentity();
+      return project;
     } catch (error: unknown) {
       throw new WorkspaceCorruptError(`workspace project is unreadable or corrupt: ${paths.project}`, {
         cause: error,
@@ -385,6 +442,7 @@ export class WorkspaceRepository {
     // Normalize the complete request before lock acquisition or any filesystem side effect.
     const mutation = normalizeWorkspaceMutation(next, expectedRevision, eventType, writes, metadata);
     await withWorkspaceLock(this.projectRoot, async () => {
+      await this.assertProjectRootIdentity();
       await this.readProject();
       const paths = workspacePaths(this.projectRoot);
       await validateExistingWorkspaceDirectoryChains(
@@ -430,6 +488,11 @@ export class WorkspaceRepository {
 
       // All existing paths are checked before publishing the transaction marker.
       await validateExistingArtifactBoundaries(paths.root, mutation.writes);
+      const directoryBinding = await captureExistingWorkspaceDirectoryBinding(
+        nodeWorkspaceDirectoryRuntime,
+        paths.root,
+        [...WORKSPACE_DIRECTORIES, ...artifactParentDirectories(mutation.writes)],
+      );
       const at = new Date().toISOString();
       const auditEvent = parseAuditEvent({
         sequence: mutation.next.revision,
@@ -448,15 +511,24 @@ export class WorkspaceRepository {
       // Capacity is known before transaction evidence or artifact side effects.
       await workspaceCommitRuntime.preflightAuditAppend(paths.audit, auditEvent);
       const markerObservation = await workspaceCommitRuntime.publishPendingMarker(paths.pendingMutation, marker);
+      await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
 
       // The marker precedes every artifact side effect. Audit is durable before state publication.
       await ensureArtifactBoundaries(paths.root, mutation.writes);
+      await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
       for (const write of mutation.writes) {
+        await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
         await workspaceCommitRuntime.atomicWriteText(targetPath(paths.root, write.relativePath), write.content);
+        await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
       }
+      await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
       await workspaceCommitRuntime.appendAuditEvent(paths.audit, auditEvent);
+      await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
       await workspaceCommitRuntime.atomicWriteText(paths.state, `${JSON.stringify(mutation.next, null, 2)}\n`);
+      await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
       await workspaceCommitRuntime.removePendingMarker(paths.pendingMutation, markerObservation);
+      await assertWorkspaceDirectoryBinding(nodeWorkspaceDirectoryRuntime, directoryBinding);
+      await this.assertProjectRootIdentity();
     });
   }
 

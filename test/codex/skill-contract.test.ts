@@ -28,6 +28,13 @@ const CANCELLATION_SKILLS = [
   "ezagent-implement",
   "ezagent-review",
 ] as const;
+const JSON_INPUT_SKILLS = [
+  "ezagent-router",
+  "ezagent-context",
+  "ezagent-spec",
+  "ezagent-execute",
+  "ezagent-review",
+] as const;
 const PLUGIN_ROOT_INSTRUCTION =
   "先取当前 `SKILL.md` 所在目录，再向上两级得到 `<plugin-root>`";
 
@@ -173,6 +180,18 @@ describe("Codex Skill contracts", () => {
     const lowerArgv = argv.map((element) => element.toLowerCase());
     for (const shellMode of ["-c", "/c", "-command"]) {
       expect(lowerArgv).not.toContain(shellMode);
+    }
+  });
+
+  test("uses the bounded input-file channel when a host PTY cannot close stdin", async () => {
+    const skills = await Promise.all(JSON_INPUT_SKILLS.map(readSkill));
+
+    for (const skill of skills) {
+      expect(skill.body).toContain("--input-file");
+      expect(skill.body).toMatch(/PTY.*stdin.*EOF|stdin.*EOF.*PTY/su);
+      expect(skill.body).toMatch(/临时.*普通文件.*符号链接/su);
+      expect(skill.body).toMatch(/预览.*Apply.*完全相同.*文件/su);
+      expect(skill.body).toMatch(/不得.*shell.*重定向/u);
     }
   });
 
@@ -446,6 +465,8 @@ describe("Codex Skill contracts", () => {
       expect(skill.body).toMatch(/不得.*(?:模拟|替换)/u);
       expect(skill.body).toMatch(/有界.*(?:摘要|审查摘要).*result hash|结果 hash/su);
       expect(skill.body).toMatch(/不(?:得|传).*完整.*(?:聊天|提示)/u);
+      expect(skill.body).toMatch(/返回.*dispatch.*原样.*subagent/su);
+      expect(skill.body).toContain("dispatchFingerprint");
     }
     expect(execute.body).toMatch(/协调器.*不得.*自行接管/u);
     expect(review.body).toMatch(/实现者.*不得.*批准自己的输出/u);

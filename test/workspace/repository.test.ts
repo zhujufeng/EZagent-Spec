@@ -3,9 +3,11 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   readlink,
   readdir,
   rm,
+  rename,
   stat,
   symlink,
   utimes,
@@ -169,6 +171,39 @@ afterEach(async () => {
 });
 
 describe("WorkspaceRepository.initialize", () => {
+  test("canonicalizes a linked project root before deriving workspace paths", async ({ skip }) => {
+    const parent = await temporaryProject();
+    const actual = join(parent, "actual");
+    const linked = join(parent, "linked");
+    await mkdir(actual);
+    if (!await createDirectorySymlink(actual, linked)) {
+      skip();
+      return;
+    }
+
+    const repository = new WorkspaceRepository(linked);
+    expect(repository.projectRoot).toBe(await realpath(actual));
+    await repository.initialize(demoConfig);
+    await expect(readFile(join(actual, ".ezagent", "project.yaml"), "utf8"))
+      .resolves.toContain("name: Demo");
+  });
+
+  test("rejects a project root replacement after repository construction", async () => {
+    const parent = await temporaryProject();
+    const root = join(parent, "project");
+    const displaced = join(parent, "project-displaced");
+    await mkdir(root);
+    const repository = new WorkspaceRepository(root);
+    await rename(root, displaced);
+    await mkdir(root);
+
+    await expect(repository.initialize(demoConfig)).rejects.toThrow(/project root identity changed/iu);
+    await expect(readFile(join(root, ".ezagent", "project.yaml"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(displaced, ".ezagent", "project.yaml"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   test("creates the exact workspace tree and canonical initial files", async () => {
     const root = await temporaryProject();
     const repository = new WorkspaceRepository(root);

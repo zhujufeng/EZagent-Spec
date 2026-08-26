@@ -1,12 +1,25 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { lstatBigint, type PortableStats } from "../filesystem/stats.js";
+import {
+  lstatBigint,
+  stableFileIdentity,
+  type PortableStats,
+  type StableFileIdentity,
+} from "../filesystem/stats.js";
 import { WorkspaceCorruptError } from "./errors.js";
 
 export interface WorkspaceDirectoryRuntime {
   readonly lstat: (path: string) => Promise<PortableStats>;
   readonly mkdir: (path: string) => Promise<void>;
+}
+
+export interface WorkspaceDirectoryBindingEntry extends StableFileIdentity {
+  readonly path: string;
+}
+
+export interface WorkspaceDirectoryBinding {
+  readonly entries: readonly WorkspaceDirectoryBindingEntry[];
 }
 
 function isMissing(error: unknown): boolean {
@@ -54,6 +67,58 @@ function components(relativeDirectory: string): readonly string[] {
     throw new Error(`invalid reserved workspace directory: ${relativeDirectory}`);
   }
   return parts;
+}
+
+function allDirectoryPaths(
+  workspaceRoot: string,
+  relativeDirectories: readonly string[],
+): readonly string[] {
+  const paths = new Set([workspaceRoot]);
+  for (const relativeDirectory of relativeDirectories) {
+    let current = workspaceRoot;
+    for (const component of components(relativeDirectory)) {
+      current = join(current, component);
+      paths.add(current);
+    }
+  }
+  return [...paths];
+}
+
+export async function captureExistingWorkspaceDirectoryBinding(
+  runtime: WorkspaceDirectoryRuntime,
+  workspaceRoot: string,
+  relativeDirectories: readonly string[],
+): Promise<WorkspaceDirectoryBinding> {
+  const entries: WorkspaceDirectoryBindingEntry[] = [];
+  for (const path of allDirectoryPaths(workspaceRoot, relativeDirectories)) {
+    const observed = await observeDirectory(runtime, path);
+    if (observed === undefined) continue;
+    if (!observed.isDirectory()) throw invalidDirectory(path);
+    const identity = stableFileIdentity(observed);
+    if (identity === undefined) {
+      throw new WorkspaceCorruptError(`workspace directory has no stable identity: ${path}`);
+    }
+    entries.push(Object.freeze({ path, ...identity }));
+  }
+  if (!entries.some(({ path }) => path === workspaceRoot)) throw invalidDirectory(workspaceRoot);
+  return Object.freeze({ entries: Object.freeze(entries) });
+}
+
+export async function assertWorkspaceDirectoryBinding(
+  runtime: WorkspaceDirectoryRuntime,
+  binding: WorkspaceDirectoryBinding,
+): Promise<void> {
+  for (const expected of binding.entries) {
+    const observed = await observeDirectory(runtime, expected.path);
+    const identity = observed === undefined ? undefined : stableFileIdentity(observed);
+    if (observed === undefined
+      || !observed.isDirectory()
+      || identity === undefined
+      || identity.dev !== expected.dev
+      || identity.ino !== expected.ino) {
+      throw new WorkspaceCorruptError(`workspace directory identity changed: ${expected.path}`);
+    }
+  }
 }
 
 async function validateExistingDirectory(runtime: WorkspaceDirectoryRuntime, path: string): Promise<boolean> {

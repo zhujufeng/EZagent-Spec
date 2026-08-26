@@ -171,10 +171,11 @@ describe("Agent Work Harness service", () => {
     await fixture.service.workStartSlice("slice-tracer");
     const implementation = applied.specialistPlan.delegations.find(({ mode }) => mode === "implement")!;
     const reviewer = applied.specialistPlan.delegations.find(({ mode }) => mode === "review")!;
-    const completion = (expertId: string) => ({
-      schemaVersion: 1 as const,
+    const completion = (expertId: string, dispatchFingerprint: string) => ({
+      schemaVersion: 2 as const,
       expertId,
       planFingerprint: applied.specialistPlan.planFingerprint,
+      dispatchFingerprint,
       status: "completed" as const,
       summary: "委派范围内的结果与证据已完成。",
       resultHash: `sha256:${"c".repeat(64)}` as const,
@@ -192,23 +193,23 @@ describe("Agent Work Harness service", () => {
     });
     await expect(fixture.service.delegationStart(implementation.id)).rejects.toThrow(/already exists/iu);
     await expect(fixture.service.delegationComplete(implementation.id, {
-      ...completion(implementation.expertId),
+      ...completion(implementation.expertId, started.receipt.dispatchFingerprint),
       expertId: reviewer.expertId,
     })).rejects.toThrow(/expert/iu);
     await expect(fixture.service.delegationComplete(implementation.id, {
-      ...completion(implementation.expertId),
+      ...completion(implementation.expertId, started.receipt.dispatchFingerprint),
       planFingerprint: `sha256:${"d".repeat(64)}`,
     })).rejects.toThrow(/stale/iu);
 
-    await fixture.service.delegationStart(reviewer.id);
+    const reviewerStarted = await fixture.service.delegationStart(reviewer.id);
     const completed = await fixture.service.delegationComplete(
       implementation.id,
-      completion(implementation.expertId),
+      completion(implementation.expertId, started.receipt.dispatchFingerprint),
     );
     expect(completed.receipt).toMatchObject({ status: "completed", expertId: implementation.expertId });
     await expect(fixture.service.delegationComplete(
       implementation.id,
-      completion(implementation.expertId),
+      completion(implementation.expertId, started.receipt.dispatchFingerprint),
     )).rejects.toThrow(/already exists/iu);
 
     const incompleteReview = await fixture.service.workReviewSlice(genericEvidenceBundle(
@@ -226,7 +227,10 @@ describe("Agent Work Harness service", () => {
     expect(incompleteReview.workItem.slices[0]?.status).toBe("revise");
 
     await fixture.service.workStartSlice("slice-tracer");
-    await fixture.service.delegationComplete(reviewer.id, completion(reviewer.expertId));
+    await fixture.service.delegationComplete(
+      reviewer.id,
+      completion(reviewer.expertId, reviewerStarted.receipt.dispatchFingerprint),
+    );
     const accepted = await fixture.service.workReviewSlice(genericEvidenceBundle(
       applied.workItem.id,
       applied.workSpec.id,

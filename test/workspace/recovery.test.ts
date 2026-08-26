@@ -7,6 +7,7 @@ import {
   readFile,
   readlink,
   readdir,
+  rename,
   rm,
   symlink,
   stat,
@@ -115,7 +116,11 @@ async function temporaryWorkspace(): Promise<{
   roots.push(root);
   const repository = new WorkspaceRepository(root);
   await repository.initialize(config);
-  return { root, repository, paths: workspacePaths(root) };
+  return {
+    root: repository.projectRoot,
+    repository,
+    paths: workspacePaths(repository.projectRoot),
+  };
 }
 
 async function createFileSymlink(target: string, path: string): Promise<boolean> {
@@ -822,6 +827,26 @@ describe("WorkspaceRepository recovery and mutations", () => {
     ])).rejects.toThrow("duplicate");
   });
 
+  test("rejects a new target that portably collides with an existing artifact name", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const existing = join(paths.root, "specs", "Ｆoo.md");
+    await writeFile(existing, "keep existing bytes", "utf8");
+    const before = await Promise.all([readFile(paths.state, "utf8"), readFile(paths.audit, "utf8")]);
+
+    await expect(repository.commitMutation(
+      state(1),
+      0,
+      "portable-existing-collision",
+      [{ relativePath: "specs/Foo.md", content: "must not publish" }],
+    )).rejects.toThrow(/portable.*collision/iu);
+
+    await expect(readFile(existing, "utf8")).resolves.toBe("keep existing bytes");
+    await expect(readFile(join(paths.root, "specs", "Foo.md"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    expect(await Promise.all([readFile(paths.state, "utf8"), readFile(paths.audit, "utf8")])).toEqual(before);
+    await expect(lstat(paths.pendingMutation)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   test.each([
     ["Greek final sigma", "specs/Σ.md", "specs/ς.md"],
     ["canonical Unicode equivalence", "specs/é.md", "specs/e\u0301.md"],
@@ -1068,6 +1093,33 @@ describe("WorkspaceRepository recovery and mutations", () => {
     await expect(repository.recordState(state(1), 0, "cannot-overwrite-race"))
       .rejects.toThrow("pending mutation");
     await expect(readFile(paths.pendingMutation, "utf8")).resolves.toBe(competingContents);
+  });
+
+  test("stops after the transaction marker when an artifact ancestor identity changes", async () => {
+    const { repository, paths } = await temporaryWorkspace();
+    const originalPublish = workspaceCommitRuntime.publishPendingMarker;
+    const specs = join(paths.root, "specs");
+    const displaced = join(paths.root, "specs-displaced");
+    vi.spyOn(workspaceCommitRuntime, "publishPendingMarker").mockImplementation(async (path, marker) => {
+      const observation = await originalPublish(path, marker);
+      await rm(displaced, { recursive: true, force: true });
+      await rename(specs, displaced);
+      await mkdir(specs);
+      return observation;
+    });
+
+    await expect(repository.commitMutation(
+      state(1),
+      0,
+      "ancestor-replaced",
+      [{ relativePath: "specs/result.md", content: "must not publish" }],
+    )).rejects.toThrow(/directory.*identity.*changed/iu);
+
+    await expect(readFile(join(specs, "result.md"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(displaced, "result.md"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(paths.pendingMutation)).resolves.toMatchObject({ size: expect.any(Number) });
   });
 
   test("rejects an audit-capacity mutation before marker or artifact side effects", async () => {

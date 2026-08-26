@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import { isWorkItemId } from "../domain/id.js";
@@ -49,7 +51,23 @@ const binding = {
   planFingerprint: hashSchema,
 };
 
-const startReceiptSchema = z.object({
+const dispatchSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("specialist-dispatch"),
+  delegationId: identifierSchema,
+  expertId: expertIdSchema,
+  workItemId: taskIdSchema,
+  workSpecId: specIdSchema,
+  workSpecRevision: z.number().int().nonnegative(),
+  sliceId: identifierSchema,
+  mode: z.enum(["analysis", "review", "implement"]),
+  scope: z.array(boundedText("Delegation dispatch scope", 512)).min(1).max(64),
+  deliverableInterfaceIds: z.array(identifierSchema).max(64),
+  criterionIds: z.array(identifierSchema).max(128),
+  evidenceRequirements: z.array(boundedText("Delegation dispatch Evidence requirement", 512)).max(128),
+}).strict();
+
+const startReceiptV1Schema = z.object({
   schemaVersion: z.literal(1),
   kind: z.literal("start"),
   ...binding,
@@ -58,7 +76,22 @@ const startReceiptSchema = z.object({
   startedAt: instantSchema,
 }).strict();
 
-const completionInputSchema = z.object({
+const startReceiptV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  kind: z.literal("start"),
+  ...binding,
+  dispatchFingerprint: hashSchema,
+  mode: z.enum(["analysis", "review", "implement"]),
+  status: z.literal("started"),
+  startedAt: instantSchema,
+}).strict();
+
+const startReceiptSchema = z.discriminatedUnion("schemaVersion", [
+  startReceiptV1Schema,
+  startReceiptV2Schema,
+]);
+
+const completionInputV1Schema = z.object({
   schemaVersion: z.literal(1),
   expertId: expertIdSchema,
   planFingerprint: hashSchema,
@@ -66,7 +99,23 @@ const completionInputSchema = z.object({
   summary: boundedText("Delegation result summary", 2_048),
   resultHash: hashSchema,
   evidencePointers: z.array(pointerSchema).max(128),
-}).strict().superRefine((input, context) => {
+}).strict();
+
+const completionInputV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  expertId: expertIdSchema,
+  planFingerprint: hashSchema,
+  dispatchFingerprint: hashSchema,
+  status: z.enum(["completed", "blocked"]),
+  summary: boundedText("Delegation result summary", 2_048),
+  resultHash: hashSchema,
+  evidencePointers: z.array(pointerSchema).max(128),
+}).strict();
+
+const completionInputSchema = z.discriminatedUnion("schemaVersion", [
+  completionInputV1Schema,
+  completionInputV2Schema,
+]).superRefine((input, context) => {
   const seen = new Set<string>();
   for (const [index, pointer] of input.evidencePointers.entries()) {
     const key = unicodeDefaultCaseFold(`${pointer.kind}:${pointer.locator}`).normalize("NFKC");
@@ -88,7 +137,7 @@ const completionInputSchema = z.object({
   }
 });
 
-const completionReceiptSchema = z.object({
+const completionReceiptV1Schema = z.object({
   schemaVersion: z.literal(1),
   kind: z.literal("completion"),
   ...binding,
@@ -97,7 +146,24 @@ const completionReceiptSchema = z.object({
   resultHash: hashSchema,
   evidencePointers: z.array(pointerSchema).max(128),
   completedAt: instantSchema,
-}).strict().superRefine((receipt, context) => {
+}).strict();
+
+const completionReceiptV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  kind: z.literal("completion"),
+  ...binding,
+  dispatchFingerprint: hashSchema,
+  status: z.enum(["completed", "blocked"]),
+  summary: boundedText("Delegation result summary", 2_048),
+  resultHash: hashSchema,
+  evidencePointers: z.array(pointerSchema).max(128),
+  completedAt: instantSchema,
+}).strict();
+
+const completionReceiptSchema = z.discriminatedUnion("schemaVersion", [
+  completionReceiptV1Schema,
+  completionReceiptV2Schema,
+]).superRefine((receipt, context) => {
   const seen = new Set<string>();
   for (const [index, pointer] of receipt.evidencePointers.entries()) {
     const key = unicodeDefaultCaseFold(`${pointer.kind}:${pointer.locator}`).normalize("NFKC");
@@ -120,8 +186,10 @@ const completionReceiptSchema = z.object({
 });
 
 export type DelegationEvidencePointer = Readonly<z.infer<typeof pointerSchema>>;
+export type DelegationDispatch = Readonly<z.infer<typeof dispatchSchema>>;
 export type DelegationCompletionInput = Readonly<z.infer<typeof completionInputSchema>>;
 export type DelegationStartReceipt = Readonly<z.infer<typeof startReceiptSchema>>;
+export type DelegationStartReceiptV2 = Readonly<z.infer<typeof startReceiptV2Schema>>;
 export type DelegationCompletionReceipt = Readonly<z.infer<typeof completionReceiptSchema>>;
 
 function deepFreeze<T>(value: T): T {
@@ -143,6 +211,33 @@ export function parseDelegationCompletionInput(value: unknown): DelegationComple
   return deepFreeze(completionInputSchema.parse(value));
 }
 
+export function parseDelegationDispatch(value: unknown): DelegationDispatch {
+  return deepFreeze(dispatchSchema.parse(value));
+}
+
+export function createDelegationDispatch(delegation: SpecialistDelegationV2): DelegationDispatch {
+  return parseDelegationDispatch({
+    schemaVersion: 1,
+    kind: "specialist-dispatch",
+    delegationId: delegation.id,
+    expertId: delegation.expertId,
+    workItemId: delegation.workItemId,
+    workSpecId: delegation.workSpecId,
+    workSpecRevision: delegation.workSpecRevision,
+    sliceId: delegation.sliceId,
+    mode: delegation.mode,
+    scope: delegation.scope,
+    deliverableInterfaceIds: delegation.deliverableInterfaceIds,
+    criterionIds: delegation.criterionIds,
+    evidenceRequirements: delegation.evidenceRequirements,
+  });
+}
+
+export function delegationDispatchFingerprint(value: unknown): `sha256:${string}` {
+  const dispatch = parseDelegationDispatch(value);
+  return `sha256:${createHash("sha256").update(JSON.stringify(dispatch), "utf8").digest("hex")}`;
+}
+
 export function parseDelegationStartReceipt(value: unknown): DelegationStartReceipt {
   return deepFreeze(startReceiptSchema.parse(value));
 }
@@ -155,9 +250,10 @@ export function createDelegationStartReceipt(
   delegation: SpecialistDelegationV2,
   planFingerprint: `sha256:${string}`,
   startedAt: Date,
-): DelegationStartReceipt {
+): DelegationStartReceiptV2 {
+  const dispatch = createDelegationDispatch(delegation);
   return parseDelegationStartReceipt({
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "start",
     delegationId: delegation.id,
     expertId: delegation.expertId,
@@ -166,20 +262,30 @@ export function createDelegationStartReceipt(
     workSpecRevision: delegation.workSpecRevision,
     sliceId: delegation.sliceId,
     planFingerprint,
+    dispatchFingerprint: delegationDispatchFingerprint(dispatch),
     mode: delegation.mode,
     status: "started",
     startedAt: canonicalInstant(startedAt, "Delegation start timestamp"),
-  });
+  }) as DelegationStartReceiptV2;
 }
 
 export function createDelegationCompletionReceipt(
   delegation: SpecialistDelegationV2,
   inputValue: unknown,
+  start: DelegationStartReceipt,
   completedAt: Date,
 ): DelegationCompletionReceipt {
   const input = parseDelegationCompletionInput(inputValue);
+  if (start.schemaVersion !== input.schemaVersion) {
+    throw new TypeError("Delegation completion schema does not match its start receipt");
+  }
+  if (start.schemaVersion === 2
+    && input.schemaVersion === 2
+    && start.dispatchFingerprint !== input.dispatchFingerprint) {
+    throw new TypeError("Delegation completion dispatch fingerprint does not match its start receipt");
+  }
   return parseDelegationCompletionReceipt({
-    schemaVersion: 1,
+    schemaVersion: input.schemaVersion,
     kind: "completion",
     delegationId: delegation.id,
     expertId: delegation.expertId,
@@ -188,6 +294,7 @@ export function createDelegationCompletionReceipt(
     workSpecRevision: delegation.workSpecRevision,
     sliceId: delegation.sliceId,
     planFingerprint: input.planFingerprint,
+    ...(input.schemaVersion === 2 ? { dispatchFingerprint: input.dispatchFingerprint } : {}),
     status: input.status,
     summary: input.summary,
     resultHash: input.resultHash,

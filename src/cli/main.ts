@@ -25,7 +25,11 @@ import {
   AgentWorkHarnessService,
   loadDefaultRuntimeCatalog,
 } from "../workflow/service.js";
-import { readBoundedJsonInput, type JsonInputSource } from "./json-input.js";
+import {
+  readBoundedJsonFile,
+  readBoundedJsonInput,
+  type JsonInputSource,
+} from "./json-input.js";
 
 const USAGE = "usage: ezagent <doctor|init|context|transition|integration-preview|integration-init|work-preview|work-apply|work-cancel|work-start|delegation-start|delegation-complete|work-review|work-complete|journal-append|side-effect-preview|side-effect-apply|team-select-preview|plan-preview|plan-apply|replan-preview|replan-apply|specialist-replan-preview|specialist-replan-apply|experts-reconcile|sharing-preview|sharing-apply|knowledge-context|knowledge-promote-preview|knowledge-promote-apply> [options]";
 const PROJECT_NAME_MAX_LENGTH = 128;
@@ -73,6 +77,28 @@ type Command =
   | "knowledge-context"
   | "knowledge-promote-preview"
   | "knowledge-promote-apply";
+
+const JSON_INPUT_COMMANDS = new Set<Command>([
+  "transition",
+  "work-preview",
+  "work-apply",
+  "delegation-complete",
+  "work-review",
+  "work-complete",
+  "journal-append",
+  "sharing-preview",
+  "sharing-apply",
+  "knowledge-context",
+  "knowledge-promote-preview",
+  "knowledge-promote-apply",
+  "team-select-preview",
+  "plan-preview",
+  "plan-apply",
+  "replan-preview",
+  "replan-apply",
+  "specialist-replan-preview",
+  "specialist-replan-apply",
+]);
 
 interface CommandSpec {
   readonly valueOptions: readonly string[];
@@ -283,7 +309,10 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
   if (!isCommand(command)) throw new Error(USAGE);
 
   const spec = COMMAND_SPECS[command];
-  const valueOptions = new Set(spec.valueOptions);
+  const valueOptions = new Set([
+    ...spec.valueOptions,
+    ...(JSON_INPUT_COMMANDS.has(command) ? ["--input-file"] : []),
+  ]);
   const booleanOptions = new Set(spec.booleanOptions);
   const options = new Map<string, string | true>();
 
@@ -378,6 +407,16 @@ function jsonRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+async function readJsonCommandInput(
+  parsed: ParsedCommand,
+  runtime: CliRuntime,
+): Promise<unknown> {
+  const inputFile = valueOption(parsed, "--input-file");
+  return inputFile === undefined
+    ? readBoundedJsonInput(runtime.stdin)
+    : readBoundedJsonFile(resolve(runtime.cwd(), inputFile));
+}
+
 async function assertDoctorRoot(runtime: CliRuntime, root: string): Promise<void> {
   let observed: Awaited<ReturnType<CliRuntime["lstat"]>>;
   try {
@@ -462,13 +501,13 @@ export async function runCli(
   }
 
   if (parsed.command === "work-preview") {
-    writeJson(io, await workflow.workPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.workPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "work-apply") {
     const applied = await workflow.workApply({
-      draft: await readBoundedJsonInput(runtime.stdin),
+      draft: await readJsonCommandInput(parsed, runtime),
       approvalToken: requiredValueOption(parsed, "--approval-token"),
     });
     if (applied.specialistPlan.delegations.length === 0) {
@@ -502,19 +541,19 @@ export async function runCli(
   if (parsed.command === "delegation-complete") {
     writeJson(io, await workflow.delegationComplete(
       requiredValueOption(parsed, "--delegation"),
-      await readBoundedJsonInput(runtime.stdin),
+      await readJsonCommandInput(parsed, runtime),
     ));
     return;
   }
 
   if (parsed.command === "work-review") {
-    writeJson(io, await workflow.workReviewSlice(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.workReviewSlice(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "work-complete") {
     const specialistPlan = await workflow.activeSpecialistPlanRecord();
-    const completed = await workflow.workComplete(await readBoundedJsonInput(runtime.stdin));
+    const completed = await workflow.workComplete(await readJsonCommandInput(parsed, runtime));
     const synchronized = specialistPlan?.delegations.length === 0 || specialistPlan === null
       ? { files: Object.freeze([]) }
       : await runtime.reconcileCodexTeam(root, await runtime.readRuntimeCatalog());
@@ -523,7 +562,7 @@ export async function runCli(
   }
 
   if (parsed.command === "journal-append") {
-    writeJson(io, await workflow.workJournalAppend(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.workJournalAppend(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
@@ -541,48 +580,48 @@ export async function runCli(
   }
 
   if (parsed.command === "sharing-preview") {
-    writeJson(io, await workflow.sharingPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.sharingPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "sharing-apply") {
     writeJson(io, await workflow.sharingApply({
-      projectContext: await readBoundedJsonInput(runtime.stdin),
+      projectContext: await readJsonCommandInput(parsed, runtime),
       approvalToken: requiredValueOption(parsed, "--approval-token"),
     }));
     return;
   }
 
   if (parsed.command === "knowledge-context") {
-    writeJson(io, await workflow.knowledgeContext(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.knowledgeContext(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "knowledge-promote-preview") {
-    writeJson(io, await workflow.knowledgePromotionPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.knowledgePromotionPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "knowledge-promote-apply") {
     writeJson(io, await workflow.knowledgePromotionApply({
-      draft: await readBoundedJsonInput(runtime.stdin),
+      draft: await readJsonCommandInput(parsed, runtime),
       approvalToken: requiredValueOption(parsed, "--approval-token"),
     }));
     return;
   }
 
   if (parsed.command === "team-select-preview") {
-    writeJson(io, await workflow.selectPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.selectPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "plan-preview") {
-    writeJson(io, await workflow.planPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.planPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "plan-apply") {
-    const input = jsonRecord(await readBoundedJsonInput(runtime.stdin));
+    const input = jsonRecord(await readJsonCommandInput(parsed, runtime));
     const applied = await workflow.planApply({
       ...input,
       approvalToken: requiredValueOption(parsed, "--approval-token"),
@@ -594,12 +633,12 @@ export async function runCli(
   }
 
   if (parsed.command === "replan-preview") {
-    writeJson(io, await workflow.replanPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.replanPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "replan-apply") {
-    const input = jsonRecord(await readBoundedJsonInput(runtime.stdin));
+    const input = jsonRecord(await readJsonCommandInput(parsed, runtime));
     const applied = await workflow.replanApply({
       ...input,
       approvalToken: requiredValueOption(parsed, "--approval-token"),
@@ -611,12 +650,12 @@ export async function runCli(
   }
 
   if (parsed.command === "specialist-replan-preview") {
-    writeJson(io, await workflow.specialistReplanPreview(await readBoundedJsonInput(runtime.stdin)));
+    writeJson(io, await workflow.specialistReplanPreview(await readJsonCommandInput(parsed, runtime)));
     return;
   }
 
   if (parsed.command === "specialist-replan-apply") {
-    const input = jsonRecord(await readBoundedJsonInput(runtime.stdin));
+    const input = jsonRecord(await readJsonCommandInput(parsed, runtime));
     const applied = await workflow.specialistReplanApply({
       ...input,
       approvalToken: requiredValueOption(parsed, "--approval-token"),
@@ -671,7 +710,7 @@ export async function runCli(
     if (to === "completed") {
       writeJson(io, await workflow.completeActiveTask(
         revision,
-        await readBoundedJsonInput(runtime.stdin),
+        await readJsonCommandInput(parsed, runtime),
       ));
       return;
     }

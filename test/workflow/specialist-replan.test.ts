@@ -144,19 +144,28 @@ describe("Specialist-only replan", () => {
     await fixture.service.workStartSlice("slice-tracer");
     const implementation = applied.specialistPlan.delegations.find(({ mode }) => mode === "implement")!;
     const reviewer = applied.specialistPlan.delegations.find(({ mode }) => mode === "review")!;
-    const completion = (expertId: string, planFingerprint: `sha256:${string}`) => ({
-      schemaVersion: 1 as const,
+    const completion = (
+      expertId: string,
+      planFingerprint: `sha256:${string}`,
+      dispatchFingerprint: string,
+    ) => ({
+      schemaVersion: 2 as const,
       expertId,
       planFingerprint,
+      dispatchFingerprint,
       status: "completed" as const,
       summary: "委派范围内的结果与证据已完成。",
       resultHash: `sha256:${"c".repeat(64)}` as const,
       evidencePointers: [{ kind: "file" as const, locator: "src/result.ts" }],
     });
-    await fixture.service.delegationStart(implementation.id);
+    const implementationStarted = await fixture.service.delegationStart(implementation.id);
     await fixture.service.delegationComplete(
       implementation.id,
-      completion(implementation.expertId, applied.specialistPlan.planFingerprint),
+      completion(
+        implementation.expertId,
+        applied.specialistPlan.planFingerprint,
+        implementationStarted.receipt.dispatchFingerprint,
+      ),
     );
 
     const replanPreview = await fixture.service.specialistReplanPreview({
@@ -169,10 +178,14 @@ describe("Specialist-only replan", () => {
     expect(replanned.nextPlan.planFingerprint).not.toBe(applied.specialistPlan.planFingerprint);
     expect(replanned.diff.unchanged).toContain(implementation.id);
 
-    await fixture.service.delegationStart(reviewer.id);
+    const reviewerStarted = await fixture.service.delegationStart(reviewer.id);
     await fixture.service.delegationComplete(
       reviewer.id,
-      completion(reviewer.expertId, replanned.nextPlan.planFingerprint),
+      completion(
+        reviewer.expertId,
+        replanned.nextPlan.planFingerprint,
+        reviewerStarted.receipt.dispatchFingerprint,
+      ),
     );
     const reviewed = await fixture.service.workReviewSlice(genericEvidenceBundle(
       applied.workItem.id,
@@ -199,10 +212,15 @@ describe("Specialist-only replan", () => {
     const applied = await fixture.service.workApply({ draft, approvalToken: preview.approvalToken });
     await fixture.service.workStartSlice("slice-tracer");
     const implementation = applied.specialistPlan.delegations.find(({ mode }) => mode === "implement")!;
-    const completion = (expertId: string, planFingerprint: `sha256:${string}`) => ({
-      schemaVersion: 1 as const,
+    const completion = (
+      expertId: string,
+      planFingerprint: `sha256:${string}`,
+      dispatchFingerprint: string,
+    ) => ({
+      schemaVersion: 2 as const,
       expertId,
       planFingerprint,
+      dispatchFingerprint,
       status: "completed" as const,
       summary: "委派范围内的结果与证据已完成。",
       resultHash: `sha256:${"d".repeat(64)}` as const,
@@ -211,7 +229,11 @@ describe("Specialist-only replan", () => {
     const firstStart = await fixture.service.delegationStart(implementation.id);
     await fixture.service.delegationComplete(
       implementation.id,
-      completion(implementation.expertId, applied.specialistPlan.planFingerprint),
+      completion(
+        implementation.expertId,
+        applied.specialistPlan.planFingerprint,
+        firstStart.receipt.dispatchFingerprint,
+      ),
     );
 
     const specialistAssessment = {
@@ -233,7 +255,11 @@ describe("Specialist-only replan", () => {
     expect(secondStart.receiptPath).not.toBe(firstStart.receiptPath);
     await fixture.service.delegationComplete(
       implementation.id,
-      completion(implementation.expertId, replanned.nextPlan.planFingerprint),
+      completion(
+        implementation.expertId,
+        replanned.nextPlan.planFingerprint,
+        secondStart.receipt.dispatchFingerprint,
+      ),
     );
   });
 

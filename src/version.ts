@@ -1,1 +1,1 @@
-export const EZAGENT_VERSION = "0.4.1" as const;
+export const EZAGENT_VERSION = "0.5.0" as const;

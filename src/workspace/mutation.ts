@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile } from "node:fs/promises";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { posix } from "node:path";
 
@@ -9,6 +9,7 @@ import {
   type AuditMetadata,
 } from "../audit/events.js";
 import { isWellFormedUnicode } from "../text/unicode.js";
+import { unicodeDefaultCaseFold } from "../text/unicode-case-fold.js";
 import {
   ensureWorkspaceDirectoryChains,
   nodeWorkspaceDirectoryRuntime,
@@ -77,7 +78,7 @@ function assertDenseArray(value: readonly unknown[], label: string): void {
 }
 
 function portableCollisionKey(relativePath: string): string {
-  return relativePath.normalize("NFKC").toUpperCase().normalize("NFKC");
+  return unicodeDefaultCaseFold(relativePath.normalize("NFKC")).normalize("NFKC");
 }
 
 function assertCanonicalTimestamp(value: unknown, label: string): asserts value is string {
@@ -224,7 +225,9 @@ export function targetPath(workspaceRoot: string, relativePath: string): string 
   return join(workspaceRoot, ...relativePath.split("/"));
 }
 
-function parentDirectories(writes: readonly { readonly relativePath: string }[]): readonly string[] {
+export function artifactParentDirectories(
+  writes: readonly { readonly relativePath: string }[],
+): readonly string[] {
   return [...new Set(writes
     .map(({ relativePath }) => posix.dirname(relativePath))
     .filter((directory) => directory !== "."))];
@@ -248,6 +251,45 @@ async function assertRegularOrMissingTarget(path: string): Promise<void> {
   }
 }
 
+async function assertNoExistingPortableCollisions(
+  workspaceRoot: string,
+  writes: readonly { readonly relativePath: string }[],
+): Promise<void> {
+  const plannedByParent = new Map<string, string[]>();
+  for (const { relativePath } of writes) {
+    const parent = posix.dirname(relativePath);
+    const names = plannedByParent.get(parent) ?? [];
+    names.push(posix.basename(relativePath));
+    plannedByParent.set(parent, names);
+  }
+
+  for (const [relativeParent, plannedNames] of plannedByParent) {
+    const parent = relativeParent === "."
+      ? workspaceRoot
+      : targetPath(workspaceRoot, relativeParent);
+    let existingNames: string[];
+    try {
+      existingNames = await readdir(parent);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw new WorkspaceCorruptError(`workspace artifact parent is unreadable: ${parent}`, {
+        cause: error,
+      });
+    }
+    for (const plannedName of plannedNames) {
+      const plannedKey = portableCollisionKey(plannedName);
+      const collision = existingNames.find((existingName) => (
+        existingName !== plannedName && portableCollisionKey(existingName) === plannedKey
+      ));
+      if (collision !== undefined) {
+        throw new WorkspaceCorruptError(
+          `workspace artifact has a portable filename collision: ${collision}; ${plannedName}`,
+        );
+      }
+    }
+  }
+}
+
 export async function validateExistingArtifactBoundaries(
   workspaceRoot: string,
   writes: readonly { readonly relativePath: string }[],
@@ -255,8 +297,9 @@ export async function validateExistingArtifactBoundaries(
   await validateExistingWorkspaceDirectoryChains(
     nodeWorkspaceDirectoryRuntime,
     workspaceRoot,
-    parentDirectories(writes),
+    artifactParentDirectories(writes),
   );
+  await assertNoExistingPortableCollisions(workspaceRoot, writes);
   await Promise.all(writes.map(({ relativePath }) => assertRegularOrMissingTarget(targetPath(workspaceRoot, relativePath))));
 }
 
@@ -264,7 +307,12 @@ export async function ensureArtifactBoundaries(
   workspaceRoot: string,
   writes: readonly { readonly relativePath: string }[],
 ): Promise<void> {
-  await ensureWorkspaceDirectoryChains(nodeWorkspaceDirectoryRuntime, workspaceRoot, parentDirectories(writes));
+  await ensureWorkspaceDirectoryChains(
+    nodeWorkspaceDirectoryRuntime,
+    workspaceRoot,
+    artifactParentDirectories(writes),
+  );
+  await assertNoExistingPortableCollisions(workspaceRoot, writes);
   await Promise.all(writes.map(({ relativePath }) => assertRegularOrMissingTarget(targetPath(workspaceRoot, relativePath))));
 }
 

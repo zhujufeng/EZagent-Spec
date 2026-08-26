@@ -11,6 +11,8 @@ description: 执行已批准的通用 EZagent Work Item：一次推进一个纵�
 
 必须使用支持 argv 数组的进程执行接口，禁止拼接 shell 字符串。每个动态值必须作为一个独立 argv 元素。若宿主只支持 shell 字符串，必须按当前 shell 的 literal 规则完整编码每个参数；无法证明编码正确就关闭失败，不得仅自行添加双引号。
 
+所有需要 JSON 输入的命令默认使用可关闭的非交互 stdin pipe，并在写入一个 JSON 文档后明确发送 EOF。若宿主进程接口使用 PTY，无法可靠关闭 stdin EOF，禁止继续等待、后台运行或盲目重试 mutation；改用宿主文件能力把完全相同的 JSON 写入一个新建、权限受限的临时普通文件，再把 `--input-file` 和该文件的绝对路径作为两个独立 argv 元素传给原命令。不得使用符号链接，不得把临时文件放进 `.ezagent/**`，不得使用 shell 输入重定向。预览与 Apply 必须读取完全相同的文件和字节；Apply 完成、用户拒绝或流程终止后删除临时文件。
+
 ```json
 ["node", "<absolute-cli-path>", "context", "--root", "<absolute-project-root>", "--json"]
 ```
@@ -41,7 +43,7 @@ Specialist 与多 Agent 只按已批准计划执行，人员和数量不固定�
 ["node", "<absolute-cli-path>", "delegation-start", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]
 ```
 
-然后必须在隔离的原生 subagent 中执行返回 `expertId` 对应的专家。Codex 优先调用已生成的 project Agent；Claude Code 或 OpenCode 若不能加载 Codex TOML，则从 `<plugin-root>/catalog/experts.json` 精确读取同一 `expertId` 的专家定义，并用宿主原生 subagent 工具创建隔离执行上下文。宿主没有可用 subagent 能力时必须提交 blocked 回执，不得由协调器模拟专家。发给 subagent 的任务只包含专家定义和已批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、必要输入指针、deliverables 和 Evidence requirements；不保存完整提示，不得发送完整聊天、完整用户提示、其他专家指令或未批准范围。subagent 只回传有界结果摘要、结果 hash 和最小 Evidence pointers。协调器验证绑定后，把 completion JSON 从 stdin 提交：
+然后必须使用宿主原生 subagent 工具，在隔离上下文中执行返回 `expertId` 对应的专家。Codex 优先调用已生成的 project Agent；Claude Code 或 OpenCode 若不能加载 Codex TOML，则从 `<plugin-root>/catalog/experts.json` 精确读取同一 `expertId` 的专家定义，并把它作为隔离上下文的专家指令。宿主没有可用 subagent 能力时必须提交 blocked 回执，不得由协调器模拟专家。把 `delegation-start` 返回的 `dispatch` 作为完整任务载荷原样发送给 subagent；不保存完整提示，不得改写、扩写或附加聊天、完整用户提示、其他专家指令或未批准范围。该 dispatch 已包含批准的 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、scope、deliverables 和 Evidence requirements，start receipt 的 `dispatchFingerprint` 绑定它的规范化内容。subagent 只回传有界结果摘要、result hash 和最小 Evidence pointers。协调器验证绑定后，completion JSON 必须使用 `schemaVersion: 2` 并原样回填 start receipt 的 `dispatchFingerprint`，再从 stdin 或上述 `--input-file` 通道提交：
 
 ```json
 ["node", "<absolute-cli-path>", "delegation-complete", "--root", "<absolute-project-root>", "--delegation", "<delegation-id>"]

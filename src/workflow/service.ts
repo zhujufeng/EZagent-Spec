@@ -113,8 +113,10 @@ import {
   type EvidenceBundle,
 } from "./evidence.js";
 import {
+  createDelegationDispatch,
   createDelegationCompletionReceipt,
   createDelegationStartReceipt,
+  delegationDispatchFingerprint,
   delegationCompletionReceiptPath,
   delegationStartReceiptPath,
   parseDelegationCompletionInput,
@@ -124,7 +126,9 @@ import {
   serializeDelegationStartReceipt,
   type DelegationCompletionInput,
   type DelegationCompletionReceipt,
+  type DelegationDispatch,
   type DelegationStartReceipt,
+  type DelegationStartReceiptV2,
 } from "./delegation-receipt.js";
 import {
   KNOWLEDGE_PATTERN_MAX_BYTES,
@@ -239,7 +243,8 @@ export interface DelegationCoverage {
 
 export interface DelegationStartResult {
   readonly delegation: SpecialistPlanV2["delegations"][number];
-  readonly receipt: DelegationStartReceipt;
+  readonly dispatch: DelegationDispatch;
+  readonly receipt: DelegationStartReceiptV2;
   readonly receiptPath: string;
   readonly workspaceRevision: number;
 }
@@ -920,7 +925,11 @@ function receiptMatchesDelegation(
     && receipt.workItemId === delegation.workItemId
     && receipt.workSpecId === delegation.workSpecId
     && receipt.workSpecRevision === delegation.workSpecRevision
-    && receipt.sliceId === delegation.sliceId;
+    && receipt.sliceId === delegation.sliceId
+    && (receipt.schemaVersion === 1
+      || receipt.dispatchFingerprint === delegationDispatchFingerprint(
+        createDelegationDispatch(delegation),
+      ));
 }
 
 async function readCompatibleDelegationCompletionReceipt(
@@ -1001,12 +1010,20 @@ async function assertNoUnfinishedDelegations(
     }
     if (start !== null && (start.expertId !== delegation.expertId
       || start.planFingerprint !== plan.planFingerprint
-      || start.sliceId !== delegation.sliceId)) {
+      || start.sliceId !== delegation.sliceId
+      || (start.schemaVersion === 2
+        && start.dispatchFingerprint !== delegationDispatchFingerprint(
+          createDelegationDispatch(delegation),
+        )))) {
       throw new Error("Delegation start receipt does not match the active Specialist Plan");
     }
     if (completion !== null && (completion.expertId !== delegation.expertId
       || completion.planFingerprint !== plan.planFingerprint
-      || completion.sliceId !== delegation.sliceId)) {
+      || completion.sliceId !== delegation.sliceId
+      || (completion.schemaVersion === 2
+        && completion.dispatchFingerprint !== delegationDispatchFingerprint(
+          createDelegationDispatch(delegation),
+        )))) {
       throw new Error("Delegation completion receipt does not match the active Specialist Plan");
     }
   }
@@ -1676,6 +1693,7 @@ export class ExpertTeamWorkflowService {
     if (slice?.status !== "executing") {
       throw new Error("Delegation can only start while its Slice is executing");
     }
+    const dispatch = createDelegationDispatch(delegation);
     const receipt = createDelegationStartReceipt(delegation, plan.planFingerprint, this.runtime.now());
     const receiptPath = delegationStartReceiptPath(
       records.workItem.id,
@@ -1699,9 +1717,16 @@ export class ExpertTeamWorkflowService {
         delegationId: delegation.id,
         expertId: delegation.expertId,
         specialistPlanFingerprint: plan.planFingerprint,
+        delegationDispatchFingerprint: receipt.dispatchFingerprint,
       },
     );
-    return Object.freeze({ delegation, receipt, receiptPath, workspaceRevision: nextState.revision });
+    return Object.freeze({
+      delegation,
+      dispatch,
+      receipt,
+      receiptPath,
+      workspaceRevision: nextState.revision,
+    });
   }
 
   async delegationComplete(
@@ -1738,6 +1763,13 @@ export class ExpertTeamWorkflowService {
       || start.planFingerprint !== plan.planFingerprint) {
       throw new Error("Delegation start receipt does not match the approved Specialist Plan");
     }
+    if (start.schemaVersion === 2
+      && (input.schemaVersion !== 2 || input.dispatchFingerprint !== start.dispatchFingerprint)) {
+      throw new Error("Delegation completion dispatch does not match the started input");
+    }
+    if (start.schemaVersion === 1 && input.schemaVersion !== 1) {
+      throw new Error("Legacy Delegation start receipt requires a legacy completion input");
+    }
     const receiptPath = delegationCompletionReceiptPath(
       records.workItem.id,
       delegation.id,
@@ -1747,7 +1779,7 @@ export class ExpertTeamWorkflowService {
       throw new Error(`Core artifact already exists: ${receiptPath}`);
     }
     await assertMissing(canonicalRoot, [receiptPath]);
-    const receipt = createDelegationCompletionReceipt(delegation, input, this.runtime.now());
+    const receipt = createDelegationCompletionReceipt(delegation, input, start, this.runtime.now());
     const nextState: WorkspaceState = { ...context.state, revision: context.state.revision + 1 };
     await repository.commitMutation(
       nextState,
@@ -1761,6 +1793,9 @@ export class ExpertTeamWorkflowService {
         delegationId: delegation.id,
         expertId: delegation.expertId,
         specialistPlanFingerprint: plan.planFingerprint,
+        ...(receipt.schemaVersion === 2
+          ? { delegationDispatchFingerprint: receipt.dispatchFingerprint }
+          : {}),
         delegationStatus: receipt.status,
         evidencePointerCount: receipt.evidencePointers.length,
       },

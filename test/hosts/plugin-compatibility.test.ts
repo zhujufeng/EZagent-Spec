@@ -17,7 +17,7 @@ describe("Claude Code and OpenCode compatibility", () => {
     expect(manifest).toMatchObject({
       name: "ezagent-spec",
       displayName: "EZagent Work Harness",
-      version: "0.4.1",
+      version: "0.5.0",
       author: { name: "zhujufeng" },
       repository: "https://github.com/zhujufeng/EZagent-Spec",
       license: "MIT",
@@ -33,7 +33,7 @@ describe("Claude Code and OpenCode compatibility", () => {
         name: "ezagent-spec",
         source: "./plugins/ezagent-spec",
         description: "中文、本地优先的通用 Agent Work Harness。",
-        version: "0.4.1",
+        version: "0.5.0",
         category: "Developer Tools",
       }],
     });

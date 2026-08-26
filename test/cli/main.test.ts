@@ -664,19 +664,30 @@ describe.sequential("ezagent CLI", () => {
     expectJsonSuccess(await runCli(["work-start", "--root", root, "--slice", "slice-tracer"]));
 
     for (const delegation of applied.specialistPlan.delegations) {
-      expect(expectJsonSuccess(await runCli([
+      const started = expectJsonSuccess(await runCli([
         "delegation-start", "--root", root, "--delegation", delegation.id,
-      ]))).toMatchObject({
+      ])) as {
+        readonly dispatch: { readonly delegationId: string; readonly expertId: string };
+        readonly receipt: { readonly dispatchFingerprint: string };
+      };
+      expect(started).toMatchObject({
         delegation: { id: delegation.id, expertId: delegation.expertId },
-        receipt: { status: "started", planFingerprint: applied.specialistPlan.planFingerprint },
+        dispatch: { delegationId: delegation.id, expertId: delegation.expertId },
+        receipt: {
+          schemaVersion: 2,
+          status: "started",
+          planFingerprint: applied.specialistPlan.planFingerprint,
+          dispatchFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+        },
       });
       const completed = expectJsonSuccess(await runCli(
         ["delegation-complete", "--root", root, "--delegation", delegation.id],
         PROJECT_ROOT,
         { input: `${JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
           expertId: delegation.expertId,
           planFingerprint: applied.specialistPlan.planFingerprint,
+          dispatchFingerprint: started.receipt.dispatchFingerprint,
           status: "completed",
           summary: "委派范围内工作与验证已经完成。",
           resultHash: `sha256:${"e".repeat(64)}`,
@@ -697,6 +708,21 @@ describe.sequential("ezagent CLI", () => {
       workItem: { status: "verifying", slices: [{ status: "accepted" }] },
     });
   }, 30_000);
+
+  test("accepts a Work Contract from --input-file without waiting for stdin EOF", async () => {
+    const root = await temporaryProject();
+    const inputPath = join(root, "work contract.json");
+    await writeFile(inputPath, `${JSON.stringify(genericWorkContractDraft)}\n`, "utf8");
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "File Input Work"]));
+
+    const preview = expectJsonSuccess(await runCli([
+      "work-preview", "--root", root, "--input-file", inputPath,
+    ]));
+
+    expect(preview).toMatchObject({
+      approvalToken: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+    });
+  });
 
   test("keeps external execution off after a Side Effect approval command", async () => {
     const root = await temporaryProject();

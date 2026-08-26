@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0 - 2026-08-26
+
+### Agent 宿主可靠性
+
+- 所有 JSON 输入命令新增有界 `--input-file` 通道；Codex、Claude Code 或 OpenCode 使用 PTY 且无法可靠关闭 stdin EOF 时，不再后台等待或依赖 shell 重定向。
+- 五个会提交 JSON 的 canonical Skills 统一要求：优先使用会关闭 EOF 的非交互 stdin；必要时使用权限受限、非符号链接的临时普通文件，并让 Preview 与 Apply 复用完全相同的输入字节。
+
+### Specialist 可审计委派
+
+- Core 现在从已批准 delegation 生成唯一 `specialist-dispatch`，并把它作为 `delegation-start` 的机器可读结果返回；协调器必须原样交给隔离 Specialist。
+- 新生成的 start/completion receipt 升级为 schema v2，并用 `dispatchFingerprint` 绑定 Work Item、Work Spec、Slice、专家、范围、交付接口、Criterion 与 Evidence requirements。
+- completion 必须回填 start receipt 的同一指纹；计划、专家或 dispatch 漂移会在写入回执前关闭失败。既有 schema v1 receipt 继续兼容读取与完成。
+
+### Workspace 文件系统加固
+
+- `WorkspaceRepository` 在构造时规范化真实项目根并绑定稳定文件 identity；根目录被替换后，初始化、读取和 mutation 会停止。
+- mutation 在发布 pending marker 前捕获 `.ezagent` 与写入祖先 identity，并在目录创建、每次 artifact 写入、audit、state 和 marker 清理前后复核；发现替换时保留恢复证据并关闭失败。
+- portable 文件名冲突检查扩展到父目录中的存量文件，阻止大小写、NFKC 或 Unicode case-fold 等价名称在 macOS 与 Windows 间发生覆盖或不可移植双文件。
+
+### 面向非开发同事的文档
+
+- README 新增从 Node.js 预检、插件安装、新建任务、项目初始化、Work Preview 确认、执行/恢复/取消到故障排查的完整中文教程。
+- 明确说明 Specialist 由自然语言能力需求自动评估，普通任务没有 Specialist 是正常结果；同时公开 Local-only、Side Effect 与可信本机威胁模型边界。
+
+### 兼容性说明
+
+- `--input-file` 是兼容新增选项，原 stdin 调用保持不变。
+- 0.5.0 创建的 delegation start receipt 使用 schema v2，因此 completion 也必须使用 schema v2 并提供 `dispatchFingerprint`；升级前已经存在的 schema v1 start receipt 仍按 v1 完成。
+- Node.js 最低版本仍为 22。
+
 ## 0.4.1 - 2026-08-25
 
 ### 初始化连续性

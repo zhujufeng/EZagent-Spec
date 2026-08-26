@@ -172,15 +172,18 @@ function mixedReviewDraft() {
 
 async function completeDelegations(root: string, applied: AppliedV2): Promise<void> {
   for (const delegation of applied.specialistPlan.delegations) {
-    await json(root, [
+    const started = await json<{
+      readonly receipt: { readonly dispatchFingerprint: string };
+    }>(root, [
       "delegation-start", "--root", root, "--delegation", delegation.id,
     ]);
     await json(root, [
       "delegation-complete", "--root", root, "--delegation", delegation.id,
     ], {
-      schemaVersion: 1,
+      schemaVersion: 2,
       expertId: delegation.expertId,
       planFingerprint: applied.specialistPlan.planFingerprint,
+      dispatchFingerprint: started.receipt.dispatchFingerprint,
       status: "completed",
       summary: "已在批准范围内完成交付与验证。",
       resultHash: `sha256:${"f".repeat(64)}`,
