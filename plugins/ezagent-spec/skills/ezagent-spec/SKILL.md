@@ -46,6 +46,10 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAssessment` 是 Work Contract 的必填判断。Assessment 不得填写 expert ID、指定人数或借岗位名称预选团队；本地核心根据已批准的 Capability Needs 和运行时 Catalog 确定性生成 Specialist Plan。若需要独立审查，review need 必须使用 `independent-review`，并与同一 Slice 的实现者隔离。任何生成的委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
 
+Router 已选择的模式由用户请求本身决定。源码、样本数据或权限暂缺，或者 CodeGraph 等辅助分析工具不可用、未初始化或要求另行批准，都不得把请求退回 Consult，也不得在 Outcome、边界和验收方式已经可以定义时阻止 Work Preview。把必要的发现、数据校验或工具准备放进第一个 Tracer Slice，把未知项记录为有来源的假设、未决问题或 blocker；只有缺失答案会实质改变 Outcome 或安全边界且无法用上述方式表达时，才暂停并只问一个问题。
+
+只读 sandbox 不阻止只读的 `work-preview`，只会阻止获批后的 `work-apply` 与实际实施。先生成并展示安全预览；不得因为当前不能写业务文件就声称请求是 Consult、跳过 Specialist Assessment 或结束已完成的 Router 转交。
+
 把完全相同的 Work Contract JSON 从 stdin 先传给只读预览：
 
 ```json

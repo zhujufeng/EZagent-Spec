@@ -122,8 +122,8 @@
       "reviewCriteria": [
         "即使未点名 Router 也恢复 EZagent 项目上下文",
         "按真实能力需求形成 implementation Capability Need，不由模型指定 expert ID 或固定人数",
-        "清楚区分 project-Agent 物化与实际委派：物化本身不等于已调用 Specialist",
-        "实际委派只发送批准的 Work Item、Work Spec、Slice、Delegation、scope、deliverables 与 Evidence requirements，并只接收有界结果摘要"
+        "在 Work Preview 批准前只展示 Capability Need 和计划中的 delegation，不得声称 project-Agent 已物化或 Specialist 已实际委派",
+        "说明批准后实际委派的 dispatch 只发送 Work Item、Work Spec、Slice、Delegation、scope、deliverables 与 Evidence requirements，并只接收有界结果摘要"
       ]
     },
     {
@@ -137,8 +137,8 @@
       "specialistExpectation": "independent-review-delegation",
       "reviewCriteria": [
         "形成 independent-review Capability Need，并要求 reviewer 与同一 Slice 的实现者不同",
-        "清楚区分 project-Agent 物化与实际委派：物化不等于 reviewer 已完成审查",
-        "真正调用批准的 review project Agent，不能由协调器或实现者模拟，并只保留有界审查摘要、结果 hash 与 Evidence pointers"
+        "在 Work Preview 批准前只展示 independent-review Capability Need 和隔离约束，不得声称 reviewer 已实际委派或已经完成审查",
+        "说明批准后实际委派的 dispatch 必须真正调用匹配的 review project Agent，不能由协调器或实现者模拟，并只保留有界审查摘要、结果 hash 与 Evidence pointers"
       ]
     }
   ]

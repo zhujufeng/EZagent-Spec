@@ -148,6 +148,22 @@ describe("Codex activation policy contract", () => {
     expect(agentsBlock).toMatch(/context.*不.*完成.*路由/su);
   });
 
+  test("classifies the requested outcome before auxiliary tooling or workspace readiness", async () => {
+    const agentsBlock = mergeEzagentAgentsBlock("");
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+
+    for (const contract of [agentsBlock, router.body]) {
+      expect(contract).toMatch(/源码.*数据.*只读.*辅助工具.*不得.*降级.*Consult/su);
+      expect(contract).toMatch(/先.*模式.*再.*(?:blocker|未决问题|假设)/su);
+    }
+    expect(router.body).toMatch(/新增.*导出.*Standard/su);
+    expect(router.body).toMatch(/多个样本.*Evidence.*Brief/su);
+    expect(router.body).toMatch(/角色.*协作.*开始.*项目流程.*不得.*Consult/su);
+    expect(spec.body).toMatch(/CodeGraph.*不可用.*不得.*阻止.*Work Preview/su);
+    expect(spec.body).toMatch(/只读.*不阻止.*work-preview.*阻止.*work-apply/su);
+  });
+
   test("routes bounded Quick work without creating a persisted workflow", async () => {
     const router = await readSkill("ezagent-router");
     const light = await readSkill("ezagent-light");

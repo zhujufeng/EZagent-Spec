@@ -154,7 +154,8 @@ describe("Codex host evaluation corpus", () => {
       .filter(({ specialistExpectation }) => specialistExpectation.endsWith("delegation"))
       .flatMap(({ reviewCriteria }) => reviewCriteria)
       .join("\n");
-    expect(delegationCriteria).toMatch(/物化.*不等于.*实际委派/su);
+    expect(delegationCriteria).toMatch(/Work Preview.*批准前.*不得.*实际委派/su);
+    expect(delegationCriteria).toMatch(/批准后.*dispatch/su);
     expect(delegationCriteria).toMatch(/有界.*摘要/su);
     for (const fixture of suite.cases) {
       expect(fixture.prompt.trim(), fixture.id).not.toBe("");

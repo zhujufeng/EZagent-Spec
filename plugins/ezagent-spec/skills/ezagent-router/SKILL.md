@@ -27,6 +27,8 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 一次 Router 决策只有在明确记录模式、选择理由、下一个 Skill，并实际转交后才算完成：Consult 直接回答；Quick 转 `$ezagent-light`；Brief、Standard 或 Controlled 转 `$ezagent-spec`；已有 active Work Item 按下述状态转 `$ezagent-execute`、`$ezagent-implement` 或 `$ezagent-review`。不得只重复执行 `context` 后继续旧工作流或结束任务。
 
+必须先根据用户要求的 Outcome、影响与可逆性选择模式，再处理 blocker、未决问题或假设。源码或数据缺失、当前是只读 sandbox、CodeGraph 等辅助工具不可用或未初始化、当前权限不足，都不得把 Quick、Brief、Standard 或 Controlled 请求降级为 Consult。当前条件不能实施时仍须完成路由并实际转交；由下一个 Skill 记录缺口、形成安全预览或只追问一个会改变结果的问题。工具和权限状态不改变用户要求本身。
+
 若用户明确要求取消或放弃当前 active Work Item，先展示将终止的 Work Item、当前状态，以及 Plan、Receipt、Evidence 与 Journal 历史仍会保留；不得把范围变化或执行困难自行解释为取消。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`，active item 已为空时不得调用取消命令：
 
 ```json
@@ -43,10 +45,10 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 ## 选择最轻 Work Mode
 
-- `Consult`：解释、只读咨询或一次性判断；直接回答，不持久化请求。
-- `Quick`：目标清楚、局部、低影响、可逆、单会话完成；转 `$ezagent-light`。
-- `Brief`：需要 1–5 个可验证 Slices 或跨会话恢复的普通工作；转 `$ezagent-spec`。
-- `Standard`：多来源、多交付物、多个依赖 Slice 或中等影响；转 `$ezagent-spec`。
+- `Consult`：用户要求的结果本身只是解释、只读咨询或一次性判断，且没有要求产出、修改或开始项目流程；直接回答，不持久化请求。
+- `Quick`：目标清楚、局部、低影响、可逆、单会话完成；转 `$ezagent-light`。只有已知是单点表现修改且不改变行为、数据契约或外部消费者时才走 Quick。
+- `Brief`：需要 1–5 个可验证 Slices 或跨会话恢复的普通工作；转 `$ezagent-spec`。要求用多个样本、计算过程或来源 Evidence 形成可复核结论的分析，默认至少是 Brief，即使样本尚未提供。
+- `Standard`：多来源、多交付物、多个依赖 Slice、中等影响或新增跨边界能力；转 `$ezagent-spec`。新增数据导出默认按 Standard，因为通常同时涉及界面入口、查询范围、文件格式、兼容性和验证；只有实际检查证明是无兼容影响的单点局部修改时才可降级。
 - `Controlled`：敏感信息、对外沟通、发布、预算、生产系统、人员判断或难回滚动作；转 `$ezagent-spec`，每个 Side Effect 仍单独批准。
 
 不确定时优先问一个会改变结果的问题并给出推荐答案；不要用一轮长问卷。Shared Design Concept 尚未形成时，不急于生成完整资产。
@@ -60,5 +62,7 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 只使用最多 5 条摘要，确有需要才按 path 读取原记录；不传完整提示或聊天，不复制核心评分规则。用户要求共享项目上下文或晋升 Pattern 时转 `$ezagent-context`。
 
 Specialist 和多 Agent 不是 Work Mode 的默认前置。对进入 Brief、Standard 或 Controlled 的新工作，在 Shared Design Concept 稳定后、生成 Work Contract 前必须做一次显式 Specialist Assessment：简单且能力充分的工作记录带理由的 `not-needed`；只有领域判断、上下文隔离、真正独立的并行 Slice 或独立审查能证明收益时才记录有界 Capability Needs。Assessment 只描述每个 Slice 需要的能力、领域、目的和隔离原因，不选择 expert ID，不为组队而组队；不得固定人员、数量或岗位。历史 v1 Plan 的自动组队继续由其已批准团队和 `team-select-preview` / `plan-*` 兼容入口管理。
+
+用户仅询问“可能需要哪些角色”且没有要求开始工作时可以作为 Consult 回答；如果同一请求既询问角色、专家或协作，又要求开始分析、制定方案或按项目流程开始，就不得停在 Consult，必须按实际复杂度进入 Brief、Standard 或 Controlled，并完成 Specialist Assessment。用户要求独立 Agent 审查时必须形成 `independent-review` Capability Need，不能先以工具或源码缺失为由跳过 Assessment。
 
 不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。

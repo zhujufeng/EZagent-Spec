@@ -54,6 +54,8 @@ npm run plugin:host-eval
 
 只有全部条件满足时，才把对应结果的 `review.status` 改为 `pass`，并在 `review.reason` 写入具体、非空的判定依据。失败或不确定时写 `fail`，保留证据并停止发布。
 
+这组场景固定为只读且不会替用户批准 Work Preview，因此 Specialist 场景只验收：Capability Need 是否正确、实现/独立审查是否隔离、预览是否没有谎称 Agent 已物化或已经执行，以及批准后的 dispatch/receipt 边界是否说明清楚。它不得要求或接受未批准的实际委派；批准后的真实委派、独立 reviewer 调用和有界回执由 v2 Specialist E2E 与 delegation receipt 门禁验证。
+
 完成复核后运行：
 
 ```bash

@@ -6,6 +6,7 @@
 
 - 所有 JSON 输入命令新增有界 `--input-file` 通道；Codex、Claude Code 或 OpenCode 使用 PTY 且无法可靠关闭 stdin EOF 时，不再后台等待或依赖 shell 重定向。
 - 五个会提交 JSON 的 canonical Skills 统一要求：优先使用会关闭 EOF 的非交互 stdin；必要时使用权限受限、非符号链接的临时普通文件，并让 Preview 与 Apply 复用完全相同的输入字节。
+- Router 现在先按用户要求的 Outcome、影响和可逆性定模式；源码、样本、写权限或 CodeGraph 等辅助工具缺失只会成为后续 blocker，不再把 Brief/Standard/Controlled 错降为 Consult。新增导出、可复核多样本分析，以及“询问协作角色并要求开始项目流程”等边界也给出明确判定。
 
 ### Specialist 可审计委派
 
