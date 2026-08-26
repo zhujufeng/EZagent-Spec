@@ -53,4 +53,74 @@ describe("Work Contract v2 Skill reference", () => {
     expect(reference).toMatch(/Boundary 顶层.*不得.*access/su);
     expect(reference).toMatch(/access.*只属于.*resources.*resource 元素/su);
   });
+
+  test("maps backend implementation and independent review to precise engineering Specialists", async () => {
+    const reference = await readFile(REFERENCE_PATH, "utf8");
+    const match = /<!-- STANDARD_ANALYSIS_TEMPLATE -->\s*```json\s*([\s\S]*?)\s*```/u.exec(reference);
+    expect(match).not.toBeNull();
+    const contract = parseWorkContractDraft(JSON.parse(match![1]!) as unknown);
+    const catalog = parseRuntimeCatalog(await readFile(CATALOG_PATH));
+    const plan = proposeSpecialistPlanV2(catalog, {
+      workItemId: "TASK-20260826-002",
+      workSpecId: "SPEC-20260826-002",
+      workSpecRevision: 0,
+      planRevision: 1,
+      workSpec: contract.workSpec,
+      assessment: {
+        decision: "required",
+        reasons: ["后端修复需要隔离实现与独立审查"],
+        needs: [
+          {
+            id: "need-analysis",
+            sliceId: "slice-tracer",
+            purpose: "analysis",
+            capabilities: ["engineering-backend-architect"],
+            domains: ["engineering"],
+            projectSignals: [],
+            isolationReason: "domain-judgment",
+          },
+          {
+            id: "need-implementation",
+            sliceId: "slice-tracer",
+            purpose: "implementation",
+            capabilities: ["engineering-senior-developer"],
+            domains: ["engineering"],
+            projectSignals: [],
+            isolationReason: "context-isolation",
+          },
+          {
+            id: "need-review",
+            sliceId: "slice-tracer",
+            purpose: "review",
+            capabilities: ["engineering-code-reviewer"],
+            domains: ["engineering"],
+            projectSignals: [],
+            isolationReason: "independent-review",
+          },
+        ],
+      },
+    });
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.uncoveredCapabilities).toEqual([]);
+    expect(plan.delegations).toHaveLength(3);
+    expect(plan.delegations.map(({ mode, expertId }) => ({ mode, expertId })))
+      .toEqual(expect.arrayContaining([
+        {
+          mode: "implement",
+          expertId: "ezagent.engineering.engineering-senior-developer",
+        },
+        {
+          mode: "analysis",
+          expertId: "ezagent.engineering.engineering-backend-architect",
+        },
+        {
+          mode: "review",
+          expertId: "ezagent.engineering.engineering-code-reviewer",
+        },
+      ]));
+    expect(reference).toMatch(/后端.*实施.*engineering-senior-developer/su);
+    expect(reference).toMatch(/代码.*独立审查.*engineering-code-reviewer/su);
+    expect(reference).toMatch(/本地项目.*resources.*空数组/su);
+  });
 });

@@ -121,6 +121,9 @@ describe("Codex host evaluation corpus", () => {
     const indirect = selectHostEvalCases(suite, "initialized-indirect-expert-request")[0]!;
     expect(indirect.reviewCriteria.join("\n"))
       .toMatch(/一次 work-preview.*engineering-backend-architect/su);
+    const independent = selectHostEvalCases(suite, "initialized-independent-review")[0]!;
+    expect(independent.reviewCriteria.join("\n"))
+      .toMatch(/一次 work-preview.*engineering-senior-developer.*engineering-code-reviewer/su);
     expect(selectHostEvalCases(suite).map(({ id }) => id))
       .toEqual(suite.cases.map(({ id }) => id));
     expect(() => selectHostEvalCases(suite, "missing-case"))
@@ -408,6 +411,25 @@ describe("Codex host evaluation safety", () => {
 
   test("accepts complete evidence bound to the expected cases and commit", () => {
     expect(verifyHostEvalEvidence(passingEvidence(), ["explicit-init"], COMMIT))
+      .toMatchObject({ commit: COMMIT });
+  });
+
+  test("allows ordinary business writes when EZagent correctly stays out of a no-workflow case", () => {
+    const evidence = passingEvidence() as {
+      cases: Array<Record<string, unknown>>;
+    } & Record<string, unknown>;
+    evidence.cases[0] = {
+      ...evidence.cases[0],
+      expectedPolicy: "no-workflow",
+      workspaceChanged: true,
+      workspaceAfterSha256: "c".repeat(64),
+      review: {
+        status: "pass",
+        reason: "The host created only requested business files and did not initialize EZagent.",
+      },
+    };
+
+    expect(verifyHostEvalEvidence(evidence, ["explicit-init"], COMMIT))
       .toMatchObject({ commit: COMMIT });
   });
 

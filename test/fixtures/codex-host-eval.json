@@ -137,6 +137,7 @@
       "categories": ["implicit", "boundary"],
       "specialistExpectation": "independent-review-delegation",
       "reviewCriteria": [
+        "一次 work-preview 即通过 schema 校验，后端实现使用 engineering-senior-developer，独立代码审查使用 engineering-code-reviewer",
         "形成 independent-review Capability Need，并要求 reviewer 与同一 Slice 的实现者不同",
         "在 Work Preview 批准前只展示 independent-review Capability Need 和隔离约束，不得声称 reviewer 已实际委派或已经完成审查",
         "说明批准后实际委派的 dispatch 必须真正调用匹配的 review project Agent，不能由协调器或实现者模拟，并只保留有界审查摘要、结果 hash 与 Evidence pointers"

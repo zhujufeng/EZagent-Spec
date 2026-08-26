@@ -24,6 +24,8 @@
 - Standard 分析参考模板会从自然语言能力需求生成无 expert ID 的 `analysis` Need，并由 Core 在完整 265 人 Catalog 上确定性匹配 delegation；测试同时要求零 uncovered capability 和零 blocker。
 - `domains` 现在按真实 Specialist Catalog token 关闭失败：若 Need 使用目录中不存在的领域词，Core 返回 `domain-unmatched:<token>` blocker 且不生成 delegation，避免未知主题词静默落到 UX 等无关专家；软件工程参考模板固定使用稳定的 `engineering` 领域词。
 - 后端服务、API、数据库、事务与分布式一致性分析使用精确的 `engineering-backend-architect` Capability，不再因通用 `architecture-design` 同分而落到无关的工程子领域；定向真实宿主夹具要求一次 Preview 通过并匹配后端架构 Specialist。
+- 后端代码实施与独立代码审查分别使用 `engineering-senior-developer` 和 `engineering-code-reviewer`，避免通用 implementation/review Capability 落到 AI 数据修复或金融合规专家；本地项目文件写入不再被错误编码成需要 Controlled 审批的外部 resource。
+- Codex 宿主证据允许 `no-workflow` 场景按原始用户请求创建普通业务文件，同时继续要求人工审查确认没有初始化 `.ezagent`；所有 EZagent 路由场景仍强制批准前工作区字节不变。
 
 ### Workspace 文件系统加固
 

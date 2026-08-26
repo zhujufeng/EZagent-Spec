@@ -265,10 +265,9 @@ export function verifyHostEvalEvidence(
     if (result.exitCode !== 0) {
       throw new Error(`host evaluation case ${result.id} exited ${result.exitCode}`);
     }
-    if (
-      result.workspaceChanged
-      || result.workspaceBeforeSha256 !== result.workspaceAfterSha256
-    ) {
+    const workspaceChanged = result.workspaceChanged
+      || result.workspaceBeforeSha256 !== result.workspaceAfterSha256;
+    if (workspaceChanged && result.expectedPolicy !== "no-workflow") {
       throw new Error(`host evaluation case ${result.id} changed its workspace`);
     }
     if (result.review.status !== "pass" || result.review.reason.trim() === "") {
