@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 - 2026-08-26
+## 0.5.0 - Unreleased
 
 ### Agent 宿主可靠性
 
@@ -10,6 +10,7 @@
 - Work Mode 现在按本次获批动作而不是风险主题名称判断：退款、支付等内部分析或本地规划在明确排除真实生产/外部动作时保持 Brief/Standard；只有合同本身包含敏感数据、生产写入、发布、预算、人员判断或难回滚动作才进入 Controlled。
 - 同时要求实施与“未参与实现的独立 Agent 审查”时至少进入 Standard，不再因为只有 1–2 个 Slice 而误降为 Brief。
 - Work Contract 默认收敛为 1–3 个 Slice、1–3 个交付接口和 3–6 条验收条件，并合并同 Slice 的重复 Capability Need；真实 Codex 发布验收仍有界，但复杂 Specialist 预览的单回合上限从 4 分钟调整为 7 分钟。
+- Specialist 规划禁止遍历完整专家 Catalog、根据名称二次猜测 Core 的确定性匹配或使用 shell 管道内联大段 JSON；只允许依据 Core 明确返回的能力缺口修正一次，并在 Codex PTY 中强制使用项目外 `--input-file`，避免预览上下文膨胀和无界重试。
 
 ### Specialist 可审计委派
 

@@ -67,4 +67,6 @@ Specialist 和多 Agent 不是 Work Mode 的默认前置。对进入 Brief、Sta
 
 用户仅询问“可能需要哪些角色”且没有要求开始工作时可以作为 Consult 回答；如果同一请求既询问角色、专家或协作，又要求开始分析、制定方案或按项目流程开始，就不得停在 Consult，必须按实际复杂度进入 Brief、Standard 或 Controlled，并完成 Specialist Assessment。用户要求完成实现并由未参与实现的独立 Agent 审查时，至少进入 Standard，即使只需 1–2 个 Slice；这是彼此隔离的 implementation 与 independent-review 能力边界，不能按 Slice 数量降成 Brief。用户要求独立 Agent 审查时必须形成 `independent-review` Capability Need，不能先以工具或源码缺失为由跳过 Assessment。
 
+如果请求既询问协作角色又要求开始分析一个将改变行为、数据契约或跨边界接口的需求，至少进入 Standard；不得因为当前一句话使用“分析”就降为 Brief。Work Contract 必须覆盖最终要求的工作结果：若项目流程的目标包含后续实现，至少一个实现 Slice 要有 `implementation` Capability Need；可以另设分析或 `independent-review` Need，但不得把所有 Need 都改写成 analysis。
+
 不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。

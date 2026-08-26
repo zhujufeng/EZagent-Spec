@@ -309,6 +309,8 @@ describe("Codex Skill contracts", () => {
     expect(router.body).toMatch(/资金.*领域风险.*本身.*不得.*Controlled/su);
     expect(router.body).toMatch(/仅.*分析.*规划.*不包含.*生产.*外部.*Standard/su);
     expect(router.body).toMatch(/实现.*未参与实现.*独立 Agent 审查.*至少.*Standard/su);
+    expect(router.body).toMatch(/询问.*角色.*开始分析.*行为.*数据契约.*至少.*Standard/su);
+    expect(router.body).toMatch(/至少一个.*implementation.*Capability Need/su);
     expect(assessment).toBeGreaterThan(shared);
     expect(preview).toBeGreaterThan(assessment);
     expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
@@ -323,6 +325,10 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/批准后.*dispatch.*Work Item ID.*Evidence requirements.*有界.*摘要/su);
     expect(spec.body).toMatch(/Specialist Assessment.*required.*最终答复.*委派边界.*不得省略/su);
     expect(spec.body).toMatch(/匹配的隔离 project Agent.*协调器.*不得.*模拟/su);
+    expect(spec.body).toMatch(/不得.*读取、搜索或枚举.*catalog\/experts\.json/su);
+    expect(spec.body).toMatch(/不得.*二次猜测.*Core.*确定性匹配/su);
+    expect(spec.body).toMatch(/uncoveredCapabilities.*blockers.*最多.*一次/su);
+    expect(spec.body).toMatch(/Codex.*不得.*printf.*shell 管道.*--input-file/su);
   });
 
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {

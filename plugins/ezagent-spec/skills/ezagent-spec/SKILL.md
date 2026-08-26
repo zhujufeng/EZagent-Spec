@@ -48,6 +48,10 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAssessment` 是 Work Contract 的必填判断。Assessment 不得填写 expert ID、指定人数或借岗位名称预选团队；本地核心根据已批准的 Capability Needs 和运行时 Catalog 确定性生成 Specialist Plan。若需要独立审查，review need 必须使用 `independent-review`，并与同一 Slice 的实现者隔离。任何生成的委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
 
+形成 Capability Needs 只做语义判断；不得为选择能力而读取、搜索或枚举 `catalog/experts.json`，不得遍历 expert ID，也不得搜索 `dist` 源码来反推专家名称。Core 对 Work Preview 返回的 Specialist Plan 负责确定性匹配；协调器不得根据专家名称或简介二次猜测 Core 的确定性匹配。只有 Core 明确返回 `uncoveredCapabilities` 或 `blockers` 时才能据此修正，并且最多重做一次预览；仍有缺口就把 blocker 如实展示给用户，不得扩大 Catalog 探索或盲目重试。
+
+在 Codex 的命令工具或 PTY 中，JSON 不得通过 `printf`、shell 管道、命令替换、base64 或超长内联参数送入 CLI；必须按本 Skill 开头的规则，在项目外的操作系统临时目录写入受限普通文件并使用 `--input-file`。这条限制也适用于只读 `work-preview`。
+
 Router 已选择的模式由用户请求本身决定。源码、样本数据或权限暂缺，或者 CodeGraph 等辅助分析工具不可用、未初始化或要求另行批准，都不得把请求退回 Consult，也不得在 Outcome、边界和验收方式已经可以定义时阻止 Work Preview。把必要的发现、数据校验或工具准备放进第一个 Tracer Slice，把未知项记录为有来源的假设、未决问题或 blocker；只有缺失答案会实质改变 Outcome 或安全边界且无法用上述方式表达时，才暂停并只问一个问题。
 
 只读 sandbox 不阻止只读的 `work-preview`，只会阻止获批后的 `work-apply` 与实际实施。先生成并展示安全预览；不得因为当前不能写业务文件就声称请求是 Consult、跳过 Specialist Assessment 或结束已完成的 Router 转交。
