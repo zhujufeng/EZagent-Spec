@@ -724,6 +724,28 @@ describe.sequential("ezagent CLI", () => {
     });
   });
 
+  test("accepts a bounded Work Contract from --input-json without stdin or a temp file", async () => {
+    const root = await temporaryProject();
+    const input = JSON.stringify(genericWorkContractDraft);
+    expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Argv Input Work"]));
+
+    const preview = expectJsonSuccess(await runCli([
+      "work-preview", "--root", root, "--input-json", input,
+    ]));
+
+    expect(preview).toMatchObject({
+      approvalToken: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+    });
+
+    const inputPath = join(root, "duplicate input.json");
+    await writeFile(inputPath, input, "utf8");
+    expectSingleLineFailure(await runCli([
+      "work-preview", "--root", root,
+      "--input-file", inputPath,
+      "--input-json", input,
+    ]), "mutually exclusive");
+  });
+
   test("keeps external execution off after a Side Effect approval command", async () => {
     const root = await temporaryProject();
     const draft = controlledActionDraft();

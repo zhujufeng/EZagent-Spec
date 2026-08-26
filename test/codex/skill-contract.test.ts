@@ -188,12 +188,15 @@ describe("Codex Skill contracts", () => {
 
     for (const skill of skills) {
       expect(skill.body).toContain("--input-file");
+      expect(skill.body).toContain("--input-json");
       expect(skill.body).toMatch(/PTY.*stdin.*EOF|stdin.*EOF.*PTY/su);
       expect(skill.body).toMatch(/临时.*普通文件.*符号链接/su);
       expect(skill.body).toMatch(/操作系统临时目录.*项目根目录之外/su);
       expect(skill.body).toMatch(/预览.*Apply.*完全相同.*文件/su);
       expect(skill.body).toMatch(/不得.*shell.*重定向/u);
-      expect(skill.body).toMatch(/临时文件.*禁止写入.*stdin.*EOF.*关闭失败.*不得启动.*JSON 命令/su);
+      expect(skill.body).toMatch(/最后兜底.*stdin.*EOF.*禁止写入.*临时文件.*--input-json/su);
+      expect(skill.body).toMatch(/--input-json.*24.?576.*UTF-8/su);
+      expect(skill.body).toMatch(/argv.*记录.*敏感.*关闭失败/su);
       expect(skill.body).toMatch(/不得退回 PTY 试探/u);
     }
   });
@@ -313,6 +316,7 @@ describe("Codex Skill contracts", () => {
     expect(router.body).toMatch(/实现.*未参与实现.*独立 Agent 审查.*至少.*Standard/su);
     expect(router.body).toMatch(/询问.*角色.*开始分析.*行为.*数据契约.*至少.*Standard/su);
     expect(router.body).toMatch(/至少一个.*implementation.*Capability Need/su);
+    expect(router.body).toMatch(/Work Contract.*定义.*不得.*CodeGraph.*枚举.*业务文件.*Tracer Slice/su);
     expect(assessment).toBeGreaterThan(shared);
     expect(preview).toBeGreaterThan(assessment);
     expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
@@ -332,6 +336,7 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/uncoveredCapabilities.*blockers.*最多.*一次/su);
     expect(spec.body).toMatch(/Codex.*不得.*printf.*shell 管道.*--input-file/su);
     expect(spec.body).toMatch(/同一份合同.*不得重复启动.*work-preview/su);
+    expect(spec.body).toMatch(/公开.*stdin.*--input-file.*--input-json.*不得.*--help.*dist/su);
   });
 
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {

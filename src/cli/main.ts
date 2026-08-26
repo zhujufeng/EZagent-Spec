@@ -26,6 +26,7 @@ import {
   loadDefaultRuntimeCatalog,
 } from "../workflow/service.js";
 import {
+  readBoundedJsonArgument,
   readBoundedJsonFile,
   readBoundedJsonInput,
   type JsonInputSource,
@@ -311,7 +312,7 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
   const spec = COMMAND_SPECS[command];
   const valueOptions = new Set([
     ...spec.valueOptions,
-    ...(JSON_INPUT_COMMANDS.has(command) ? ["--input-file"] : []),
+    ...(JSON_INPUT_COMMANDS.has(command) ? ["--input-file", "--input-json"] : []),
   ]);
   const booleanOptions = new Set(spec.booleanOptions);
   const options = new Map<string, string | true>();
@@ -412,9 +413,17 @@ async function readJsonCommandInput(
   runtime: CliRuntime,
 ): Promise<unknown> {
   const inputFile = valueOption(parsed, "--input-file");
-  return inputFile === undefined
-    ? readBoundedJsonInput(runtime.stdin)
-    : readBoundedJsonFile(resolve(runtime.cwd(), inputFile));
+  const inputJson = valueOption(parsed, "--input-json");
+  if (inputFile !== undefined && inputJson !== undefined) {
+    throw new Error("--input-file and --input-json are mutually exclusive");
+  }
+  if (inputFile !== undefined) {
+    return readBoundedJsonFile(resolve(runtime.cwd(), inputFile));
+  }
+  if (inputJson !== undefined) {
+    return readBoundedJsonArgument(inputJson);
+  }
+  return readBoundedJsonInput(runtime.stdin);
 }
 
 async function assertDoctorRoot(runtime: CliRuntime, root: string): Promise<void> {

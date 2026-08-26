@@ -11,7 +11,7 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 
 必须使用支持 argv 数组的进程执行接口，禁止拼接 shell 字符串。每个动态值必须作为一个独立 argv 元素。若宿主只支持 shell 字符串，必须按当前 shell 的 literal 规则完整编码每个参数；无法证明编码正确就关闭失败，不得仅自行添加双引号。
 
-所有需要 JSON 输入的命令默认使用可关闭的非交互 stdin pipe，并在写入一个 JSON 文档后明确发送 EOF。若宿主进程接口使用 PTY，无法可靠关闭 stdin EOF，禁止继续等待、后台运行或盲目重试 mutation；改用宿主文件能力把完全相同的 JSON 写入一个新建、权限受限的临时普通文件。临时文件必须位于操作系统临时目录且在项目根目录之外，不得位于 `<absolute-project-root>`、`.ezagent/**` 或任何业务文件目录；再把 `--input-file` 和该文件的绝对路径作为两个独立 argv 元素传给原命令。不得使用符号链接，不得使用 shell 输入重定向。预览与 Apply 必须读取完全相同的文件和字节；Apply 完成、用户拒绝或流程终止后删除临时文件。若宿主既禁止写入该临时文件，又不能用非交互 pipe 可靠关闭 stdin EOF，必须立即关闭失败并说明输入通道 blocker；不得启动目标 JSON 命令，也不得退回 PTY 试探。
+所有需要 JSON 输入的命令默认使用可关闭的非交互 stdin pipe，并在写入一个 JSON 文档后明确发送 EOF。若宿主进程接口使用 PTY，无法可靠关闭 stdin EOF，禁止继续等待、后台运行或盲目重试 mutation；改用宿主文件能力把完全相同的 JSON 写入一个新建、权限受限的临时普通文件。临时文件必须位于操作系统临时目录且在项目根目录之外，不得位于 `<absolute-project-root>`、`.ezagent/**` 或任何业务文件目录；再把 `--input-file` 和该文件的绝对路径作为两个独立 argv 元素传给原命令。不得使用符号链接，不得使用 shell 输入重定向。预览与 Apply 必须读取完全相同的文件和字节；Apply 完成、用户拒绝或流程终止后删除临时文件。最后兜底仅用于宿主不能用非交互 pipe 可靠关闭 stdin EOF、且文件能力禁止写入上述项目外临时文件的情况：把 `--input-json` 和完全相同的 JSON 文档作为两个独立 argv 元素传给原命令；为兼容 Windows 命令行上限，该选项只接受不超过 24,576 bytes 和 24,576 字符的 UTF-8 单文档。不得使用 `printf`、shell 管道、重定向或命令替换；若宿主只支持 shell 字符串，必须遵守本 Skill 开头的 literal 编码规则。Preview 与 Apply 必须复用完全相同的 JSON 字符串。argv 可能被宿主记录；内容含密钥、token、个人敏感信息、超限、literal 编码不确定或无法作为独立 argv 传递时必须关闭失败。不得退回 PTY 试探或重复启动目标 JSON 命令。
 
 若由 Router 在同一任务实际转交，Router 已提供针对同一项目根、刚刚取得的完整 `context`，且两者之间没有任何状态变化，必须复用该可信 context，不得重复执行。缺少完整结果、项目根不同、发生过状态变化或无法证明仍新鲜时，才执行：
 
@@ -50,7 +50,7 @@ Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAsses
 
 形成 Capability Needs 只做语义判断；不得为选择能力而读取、搜索或枚举 `catalog/experts.json`，不得遍历 expert ID，也不得搜索 `dist` 源码来反推专家名称。Core 对 Work Preview 返回的 Specialist Plan 负责确定性匹配；协调器不得根据专家名称或简介二次猜测 Core 的确定性匹配。只有 Core 明确返回 `uncoveredCapabilities` 或 `blockers` 时才能据此修正，并且最多重做一次预览；仍有缺口就把 blocker 如实展示给用户，不得扩大 Catalog 探索或盲目重试。
 
-在 Codex 的命令工具或 PTY 中，JSON 不得通过 `printf`、shell 管道、命令替换、base64 或超长内联参数送入 CLI；必须按本 Skill 开头的规则，在项目外的操作系统临时目录写入受限普通文件并使用 `--input-file`。这条限制也适用于只读 `work-preview`。同一份合同不得重复启动 `work-preview` 来试探输入通道；只有正常结束的校验结果才能触发一次有界修正。
+在 Codex 的命令工具或 PTY 中，JSON 不得通过 `printf`、shell 管道、重定向、命令替换或超长内联原文送入 CLI；优先按本 Skill 开头的规则使用 stdin 或项目外 `--input-file`，文件能力被拒绝时才使用有界 `--input-json` 兜底。公开输入契约只有 stdin、`--input-file` 和 `--input-json`；不得执行 `work-preview --help`、无参 CLI，或搜索 `dist` 来重新发现 schema。只读 `work-preview` 也遵守此规则。同一份合同不得重复启动 `work-preview` 来试探输入通道；只有正常结束的校验结果才能触发一次有界修正。
 
 Router 已选择的模式由用户请求本身决定。源码、样本数据或权限暂缺，或者 CodeGraph 等辅助分析工具不可用、未初始化或要求另行批准，都不得把请求退回 Consult，也不得在 Outcome、边界和验收方式已经可以定义时阻止 Work Preview。把必要的发现、数据校验或工具准备放进第一个 Tracer Slice，把未知项记录为有来源的假设、未决问题或 blocker；只有缺失答案会实质改变 Outcome 或安全边界且无法用上述方式表达时，才暂停并只问一个问题。
 

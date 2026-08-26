@@ -4,6 +4,7 @@ import { lstat, open } from "node:fs/promises";
 import { readBoundedFileHandle } from "../experts/bounded-read.js";
 
 export const CLI_JSON_INPUT_MAX_BYTES = 65_536;
+export const CLI_JSON_ARGV_MAX_BYTES = 24_576;
 
 export interface JsonInputSource {
   readonly chunks: AsyncIterable<Uint8Array | string>;
@@ -19,7 +20,10 @@ function sameFile(left: Stats, right: Stats): boolean {
     && left.ctimeMs === right.ctimeMs;
 }
 
-function parseJsonBytes(input: Buffer, label: "JSON stdin" | "JSON input file"): unknown {
+function parseJsonBytes(
+  input: Buffer,
+  label: "JSON stdin" | "JSON input file" | "JSON argv input",
+): unknown {
   if (input.byteLength === 0) throw new TypeError(`${label} is empty`);
   if (input[0] === 0xef && input[1] === 0xbb && input[2] === 0xbf) {
     throw new TypeError(`${label} must not contain a UTF-8 BOM`);
@@ -43,6 +47,15 @@ function parseJsonBytes(input: Buffer, label: "JSON stdin" | "JSON input file"):
     throw new TypeError(`${label} root must not be a primitive`);
   }
   return value;
+}
+
+export function readBoundedJsonArgument(value: string): unknown {
+  if (typeof value !== "string") throw new TypeError("JSON argv input is invalid");
+  const bytes = Buffer.from(value, "utf8");
+  if (value.length > CLI_JSON_ARGV_MAX_BYTES || bytes.byteLength > CLI_JSON_ARGV_MAX_BYTES) {
+    throw new TypeError(`JSON argv input exceeds ${CLI_JSON_ARGV_MAX_BYTES} bytes`);
+  }
+  return parseJsonBytes(bytes, "JSON argv input");
 }
 
 export async function readBoundedJsonInput(source: JsonInputSource): Promise<unknown> {

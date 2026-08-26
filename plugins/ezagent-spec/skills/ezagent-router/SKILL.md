@@ -15,7 +15,7 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 必须使用支持 argv 数组的进程执行接口，禁止拼接 shell 字符串。每个动态值必须作为一个独立 argv 元素。若宿主只支持 shell 字符串，必须按当前 shell 的 literal 规则完整编码每个参数；无法证明编码正确就关闭失败，不得仅自行添加双引号。
 
-所有需要 JSON 输入的命令默认使用可关闭的非交互 stdin pipe，并在写入一个 JSON 文档后明确发送 EOF。若宿主进程接口使用 PTY，无法可靠关闭 stdin EOF，禁止继续等待、后台运行或盲目重试 mutation；改用宿主文件能力把完全相同的 JSON 写入一个新建、权限受限的临时普通文件。临时文件必须位于操作系统临时目录且在项目根目录之外，不得位于 `<absolute-project-root>`、`.ezagent/**` 或任何业务文件目录；再把 `--input-file` 和该文件的绝对路径作为两个独立 argv 元素传给原命令。不得使用符号链接，不得使用 shell 输入重定向。预览与 Apply 必须读取完全相同的文件和字节；Apply 完成、用户拒绝或流程终止后删除临时文件。若宿主既禁止写入该临时文件，又不能用非交互 pipe 可靠关闭 stdin EOF，必须立即关闭失败并说明输入通道 blocker；不得启动目标 JSON 命令，也不得退回 PTY 试探。
+所有需要 JSON 输入的命令默认使用可关闭的非交互 stdin pipe，并在写入一个 JSON 文档后明确发送 EOF。若宿主进程接口使用 PTY，无法可靠关闭 stdin EOF，禁止继续等待、后台运行或盲目重试 mutation；改用宿主文件能力把完全相同的 JSON 写入一个新建、权限受限的临时普通文件。临时文件必须位于操作系统临时目录且在项目根目录之外，不得位于 `<absolute-project-root>`、`.ezagent/**` 或任何业务文件目录；再把 `--input-file` 和该文件的绝对路径作为两个独立 argv 元素传给原命令。不得使用符号链接，不得使用 shell 输入重定向。预览与 Apply 必须读取完全相同的文件和字节；Apply 完成、用户拒绝或流程终止后删除临时文件。最后兜底仅用于宿主不能用非交互 pipe 可靠关闭 stdin EOF、且文件能力禁止写入上述项目外临时文件的情况：把 `--input-json` 和完全相同的 JSON 文档作为两个独立 argv 元素传给原命令；为兼容 Windows 命令行上限，该选项只接受不超过 24,576 bytes 和 24,576 字符的 UTF-8 单文档。不得使用 `printf`、shell 管道、重定向或命令替换；若宿主只支持 shell 字符串，必须遵守本 Skill 开头的 literal 编码规则。Preview 与 Apply 必须复用完全相同的 JSON 字符串。argv 可能被宿主记录；内容含密钥、token、个人敏感信息、超限、literal 编码不确定或无法作为独立 argv 传递时必须关闭失败。不得退回 PTY 试探或重复启动目标 JSON 命令。
 
 每次相关工作先读取可信上下文：
 
@@ -28,6 +28,8 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 一次 Router 决策只有在明确记录模式、选择理由、下一个 Skill，并实际转交后才算完成：Consult 直接回答；Quick 转 `$ezagent-light`；Brief、Standard 或 Controlled 转 `$ezagent-spec`；已有 active Work Item 按下述状态转 `$ezagent-execute`、`$ezagent-implement` 或 `$ezagent-review`。不得只重复执行 `context` 后继续旧工作流或结束任务。
 
 必须先根据用户要求的 Outcome、影响与可逆性选择模式，再处理 blocker、未决问题或假设。源码或数据缺失、当前是只读 sandbox、CodeGraph 等辅助工具不可用或未初始化、当前权限不足，都不得把 Quick、Brief、Standard 或 Controlled 请求降级为 Consult。当前条件不能实施时仍须完成路由并实际转交；由下一个 Skill 记录缺口、形成安全预览或只追问一个会改变结果的问题。工具和权限状态不改变用户要求本身。
+
+用户请求与可信 `context` 已足以定义 Outcome、边界和验收方式时，Work Contract 应直接定义；在预览前不得调用或初始化 CodeGraph，也不得枚举业务文件来补全实现细节。只有一个有界、定向的只读检查会实质改变安全边界或模式时才允许先查；其他源码发现统一进入第一个 Tracer Slice。
 
 若用户明确要求取消或放弃当前 active Work Item，先展示将终止的 Work Item、当前状态，以及 Plan、Receipt、Evidence 与 Journal 历史仍会保留；不得把范围变化或执行困难自行解释为取消。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`，active item 已为空时不得调用取消命令：
 

@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { readBoundedJsonFile, readBoundedJsonInput } from "../../src/cli/json-input.js";
+import {
+  readBoundedJsonArgument,
+  readBoundedJsonFile,
+  readBoundedJsonInput,
+} from "../../src/cli/json-input.js";
 
 function source(text: string) {
   return {
@@ -37,5 +41,16 @@ describe("bounded JSON stdin", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("parses one bounded JSON argv document", () => {
+    expect(readBoundedJsonArgument('{"schemaVersion":2,"title":"退款幂等"}')).toEqual({
+      schemaVersion: 2,
+      title: "退款幂等",
+    });
+    expect(() => readBoundedJsonArgument("{}{}"))
+      .toThrow(/exactly one JSON document/iu);
+    expect(() => readBoundedJsonArgument(`{"value":"${"x".repeat(24_577)}"}`))
+      .toThrow(/24576/iu);
   });
 });

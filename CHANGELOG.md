@@ -4,14 +4,14 @@
 
 ### Agent 宿主可靠性
 
-- 所有 JSON 输入命令新增有界 `--input-file` 通道；Codex、Claude Code 或 OpenCode 使用 PTY 且无法可靠关闭 stdin EOF 时，不再后台等待或依赖 shell 重定向。
+- 所有 JSON 输入命令新增有界 `--input-file` 与最后兜底的 `--input-json` 通道；Codex、Claude Code 或 OpenCode 使用 PTY 且无法可靠关闭 stdin EOF 时，不再后台等待或依赖 shell 重定向。
 - 五个会提交 JSON 的 canonical Skills 统一要求：优先使用会关闭 EOF 的非交互 stdin；必要时只在项目根目录之外的操作系统临时目录创建权限受限、非符号链接的普通文件，并让 Preview 与 Apply 复用完全相同的输入字节，结束后清理，避免污染同事的业务目录。
 - Router 现在先按用户要求的 Outcome、影响和可逆性定模式；源码、样本、写权限或 CodeGraph 等辅助工具缺失只会成为后续 blocker，不再把 Brief/Standard/Controlled 错降为 Consult。新增导出、可复核多样本分析，以及“询问协作角色并要求开始项目流程”等边界也给出明确判定。
 - Work Mode 现在按本次获批动作而不是风险主题名称判断：退款、支付等内部分析或本地规划在明确排除真实生产/外部动作时保持 Brief/Standard；只有合同本身包含敏感数据、生产写入、发布、预算、人员判断或难回滚动作才进入 Controlled。
 - 同时要求实施与“未参与实现的独立 Agent 审查”时至少进入 Standard，不再因为只有 1–2 个 Slice 而误降为 Brief。
 - Work Contract 默认收敛为 1–3 个 Slice、1–3 个交付接口和 3–6 条验收条件，并合并同 Slice 的重复 Capability Need；真实 Codex 发布验收仍有界，但复杂 Specialist 预览的单回合上限从 4 分钟调整为 7 分钟。
-- Specialist 规划禁止遍历完整专家 Catalog、根据名称二次猜测 Core 的确定性匹配或使用 shell 管道内联大段 JSON；只允许依据 Core 明确返回的能力缺口修正一次，并在 Codex PTY 中强制使用项目外 `--input-file`，避免预览上下文膨胀和无界重试。
-- 真实宿主验收改用 `workspace-write` 配合前后目录哈希证明批准前零项目写入，使 Codex 能在项目外安全创建 `--input-file`；若宿主同时禁止临时文件和可关闭 EOF 的 stdin，Skills 会立即报告 blocker，不再用 PTY 重启 JSON 命令直至超时。
+- Specialist 规划禁止遍历完整专家 Catalog、根据名称二次猜测 Core 的确定性匹配、扫描 `dist` 反推 schema 或用 PTY 反复试探 JSON；只允许依据 Core 明确返回的能力缺口修正一次，避免预览上下文膨胀和无界重试。
+- 真实宿主验收改用 `workspace-write` 配合前后目录哈希证明批准前零项目写入。Codex 文件能力拒绝项目外临时文件时，Skills 会改用为 Windows 命令行预留余量的 24,576-byte `--input-json`；该 argv 通道可能被宿主记录，因此敏感内容关闭失败，stdin 与 `--input-file` 仍是首选。
 
 ### Specialist 可审计委派
 
@@ -34,7 +34,7 @@
 
 ### 兼容性说明
 
-- `--input-file` 是兼容新增选项，原 stdin 调用保持不变。
+- `--input-file` 和 `--input-json` 是兼容新增选项，原 stdin 调用保持不变；两个选项互斥。
 - 0.5.0 创建的 delegation start receipt 使用 schema v2，因此 completion 也必须使用 schema v2 并提供 `dispatchFingerprint`；升级前已经存在的 schema v1 start receipt 仍按 v1 完成。
 - Node.js 最低版本仍为 22。
 
