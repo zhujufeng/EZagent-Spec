@@ -60,6 +60,8 @@ Router 已选择的模式由用户请求本身决定。源码、样本数据或�
 
 向用户展示 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设和未决问题，并展示 Specialist Assessment、确定性生成的 delegations、未覆盖能力与 blockers。不得把 Specialist Plan 另拆成一次例行确认；`brief`、`standard`、`controlled` 都只确认这一份合并预览。存在 blocker 时先修正 Capability Need 或说明能力缺口，不得 Apply。Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
 
+批准前必须明确说明：所有 expert ID 和 delegation 都只是计划，project Agent 尚未物化、Specialist 尚未实际委派、尚未发生独立审查。没有匹配的 completion receipt 时不得声称“已完成审查”“审查结论”或 reviewer 已工作；协调器在预览阶段做的判断只能称为风险预检、方案自检或待审查问题。预览还必须说明批准后的执行边界：dispatch 只包含获批的 Work Item ID、Work Spec ID、Slice ID、delegation ID、scope、deliverables 与 Evidence requirements，并且 Specialist 只回传有界结果摘要、result hash 和最小 Evidence pointers。
+
 用户批准后，把完全相同的 JSON 从 stdin 传入，并把预览 token 作为独立 argv 元素原子创建 Brief、Work Spec 与 Work Item：
 
 ```json

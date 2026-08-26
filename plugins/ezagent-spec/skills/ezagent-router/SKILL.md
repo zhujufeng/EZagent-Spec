@@ -51,6 +51,8 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 - `Standard`：多来源、多交付物、多个依赖 Slice、中等影响或新增跨边界能力；转 `$ezagent-spec`。新增数据导出默认按 Standard，因为通常同时涉及界面入口、查询范围、文件格式、兼容性和验证；只有实际检查证明是无兼容影响的单点局部修改时才可降级。
 - `Controlled`：敏感信息、对外沟通、发布、预算、生产系统、人员判断或难回滚动作；转 `$ezagent-spec`，每个 Side Effect 仍单独批准。
 
+Work Mode 绑定用户这次要求执行的动作和边界，不绑定主题名称。退款、支付、资金等领域风险本身不得自动升级为 Controlled；请求仅包含分析、规划或本地草拟，且不包含生产写入或外部动作时，默认按实际复杂度进入 Brief 或 Standard。只有这份 Work Contract 本身要求访问真实敏感数据、写入生产或外部系统、发布、预算承诺、人员判断或难回滚动作时才进入 Controlled；未来可能发生的 Side Effect 不得反向抬高当前只读规划的模式。
+
 不确定时优先问一个会改变结果的问题并给出推荐答案；不要用一轮长问卷。Shared Design Concept 尚未形成时，不急于生成完整资产。
 
 需要历史经验时，从当前 outcome、Canonical Terms 和边界形成少量短 terms，从 stdin 发送：

@@ -306,6 +306,8 @@ describe("Codex Skill contracts", () => {
 
     expect(router.body).toMatch(/Shared Design Concept.*Specialist Assessment/su);
     expect(router.body).toMatch(/not-needed.*Capability Needs/su);
+    expect(router.body).toMatch(/资金.*领域风险.*本身.*不得.*Controlled/su);
+    expect(router.body).toMatch(/仅.*分析.*规划.*不包含.*生产.*外部.*Standard/su);
     expect(assessment).toBeGreaterThan(shared);
     expect(preview).toBeGreaterThan(assessment);
     expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
@@ -315,6 +317,9 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/decision: required.*`sliceId`.*`purpose`.*`capabilities`.*`isolationReason`/su);
     expect(spec.body).toMatch(/Assessment 不得填写 expert ID、指定人数/u);
     expect(spec.body).toMatch(/delegations、未覆盖能力与 blockers/u);
+    expect(spec.body).toMatch(/批准前.*尚未.*实际委派.*尚未.*独立审查/su);
+    expect(spec.body).toMatch(/不得声称.*已完成审查/u);
+    expect(spec.body).toMatch(/批准后.*dispatch.*Work Item ID.*Evidence requirements.*有界.*摘要/su);
   });
 
   test("binds controlled side effects to an exact approval without pretending to execute them", async () => {
