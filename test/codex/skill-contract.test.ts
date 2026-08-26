@@ -309,6 +309,8 @@ describe("Codex Skill contracts", () => {
     expect(preview).toBeGreaterThan(assessment);
     expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
     expect(spec.body).toMatch(/decision: not-needed.*空 `needs`/su);
+    expect(spec.body).toMatch(/最小必要.*1–3 个 Slice.*1–3 个 Deliverable.*3–6 条 Acceptance Criteria/su);
+    expect(spec.body).toMatch(/同一 Slice.*相同.*purpose.*合并.*Capability Need/su);
     expect(spec.body).toMatch(/decision: required.*`sliceId`.*`purpose`.*`capabilities`.*`isolationReason`/su);
     expect(spec.body).toMatch(/Assessment 不得填写 expert ID、指定人数/u);
     expect(spec.body).toMatch(/delegations、未覆盖能力与 blockers/u);

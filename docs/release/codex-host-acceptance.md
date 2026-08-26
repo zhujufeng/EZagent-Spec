@@ -45,6 +45,8 @@ npm run plugin:host-eval
 
 命令会打印本次 `evidence.json` 的绝对路径。逐个打开同目录下的 `initial.jsonl`、`final.txt`，以及 follow-up 场景的 `follow-up.jsonl`、`follow-up-final.txt`，对照语料中的 `reviewCriteria` 复核：
 
+每个真实模型回合使用 7 分钟有界超时；这是为了容纳包含 Work Contract 与 Specialist Assessment 的复杂预览，不是无限等待。命中超时一律判为失败并保留 JSONL，不得补写最终消息或只凭中间命令判为通过。
+
 - 正确场景是否进入 Router 或初始化流程；
 - 未初始化的普通/无关请求是否没有启用 EZagent；
 - 初始化写入前是否先展示范围并请求确认；

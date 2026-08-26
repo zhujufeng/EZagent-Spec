@@ -221,7 +221,7 @@ describe("Codex host evaluation safety", () => {
       reject: false,
       shell: false,
       stdin: "ignore",
-      timeout: 240_000,
+      timeout: 420_000,
       forceKillAfterDelay: 10_000,
     });
   });

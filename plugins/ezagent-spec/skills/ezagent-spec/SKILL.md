@@ -44,6 +44,8 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 - Deliverable Interface 描述结构、不可破坏的约束和消费者，不预先臆造大段正文或实现细节。
 - 外部写入或发布只能进入 `controlled`，且目标必须有精确 Approval Point。Controlled Review 必须包含 human 或 mixed 判断以及 `human-approval` Evidence。
 
+合同必须保持最小必要：默认使用 1–3 个 Slice、1–3 个 Deliverable Interface 和 3–6 条 Acceptance Criteria；只有真实依赖或安全边界证明需要时才增加。每个字段写可验证的最短内容，不重复同一风险、范围或证据要求。对同一 Slice 中 purpose 相同、能力与隔离原因相同的工作，合并为一个 Capability Need；不要按设计、编码、测试等阶段机械复制专家，也不要为每条 Criterion 单独建 Need。实现与 `independent-review` purpose 必须保持分离，不能为了缩短合同而合并。
+
 Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAssessment` 是 Work Contract 的必填判断。Assessment 不得填写 expert ID、指定人数或借岗位名称预选团队；本地核心根据已批准的 Capability Needs 和运行时 Catalog 确定性生成 Specialist Plan。若需要独立审查，review need 必须使用 `independent-review`，并与同一 Slice 的实现者隔离。任何生成的委派必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID`、`delegation ID`、`scope`、`deliverables` 和 `Evidence requirements`，只回传有界摘要，不保存完整用户提示或完整专家提示。
 
 Router 已选择的模式由用户请求本身决定。源码、样本数据或权限暂缺，或者 CodeGraph 等辅助分析工具不可用、未初始化或要求另行批准，都不得把请求退回 Consult，也不得在 Outcome、边界和验收方式已经可以定义时阻止 Work Preview。把必要的发现、数据校验或工具准备放进第一个 Tracer Slice，把未知项记录为有来源的假设、未决问题或 blocker；只有缺失答案会实质改变 Outcome 或安全边界且无法用上述方式表达时，才暂停并只问一个问题。
