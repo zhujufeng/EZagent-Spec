@@ -61,7 +61,7 @@
     {
       "id": "uninitialized-ordinary-development",
       "name": "ordinary development does not initialize a project",
-      "prompt": "分析登录页应该如何实现，只给简短建议，不修改文件",
+      "prompt": "不用读取项目或调用工具，只用通用知识简短说明登录页应该如何实现；不要修改文件",
       "initialized": false,
       "expectedPolicy": "no-workflow",
       "ruleAnchor": "uninitialized-no-workflow",
