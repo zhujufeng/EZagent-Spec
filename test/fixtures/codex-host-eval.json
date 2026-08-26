@@ -61,14 +61,15 @@
     {
       "id": "uninitialized-ordinary-development",
       "name": "ordinary development does not initialize a project",
-      "prompt": "帮我实现登录页",
+      "prompt": "分析登录页应该如何实现，只给简短建议，不修改文件",
       "initialized": false,
       "expectedPolicy": "no-workflow",
       "ruleAnchor": "uninitialized-no-workflow",
       "categories": ["implicit", "negative"],
       "reviewCriteria": [
         "未明确要求启用 EZagent 时不启动初始化",
-        "不创建 .ezagent 或 EZAGENT 管理块"
+        "不创建 .ezagent 或 EZAGENT 管理块",
+        "按普通开发咨询直接给出有界建议，不启动实现或浏览器测试"
       ]
     },
     {
