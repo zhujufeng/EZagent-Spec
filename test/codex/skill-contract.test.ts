@@ -190,6 +190,7 @@ describe("Codex Skill contracts", () => {
       expect(skill.body).toContain("--input-file");
       expect(skill.body).toMatch(/PTY.*stdin.*EOF|stdin.*EOF.*PTY/su);
       expect(skill.body).toMatch(/临时.*普通文件.*符号链接/su);
+      expect(skill.body).toMatch(/操作系统临时目录.*项目根目录之外/su);
       expect(skill.body).toMatch(/预览.*Apply.*完全相同.*文件/su);
       expect(skill.body).toMatch(/不得.*shell.*重定向/u);
     }
