@@ -95,7 +95,7 @@ npm run plugin:post-init-eval:verify
 
 ## 5. 签名并保护未来发布标签
 
-既有发布标签不移动、不重签、不改写。从 `v0.5.0` 开始，只有在本地发布门、真实宿主验收和 macOS/Windows CI 全部通过后，才创建签名 annotated tag：
+既有发布标签不移动、不重签、不改写。从 `v0.5.0` 开始，只有在本地发布门、真实宿主验收和 macOS/Windows/Linux CI 全部通过后，才创建签名 annotated tag：
 
 ```bash
 git tag -s v0.5.0 -m "EZagent Spec v0.5.0"

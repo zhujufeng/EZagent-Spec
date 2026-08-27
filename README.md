@@ -42,7 +42,7 @@
 
 - GitHub Release 页面已经出现 `v0.7.1`；
 - Release 对应的 tag 和提交正确；
-- Windows 与 macOS CI 都通过；
+- Windows、macOS 与 Linux CI 都通过；
 - 安装得到的插件报告版本为 `0.7.1` 且 enabled；
 - Codex 中打开 `/hooks`，确认并信任 EZagent 的 `UserPromptSubmit` Hook；
 - 至少完成一次真实宿主初始化预览，确认写入前工作区不变；
@@ -54,7 +54,7 @@
 
 | 宿主 / 使用界面 | 支持级别 | 当前边界 |
 |---|---|---|
-| Codex | 正式支持 | 已有插件契约、离线包和 Windows / macOS 自动化验证 |
+| Codex | 正式支持 | 已有插件契约、离线包和 Windows / macOS / Linux 自动化验证 |
 | Claude Code | 正式支持 | 已发布 Claude 插件清单、Marketplace 和 portable Skills 契约 |
 | OpenCode | 正式支持 | 使用项目内 `.opencode/skills/` 薄入口加载同一组 canonical Skills |
 | Claude Desktop Chat | 有限支持 | 可以安装并加载插件 Skills，但不承诺完整本地项目工作流或 Specialist |
@@ -259,45 +259,7 @@ Planning-first 从正式版 `v0.5.1` 开始提供。使用更早版本的同事�
 
 ### 新手常见问题
 
-“安装后为什么没有自动调用？”
-
-先确认这是安装后新建的任务，并确认当前项目存在 `.ezagent/project.yaml`。插件不会在未初始化项目里劫持普通聊天。仍不生效时，执行后文的升级步骤，完全退出并重开宿主，再新建任务。
-
-“为什么没有 Specialist？”
-
-Specialist 不是固定队伍，也不是每个任务必选。只有领域判断、上下文隔离、真正独立工作或独立审查有明确收益时才会创建。如果确实需要，可以说“请做 Specialist Assessment，并说明是否需要独立安全审查”，但仍由核心选择匹配的专家 ID。
-
-Specialist 的任务类型也跟你这次真正要求的一致：只要求分析时会规划分析 Specialist，不会因为以后可能改代码就提前冒充实施；明确要求实施时才规划 implementation Specialist；明确要求独立审查时才增加隔离 reviewer。
-
-匹配不是只看“工程”这种大类。以常见后端修复为例，系统边界与一致性分析会匹配后端架构能力，代码实施会匹配高级开发能力，独立代码审查会匹配代码审查能力；三者不会因为通用词同分而落到 UX、AI 数据修复或金融合规专家。若自然语言被错误转换成目录中不存在的领域词，Core 会显示 `domain-unmatched:<token>` blocker 并停止创建 delegation，不会随便找一个名字相近的人顶替。
-
-预览里出现专家名称或 ID，只表示“批准后计划匹配这位专家”，不表示专家已经开始工作。只有你批准 Work Contract、Agent 真正完成委派并留下回执后，才可以说“专家已执行”或“独立审查已完成”。如果你要求“完成实现，并让没参与实现的独立 Agent 审查”，任务至少会进入 Standard，即使看起来只有一两个步骤。
-
-需要 Specialist 的预览末尾应有“委派边界”：现在还没执行；批准后只把获批的任务、Slice、范围、交付物和证据要求发给匹配的隔离 Agent；只收回短摘要、结果哈希和最小证据位置。看不到这段时先不要批准，建议升级插件并新建任务重试。
-
-“退款、支付这类高风险主题一定是 Controlled 吗？”
-
-不一定，看你这次要求 Agent 做什么。只做内部分析、方案或本地草稿，并明确不访问真实敏感数据、不操作生产、不触发真实退款时，通常是 Brief 或 Standard；要求生产写入、真实外部操作、发布、预算承诺、人员判断或难回滚动作时才是 Controlled，而且具体外部动作仍要单独批准。
-
-“提示已有 active Work Item，不能开始新任务怎么办？”
-
-如果要继续，就说“恢复当前工作项”；如果明确放弃，就说“取消当前工作项并保留历史”。不要手动改状态文件。
-
-“Agent 说 CodeGraph、源码、数据或写权限没准备好，然后就不走 EZagent 了？”
-
-这不正常。CodeGraph 只是可选加速工具，不是使用插件的前提；没有它时会改用普通文件搜索和读取。缺少业务文件、样本或权限可以成为 blocker，但不能把原本的 Brief、Standard 或 Controlled 请求降成 Consult。当前版本会先按你要求的结果选择模式，必要时做有界只读预检，再把剩余缺口放进 Work Preview、Tracer Slice 或一个必要的澄清问题；只读环境仍可生成预览，只是不能执行获批后的写入。如果 Agent 没有说明模式和下一个 Skill，请升级插件、新建任务后重试。
-
-“Windows 路径有空格，会不会失败？”
-
-支持。插件把每个路径作为独立 argv 参数处理，也为 PTY 无法关闭 stdin 的情况提供文件输入通道。需要临时文件时，它只会使用项目目录之外的操作系统临时目录，流程结束后自动清理，不会在你的项目里留下陌生 JSON 文件。若 Codex 同时禁止这类文件写入，插件会在确认内容不敏感且不超过 24,576 bytes 后使用受限 argv 通道；否则会明确停止，不会无限等待。仍有问题时，把完整报错和项目路径发给维护者，不要自行改 `.ezagent`。
-
-“批准 Side Effect 后，消息是不是已经发送了？”
-
-不是。EZagent Core 只写入 `externalActionExecuted: false` 的本地授权记录；真正发送、发布或外部写入由宿主能力执行。执行前仍要核对目标、账号和内容，执行后还要保存 `external-record` Evidence。
-
-“为什么总会看到一串 content hash，甚至不同内容还是同一个？”
-
-它是当前精确 payload 的 SHA-256 指纹；内容不同却反复出现同一个值是不正常的。Side Effect 预览和 Apply 都会让 Core 读取同一 payload 文件的真实字节并重新计算 hash，和 Work Contract 不一致就拒绝授权。只有 payload 已存在时才能进入 Side Effect；如果内容还没写完，先完成并审查草稿，再用草稿的真实 hash 创建一个新的 Controlled 工作项。
+安装未自动生效、Specialist 未出现、高风险主题的模式判断、CodeGraph 缺失、Windows 路径空格、Side Effect 授权与 content hash 等常见疑问的完整解答见 [`docs/faq.md`](docs/faq.md)。
 
 ### 分发和安全边界
 
@@ -307,34 +269,7 @@ Specialist 的任务类型也跟你这次真正要求的一致：只要求分析
 
 它不限定谁能使用，也不按岗位分配流程。开发、分析、文档、调研、策划、流程整理等只是非穷尽示例；真正决定流程的是工作复杂度、影响、可逆性和需要的证据。
 
-#### 维护者分发检查清单
-
-请逐项完成后再通知团队安装：
-
-1. GitHub Release 中存在目标版本，tag、提交和 CHANGELOG 一致；不要分发 `main` 分支快照。
-2. Windows 与 macOS CI 全绿，插件确定性构建检查通过。
-3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.7.1`、状态为 enabled，并在 Codex `/hooks` 中信任 EZagent 的 `UserPromptSubmit` Hook。
-4. 完全退出宿主并新建任务；不要用发布前已经打开的任务验收新版 Skill。
-5. 在临时项目执行一次初始化预览，确认用户批准前项目字节不变。
-6. 批准初始化后，新建任务并验证 Consult、Quick 和至少一个 Brief Work Preview。
-7. 验证一次恢复和取消；需要 Specialist 的测试还应看到计划匹配、真实 dispatch、start/completion receipt，而不只是 Agent 文件。
-8. 验证 Node 缺失场景只展示计划；未获得独立批准时不得下载、安装、提权或修改业务项目。
-9. 把正式 Release 页面、本 README 和维护者联系方式一起发给同事。
-
-#### 同事第一天验收脚本
-
-安装后打开一个无重要资料的临时文件夹，按顺序发送：
-
-1. “告诉我 EZagent 插件版本和 enabled 状态，不要修改项目。”
-2. “请在当前项目启用 EZagent，先预览，不要直接写入。”
-3. 检查预览路径后说“确认初始化”。
-4. 新建任务，说“只检查 EZagent 状态，不要创建 Work Item”。
-5. 说“解释一下这个文件夹目前有什么，不要修改内容”，应走 Consult。
-6. 新建一个无关紧要的文本文件后说“把标题中的错别字改正”，应走 Quick。
-7. 说“把这个文件夹整理成一份可恢复的交接手册，先给我 Work Preview”，应进入 Brief 或更高模式，但批准前不应产生业务交付物。
-8. 如果不准备继续，最后说“取消当前 EZagent 工作项并保留历史”。
-
-这套脚本验证的是路由、批准前零业务写入、持久化工作项和取消出口。不要在首日验收中使用真实客户数据、生产账号、付款或发布动作。
+维护者分发前的验证清单和同事第一天验收脚本见 [`docs/release/distribution-checklists.md`](docs/release/distribution-checklists.md)。
 
 ## 它解决什么问题
 
@@ -526,59 +461,7 @@ claude --plugin-dir ./plugins/ezagent-spec
 
 ### Claude Desktop（Cowork 实验性验收）
 
-Claude Desktop 不是 Claude Code 的另一个皮肤。当前版本只把 Cowork 列为实验性支持，而且本项目维护者没有 Claude Desktop 设备；下面的流程是给有桌面版的同事做真实宿主验收，不是已经完成的认证。
-
-#### 安装插件
-
-Claude 插件目前要求付费计划；公司 Team / Enterprise 账号还可能被管理员限制个人插件或 Marketplace。请让同事使用最新版 Claude Desktop：
-
-1. 打开 Claude Desktop，进入 `Customize → Plugins`。
-2. 在 Personal plugins 区域点击 `+`，选择 `Add marketplace`。
-3. 选择从 GitHub repository 或 git URL 添加，输入 `https://github.com/zhujufeng/EZagent-Spec`。
-4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.7.1`。
-5. 完全退出并重开 Claude Desktop，再新建一个 Cowork 任务。
-
-如果界面没有 Plugins、Add marketplace 或 Cowork，先检查账号计划、桌面版更新和组织管理员策略；不要把仓库文件手动复制进未知的 Claude 配置目录。Claude Desktop 的 `.mcpb` Desktop Extension 是本地 MCP 的另一种分发格式，EZagent 当前是 Claude Plugin，不需要改名或伪装成 `.mcpb`。
-
-#### 用一次性文件夹验收
-
-第一次不要连接真实业务项目、客户资料、生产凭据或已经存在 `.ezagent` 的目录。新建一个可以随时删除的空文件夹，在 Cowork 中只连接这个文件夹，然后按顺序发送：
-
-1. “告诉我当前界面是 Chat 还是 Cowork、已连接文件夹的绝对路径、EZagent 插件版本和可用 Skills；不要修改任何文件。”
-2. “请在当前文件夹启用 EZagent Work Harness，先做 Node 和初始化预检，只展示计划，不要安装软件，不要写入文件。”
-3. 检查批准前文件夹完全不变，并记录 Node 版本、操作系统检测结果和 CLI 路径。Cowork 可能运行在隔离环境中，检测到的系统不一定等于电脑宿主系统；第一次验收如果提示安装 Node，先不要批准，把完整计划回传给维护者。
-4. 路径和预览正确时回复“确认初始化”，随后确认只新增 `.ezagent/**`、`AGENTS.md` 受管区块和必要的受管 Agent 文件。
-5. 新建 Cowork 任务并重新连接同一个文件夹，发送“只恢复 EZagent 状态，不要创建新工作项”；应看到 `activeWorkItem: null`，证明跨任务持久化有效。
-6. 发送一个只读问题，应走 Consult；再要求修正一个临时文本文件中的错字，应走 Quick。
-7. 发送“为这个临时项目整理一份可恢复的交接手册，先给 Work Preview，不要直接实施”；批准前不应出现业务交付物。
-8. 发送“请增加一位没有参与实现的独立 reviewer 做审查”；若 Cowork 支持所需 sub-agent，应出现计划匹配、真实 dispatch 和 receipt。若宿主不提供 sub-agent，EZagent 必须明确 blocked，不得由主 Agent 冒充 Specialist。
-9. 验证一次“恢复当前工作项”和“取消当前工作项并保留历史”。不要在本轮测试发送消息、发布内容或操作任何真实外部系统。
-
-#### 把结果回传给维护者
-
-请同事复制下面模板填写；错误时保留原始文字和截图，但先删除账号、绝对用户名、客户数据、token 和其他敏感信息：
-
-```text
-Claude Desktop 版本：
-操作系统与版本：
-账号计划：Pro / Max / Team / Enterprise
-测试界面：Chat / Cowork
-EZagent 版本：
-Marketplace 安装：通过 / 失败
-Node 预检：通过 / 失败；检测到的版本与系统：
-批准前零写入：通过 / 失败
-初始化：通过 / 失败
-新 Cowork 任务恢复：通过 / 失败
-Consult：通过 / 失败
-Quick：通过 / 失败
-Brief Work Preview：通过 / 失败
-Specialist 真实 sub-agent：通过 / blocked / 失败
-取消后 activeWorkItem 为空：通过 / 失败
-实际新增或修改的路径：
-完整错误信息（已脱敏）：
-```
-
-至少获得一台 macOS 和一台 Windows 的完整回报，并确认初始化、跨任务恢复和 Specialist 行为后，维护者才能把 Cowork 从“实验性支持”提升为“正式支持”。Claude Desktop Chat 即使能加载 Skills，也仍应单独评估，不能继承 Cowork 或 Claude Code 的结论。
+Claude Desktop 不是 Claude Code 的另一个皮肤，当前版本只把 Cowork 列为实验性支持。安装方式、一次性文件夹验收脚本和结果回传模板见 [`docs/release/claude-desktop-cowork-acceptance.md`](docs/release/claude-desktop-cowork-acceptance.md)。
 
 ### OpenCode
 
@@ -645,7 +528,7 @@ Local-only 只描述 EZagent runtime，不改变 Codex、Claude Code、OpenCode�
 
 这些控制面向可信本机上的误操作、漂移和协作并发，不承诺抵抗拥有同等本地文件权限、并能在系统调用之间替换目录的恶意进程。此类环境应先依赖操作系统账户隔离、目录权限和企业终端防护。
 
-GitHub Actions 对 Windows 与 macOS 执行相同的类型检查、测试、确定性插件检查和构建门。
+GitHub Actions 对 Windows、macOS 与 Linux 执行相同的类型检查、测试、确定性插件检查和构建门。
 
 ## 开源与来源
 

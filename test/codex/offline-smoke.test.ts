@@ -572,7 +572,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(job["timeout-minutes"]).toBeLessThanOrEqual(45);
     expect(job.strategy).toEqual({
       "fail-fast": false,
-      matrix: { os: ["macos-latest", "windows-latest"] },
+      matrix: { os: ["macos-latest", "windows-latest", "ubuntu-latest"] },
     });
 
     expect(job.steps.every(({ env }) => env === undefined)).toBe(true);
@@ -617,7 +617,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(readme).toContain("Work Journal");
     expect(readme).toContain("关闭失败");
     expect(readme).toContain("MIT License");
-    expect(readme).toContain("GitHub Actions 对 Windows 与 macOS");
+    expect(readme).toContain("GitHub Actions 对 Windows、macOS 与 Linux");
     expect(readme).not.toContain("ezagent-spec-internal");
     expect(readme).not.toContain("Windows：pending first CI run");
 
