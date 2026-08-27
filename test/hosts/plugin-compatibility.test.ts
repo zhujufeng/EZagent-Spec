@@ -17,13 +17,13 @@ describe("Claude Code and OpenCode compatibility", () => {
     expect(manifest).toMatchObject({
       name: "ezagent-spec",
       displayName: "EZagent Work Harness",
-      version: "0.6.0",
+      version: "0.6.1",
       author: { name: "zhujufeng" },
       repository: "https://github.com/zhujufeng/EZagent-Spec",
       license: "MIT",
       skills: "./skills/",
+      hooks: "./hooks/ezagent-hooks.json",
     });
-    expect(manifest).not.toHaveProperty("hooks");
     expect(manifest).not.toHaveProperty("mcpServers");
 
     expect(await json(".claude-plugin/marketplace.json")).toEqual({
@@ -33,7 +33,7 @@ describe("Claude Code and OpenCode compatibility", () => {
         name: "ezagent-spec",
         source: "./plugins/ezagent-spec",
         description: "面向 Codex、Claude Code 和 OpenCode 的本地优先 Agent Work Harness：把自然语言需求转成可审批、可恢复、证据驱动的工作，并按需匹配 Specialist。",
-        version: "0.6.0",
+        version: "0.6.1",
         category: "Developer Tools",
       }],
     });

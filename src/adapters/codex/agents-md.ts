@@ -22,6 +22,7 @@ export class EzagentAgentsMarkerError extends Error {
 const RULES = [
   "## EZagent Work Harness",
   "",
+  "支持 lifecycle Hook 的宿主会在每个用户回合重新注入 Router 所有权；本受管区块是 run / session 启动时的静态规则与 Hook 不可用时的兜底，不得把上一需求的模式直接复用于新需求。",
   "仅当项目根目录存在 `.ezagent/project.yaml` 时，需要分析、创建、修改、执行、审查或跨会话恢复的 Agent 工作都必须自动使用 `$ezagent-router`；只有用户要求的结果本身只是解释或一次性判断，且没有要求产出、修改或开始项目流程时，才可作为只读咨询直接回答。不要要求用户手动输入 EZagent 命令。",
   "Router 是相关请求的顶层工作流所有者；其他 brainstorming、planning、coding 或 review 能力只有在 Router 选定模式并实际转交后才能作为辅助能力使用。",
   "必须先根据用户要求的 Outcome、影响和可逆性选择模式，再处理 blocker、未决问题或假设。源码或数据缺失、当前是只读 sandbox、CodeGraph 等辅助工具不可用或权限不足，都不得把请求降级为 Consult；这些条件只能在 Router 选定模式并实际转交后记录和处理。",

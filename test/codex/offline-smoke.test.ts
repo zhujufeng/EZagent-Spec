@@ -31,6 +31,8 @@ const EXPECTED_PLUGIN_FILES = [
   "catalog/catalog.lock.json",
   "catalog/experts.json",
   "dist/ezagent-cli.mjs",
+  "hooks/ezagent-hooks.json",
+  "hooks/ezagent-router-prompt.mjs",
   "licenses/UNICODE-LICENSE.txt",
   "licenses/agency-agents-MIT.txt",
   "licenses/agency-agents-zh-MIT.txt",
@@ -55,6 +57,7 @@ const MANAGED_PATHS = [
 ] as const;
 const CRITICAL_LF_PATHS = [
   "plugins/ezagent-spec/dist/ezagent-cli.mjs",
+  "plugins/ezagent-spec/hooks/ezagent-router-prompt.mjs",
   "plugins/ezagent-spec/catalog/experts.json",
   "plugins/ezagent-spec/skills/ezagent-router/SKILL.md",
   "plugins/ezagent-spec/skills/ezagent-context/SKILL.md",
@@ -259,7 +262,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
     const pluginManifest = JSON.parse(
       await readFile(join(installedPlugin, ".codex-plugin", "plugin.json"), "utf8"),
     ) as Record<string, unknown>;
-    expect(pluginManifest).not.toHaveProperty("hooks");
+    expect(pluginManifest).toHaveProperty("hooks", "./hooks/ezagent-hooks.json");
     expect(pluginManifest).not.toHaveProperty("mcpServers");
     expect(pluginManifest).not.toHaveProperty("apps");
 
@@ -601,7 +604,7 @@ describe.sequential("Codex plugin offline release smoke", () => {
     expect(readme).toContain(".opencode/skills/");
     expect(readme).toContain("Node.js 22+");
     expect(readme).toContain("项目内受管 `AGENTS.md`");
-    expect(readme).toContain("不依赖 lifecycle Hook");
+    expect(readme).toContain("每个用户回合由插件 `UserPromptSubmit` Hook");
     expect(readme).toContain("Brief → Work Spec → 纵向 Slices → Evidence → Decision");
     expect(readme).toContain("Consult");
     expect(readme).toContain("Quick");

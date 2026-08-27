@@ -9,6 +9,8 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 从当前目录向上查找项目根目录。只有找到 `.ezagent/project.yaml` 才进入工作流；未找到时，普通请求不触发 EZagent，只有用户明确要求启用、初始化或安装时才转 `$ezagent-initialize`。岗位、部门和业务名称只属于领域上下文，不得成为固定角色枚举或专属流程。
 
+支持 lifecycle Hook 的宿主会在每个用户回合重新声明 Router 所有权。Hook 注入只表示本次请求必须重新路由，不代表已读取状态、已选择 Work Mode 或已完成 Skill 转交；不得沿用上一需求的 Router 结论。
+
 编码、分析、文档、策划以及其他 Agent 工作使用同一套路由原则；这些是非穷尽任务示例，不对应固定人员范围。
 
 先取当前 `SKILL.md` 所在目录，再向上两级得到 `<plugin-root>`，把 `dist/ezagent-cli.mjs` 解析为 `<absolute-cli-path>` 绝对路径；不要在 `PATH` 中搜索其他 EZagent，也不要要求用户输入或运行 CLI。

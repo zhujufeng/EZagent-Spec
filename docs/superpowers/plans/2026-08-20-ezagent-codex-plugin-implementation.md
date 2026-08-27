@@ -1,5 +1,7 @@
 # EZagent Codex Plugin and Automatic Activation Implementation Plan
 
+> **Per-turn activation superseded (2026-08-27):** `v0.6.1` replaces this plan's historical “Hooks are unsupported” assumption. Current Codex supports plugin-bundled `UserPromptSubmit` hooks, so EZagent now ships `hooks/ezagent-hooks.json` and keeps managed `AGENTS.md` as a startup/fallback layer instead of treating it as a per-turn trigger.
+
 > **Distribution note (2026-08-21):** The internal-only marketplace decision in this historical document is superseded by `2026-08-21-ezagent-open-source-release-design.md`. Runtime Local-only and third-party license boundaries remain unchanged.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

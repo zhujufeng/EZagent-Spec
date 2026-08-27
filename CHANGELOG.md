@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 - 2026-08-27
+
+### 持续 Router 激活修复
+
+- 修复初始化后只有第一个需求可靠进入 EZagent、后续独立需求可能绕过插件的问题。Codex 与 Claude Code 插件新增 `UserPromptSubmit` lifecycle Hook；每个用户回合都会从当前目录向上确认真实 `.ezagent/project.yaml`，命中后以开发者上下文重新声明 Router 所有权。
+- `AGENTS.md` 不再被误当作 per-turn 触发器。它仍是新 run / session 启动时的静态项目规则与 Hook 不可用时的兜底；动态 Work Item 状态继续由 Router 调用打包 CLI 的 `context` 读取，不在 Hook 中复制状态机。
+- Hook 只读取目录与初始化标记的文件类型，不读取用户 prompt 内容、不写文件、不联网、不启动后台服务；无效输入、未初始化项目和异常文件布局都静默退出，不能阻塞正常用户回合。
+- 新增真实 Hook 进程回归：同一已初始化项目连续提交两个互不相关的新需求时，两次都必须收到 `ezagent-spec:ezagent-router` / `$ezagent-router` 上下文；未初始化项目必须零输出。
+- Codex Hooks 当前默认启用，但新增或变化的非托管 Hook 仍需用户在 `/hooks` 中审查和信任。升级到 `0.6.1` 后必须重新安装插件、新建任务并完成一次 Hook 信任；否则只能使用 `AGENTS.md` 兜底。
+
 ## 0.6.0 - 2026-08-27
 
 ### 运行环境自助准备

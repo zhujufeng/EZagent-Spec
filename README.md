@@ -12,16 +12,17 @@
 
 ## 分发者先看
 
-本教程对应 `v0.6.0`。正式分发时只使用 GitHub Releases 中带 `v0.6.0` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 生效。
+本教程对应 `v0.6.1`。正式分发时只使用 GitHub Releases 中带 `v0.6.1` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 与 lifecycle Hook 生效。
 
-`v0.6.0` 在 `v0.5.1` 的 Planning-first、按需 Specialist、Evidence Review 和跨会话恢复基础上，补齐了首次初始化前的 Node.js 22+ 自助准备。插件会自动检查环境；缺少 Node 时先展示来源、命令、管理员影响和安装范围，经用户单独批准后才安装并复检，不会静默修改系统，也不会在业务项目执行 `npm install`。
+`v0.6.1` 修复了初始化后只有第一个需求可靠进入 Router 的持续激活缺口：Codex 与 Claude Code 插件现在通过只读 `UserPromptSubmit` Hook 在每个用户回合重新建立 Router 所有权，项目内 `AGENTS.md` 保留为启动时静态规则与 Hook 不可用时的兜底。它同时包含 `v0.6.0` 的 Node.js 22+ 自助准备能力；缺少 Node 时仍会先展示来源、命令、管理员影响和安装范围，经用户单独批准后才安装并复检。
 
 如果你是维护者，正式通知同事“可以安装”之前，请确认：
 
-- GitHub Release 页面已经出现 `v0.6.0`；
+- GitHub Release 页面已经出现 `v0.6.1`；
 - Release 对应的 tag 和提交正确；
 - Windows 与 macOS CI 都通过；
-- 安装得到的插件报告版本为 `0.6.0` 且 enabled；
+- 安装得到的插件报告版本为 `0.6.1` 且 enabled；
+- Codex 中打开 `/hooks`，确认并信任 EZagent 的 `UserPromptSubmit` Hook；
 - 至少完成一次真实宿主初始化预览，确认写入前工作区不变；
 - 同事收到的是本 README 的正式 Release 版本，而不是本地未提交文档。
 
@@ -37,9 +38,9 @@
 | Claude Desktop Chat | 有限支持 | 可以安装并加载插件 Skills，但不承诺完整本地项目工作流或 Specialist |
 | Claude Desktop Cowork | 实验性支持，待同事实机验收 | 最接近完整能力：可连接本地文件夹并使用 sub-agent；本项目维护者尚无 Claude Desktop，不能声称已实测通过 |
 
-Anthropic 当前说明，插件 Skills 可以用于 Claude 网页 Chat、Claude Desktop Chat 和 Cowork，但 Hooks 与 sub-agent 只在 Cowork 运行。EZagent 不依赖 lifecycle Hook，不过 Specialist 必须使用真实隔离 sub-agent，而且完整流程还要执行打包的本地 CLI、读写已连接项目。因此桌面版请优先在 Cowork 测试，不要在 Chat 中把“Skill 能显示”误判为“整个 Work Harness 已验收”。官方边界见 [Use plugins in Claude](https://support.claude.com/en/articles/13837440-use-plugins-in-claude) 和 [Install Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop)。
+Anthropic 当前说明，插件 Skills 可以用于 Claude 网页 Chat、Claude Desktop Chat 和 Cowork，但 Hooks 与 sub-agent 只在 Cowork 运行。EZagent 在支持 Hook 的宿主使用每回合 Router 激活，在不支持 Hook 的界面退回 Skills 与项目规则；Specialist 仍必须使用真实隔离 sub-agent，而且完整流程还要执行打包的本地 CLI、读写已连接项目。因此桌面版请优先在 Cowork 测试，不要在 Chat 中把“Skill 能显示”误判为“整个 Work Harness 已验收”。官方边界见 [Use plugins in Claude](https://support.claude.com/en/articles/13837440-use-plugins-in-claude) 和 [Install Claude Desktop](https://support.claude.com/en/articles/10065433/install-claude-desktop)。
 
-`v0.6.0` 可以分发给 Codex、Claude Code 和 OpenCode 同事。给 Claude Desktop 同事分发时，必须同时标注“Cowork 实验性支持”，并请他们按后文清单回传结果；在真实 Cowork 验收完成前，不得宣传为 Claude Desktop 全能力正式支持。
+`v0.6.1` 可以分发给 Codex、Claude Code 和 OpenCode 同事。给 Claude Desktop 同事分发时，必须同时标注“Cowork 实验性支持”，并请他们按后文清单回传结果；在真实 Cowork 验收完成前，不得宣传为 Claude Desktop 全能力正式支持。
 
 ## 快速导航
 
@@ -82,9 +83,11 @@ Anthropic 当前说明，插件 Skills 可以用于 Claude 网页 Chat、Claude 
 
 Agent 请求联网或修改插件配置时，确认目标确实是 `zhujufeng/EZagent-Spec` 再批准。熟悉终端的同事也可以使用后文的宿主安装命令。
 
-### 第 2 步：安装后一定新建一个任务
+### 第 2 步：加载新版并信任 Hook
 
-这是最容易漏掉的一步。插件安装或升级完成后，不要继续使用安装前已经打开的旧任务；请在 Codex 侧边栏或对应宿主中新建一个任务。新任务启动时才会加载最新版 Skills。
+这是最容易漏掉的一步。插件安装或升级完成后，不要继续使用安装前已经打开的旧任务；请在 Codex 侧边栏或对应宿主中新建一个任务。新任务启动时才会加载最新版 Skills 与插件 Hook。
+
+Codex 第一次看到新增或变化的非托管 Hook 时会先跳过执行，直到用户审查其精确内容。在 Codex CLI 中打开 `/hooks`，找到 EZagent 的 `UserPromptSubmit` Hook，确认命令只运行插件内 `hooks/ezagent-router-prompt.mjs` 后选择信任。若不完成这一步，`AGENTS.md` 仍可作为新任务启动时的兜底，但不能保证每个后续 prompt 都重新触发 Router。
 
 ### 第 3 步：打开项目文件夹并初始化
 
@@ -95,7 +98,7 @@ Agent 请求联网或修改插件配置时，确认目标确实是 `zhujufeng/EZ
 Agent 会先展示初始化预览，通常只涉及：
 
 - `.ezagent/**`：任务状态、计划、证据和历史；
-- `AGENTS.md` 中的 EZagent 受管区块：让后续新任务自动进入 Router；
+- `AGENTS.md` 中的 EZagent 受管区块：作为新任务启动时的静态规则与 Hook 兜底；
 - `.codex/agents/ezagent-*.toml`：只有确实需要 Specialist 时才生成的项目专家。
 
 初始化预览不会写文件。确认路径是当前项目、范围没有异常后，回复：
@@ -110,7 +113,7 @@ Agent 会先展示初始化预览，通常只涉及：
 
 > 请只检查 EZagent 是否初始化成功，并告诉我项目状态；不要开始新的工作。
 
-正常结果应包含：项目已初始化、`activeWorkItem: null`、没有安全模式或 inspection-required。项目里也会出现 `.ezagent/project.yaml`。如果只是做了初始化，建议再新建一个任务后开始正式工作；如果同一句话里还包含了后续需求，EZagent 0.4.1 及以后会在初始化后把剩余需求重新交给 Router。
+正常结果应包含：项目已初始化、`activeWorkItem: null`、没有安全模式或 inspection-required。项目里也会出现 `.ezagent/project.yaml`。如果只是做了初始化，已信任的 per-prompt Hook 会从下一条用户消息重新建立 Router 所有权；新建任务还会重新加载 `AGENTS.md` 兜底。如果同一句话里还包含了后续需求，EZagent 0.4.1 及以后会在初始化后把剩余需求重新交给 Router。
 
 “安装插件”和“初始化项目”不是同一件事：
 
@@ -290,7 +293,7 @@ Specialist 的任务类型也跟你这次真正要求的一致：只要求分析
 
 1. GitHub Release 中存在目标版本，tag、提交和 CHANGELOG 一致；不要分发 `main` 分支快照。
 2. Windows 与 macOS CI 全绿，插件确定性构建检查通过。
-3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.6.0`、状态为 enabled。
+3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.6.1`、状态为 enabled，并在 Codex `/hooks` 中信任 EZagent 的 `UserPromptSubmit` Hook。
 4. 完全退出宿主并新建任务；不要用发布前已经打开的任务验收新版 Skill。
 5. 在临时项目执行一次初始化预览，确认用户批准前项目字节不变。
 6. 批准初始化后，新建任务并验证 Consult、Quick 和至少一个 Brief Work Preview。
@@ -483,7 +486,7 @@ codex plugin marketplace add zhujufeng/EZagent-Spec
 codex plugin add ezagent-spec@ezagent
 ```
 
-安装或更新后新建一个 Codex 任务，让新 Skills 生效。
+安装或更新后新建一个 Codex 任务，让新 Skills 与 Hook 生效；随后打开 `/hooks`，审查并信任来自 `ezagent-spec` 的 `UserPromptSubmit` Hook。Hook 默认启用，但新增或变化的非托管 Hook 在信任前会被跳过。
 
 ### Claude Code
 
@@ -511,7 +514,7 @@ Claude 插件目前要求付费计划；公司 Team / Enterprise 账号还可能
 1. 打开 Claude Desktop，进入 `Customize → Plugins`。
 2. 在 Personal plugins 区域点击 `+`，选择 `Add marketplace`。
 3. 选择从 GitHub repository 或 git URL 添加，输入 `https://github.com/zhujufeng/EZagent-Spec`。
-4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.6.0`。
+4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.6.1`。
 5. 完全退出并重开 Claude Desktop，再新建一个 Cowork 任务。
 
 如果界面没有 Plugins、Add marketplace 或 Cowork，先检查账号计划、桌面版更新和组织管理员策略；不要把仓库文件手动复制进未知的 Claude 配置目录。Claude Desktop 的 `.mcpb` Desktop Extension 是本地 MCP 的另一种分发格式，EZagent 当前是 Claude Plugin，不需要改名或伪装成 `.mcpb`。
@@ -599,7 +602,7 @@ codex plugin marketplace remove ezagent
 - `AGENTS.md#EZAGENT`
 - `.codex/agents/ezagent-*.toml`（v2 按需 Specialist 与旧 v1 专家兼容流程共用的受管 project Agents）
 
-每个项目只需初始化一次。之后直接描述需求；Codex 与 OpenCode 会读取项目内受管 `AGENTS.md`，Claude Code 则通过插件中可自动调用的 Router Skill 使用同一流程，不需要用户记忆或输入 CLI。这个机制是 Router Skill + 项目规则，不依赖 lifecycle Hook。Claude Desktop Cowork 在实机验收通过前只按上面的实验流程使用，不继承 Claude Code 的正式支持结论。预览到确认期间应避免并发修改 `AGENTS.md`；token 过期时会重新预览，不覆盖并发修改。
+每个项目只需初始化一次。之后直接描述需求；Codex 与 Claude Code 在每个用户回合由插件 `UserPromptSubmit` Hook 检查当前目录是否属于已初始化项目，并重新注入 Router 所有权；Router 再通过本地 CLI 读取真实状态。项目内受管 `AGENTS.md` 继续作为新任务启动时的静态规则与 Hook 不可用时的兜底，OpenCode 继续使用项目规则与 canonical Skills。Claude Desktop Cowork 在实机验收通过前只按上面的实验流程使用，不继承 Claude Code 的正式支持结论。预览到确认期间应避免并发修改 `AGENTS.md`；token 过期时会重新预览，不覆盖并发修改。
 
 如果同一请求同时包含“初始化 EZagent”和后续工作，初始化成功是当前任务的工作流边界：Initialize Skill 会重新提取剩余目标并显式交给 Router，不会继续初始化前的 brainstorming、writing-plans 或其他主工作流。新写入的 `AGENTS.md` 从下一次任务自动加载；只有宿主无法在当前任务调用 Router 时，才会停止并提示开启新任务。`context` 只是路由准备动作，不等于完成路由；Router 必须明确模式、理由和下一个 Skill，并实际转交。初始化批准也不会被复用为 Work Contract 批准。
 

@@ -1,0 +1,17 @@
+{
+  "description": "Re-establish EZagent Router ownership on every prompt in initialized projects.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/ezagent-router-prompt.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Loading EZagent Router..."
+          }
+        ]
+      }
+    ]
+  }
+}

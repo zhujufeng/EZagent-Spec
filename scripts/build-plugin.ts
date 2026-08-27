@@ -43,6 +43,7 @@ const SKILL_REFERENCES = [
 const GENERATED_ENTRIES = [
   "dist",
   "catalog",
+  "hooks",
   "licenses",
   "LICENSE",
   "THIRD_PARTY_NOTICES.md",
@@ -58,6 +59,8 @@ const PLUGIN_FILES = [
   "catalog/catalog.lock.json",
   "catalog/experts.json",
   "dist/ezagent-cli.mjs",
+  "hooks/ezagent-hooks.json",
+  "hooks/ezagent-router-prompt.mjs",
   "licenses/UNICODE-LICENSE.txt",
   "licenses/agency-agents-MIT.txt",
   "licenses/agency-agents-zh-MIT.txt",
@@ -71,6 +74,7 @@ const ALLOWED_PLUGIN_DIRECTORIES = new Set([
   ".codex-plugin",
   "catalog",
   "dist",
+  "hooks",
   "licenses",
   "licenses/npm",
   "licenses/npm/yaml@2.9.0",
@@ -270,6 +274,20 @@ async function assembleStage(stage: string, options: BuildPluginOptions): Promis
     SOURCE_PLUGIN_ROOT,
     ".codex-plugin/plugin.json",
     join(stage, ".codex-plugin", "plugin.json"),
+    MAX_SMALL_SOURCE_BYTES,
+    hooks,
+  );
+  await copyStableFile(
+    SOURCE_PLUGIN_ROOT,
+    "hooks/ezagent-hooks.json",
+    join(stage, "hooks", "ezagent-hooks.json"),
+    MAX_SMALL_SOURCE_BYTES,
+    hooks,
+  );
+  await copyStableFile(
+    SOURCE_PLUGIN_ROOT,
+    "hooks/ezagent-router-prompt.mjs",
+    join(stage, "hooks", "ezagent-router-prompt.mjs"),
     MAX_SMALL_SOURCE_BYTES,
     hooks,
   );

@@ -115,20 +115,21 @@ describe("Codex Skill contracts", () => {
     }
   });
 
-  test("resolves the packaged CLI into shell-free argv without Hook, PATH, or invented command contracts", async () => {
+  test("resolves the packaged CLI into shell-free argv without hook environment, PATH, or invented command contracts", async () => {
     const skills = await Promise.all(EXPECTED_SKILLS.map(readSkill));
     const forbidden = [
       /CLAUDE_PLUGIN_ROOT/u,
       /CODEX_PLUGIN_ROOT/u,
-      /UserPromptSubmit/u,
       /SessionStart/u,
       /PreToolUse/u,
-      /\bHooks?\b/u,
       /\bwhich\s+ezagent\b/u,
       /\bwhere\s+ezagent\b/u,
       /\bcommand\s+-v\s+ezagent\b/u,
       /ezagent-cli\.mjs\s+(?:requirement|spec|task|knowledge)-[a-z-]+/u,
     ];
+    expect(
+      skills.filter((skill) => /UserPromptSubmit/u.test(skill.body)).map((skill) => skill.directory),
+    ).toEqual(["ezagent-initialize"]);
 
     for (const skill of skills) {
       expect(skill.body).toContain(PLUGIN_ROOT_INSTRUCTION);
