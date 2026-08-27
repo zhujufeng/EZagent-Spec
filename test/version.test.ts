@@ -3,5 +3,5 @@ import { EZAGENT_VERSION } from "../src/version.js";
 import { expect, test } from "vitest";
 
 test("exports the package version", () => {
-  expect(EZAGENT_VERSION).toBe("0.7.1");
+  expect(EZAGENT_VERSION).toBe("0.7.2");
 });

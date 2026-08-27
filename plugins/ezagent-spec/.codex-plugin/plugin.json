@@ -1,6 +1,6 @@
 {
   "name": "ezagent-spec",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "\u9762\u5411 Codex\u3001Claude Code \u548c OpenCode \u7684\u672c\u5730\u4f18\u5148 Agent Work Harness\uff1a\u628a\u81ea\u7136\u8bed\u8a00\u9700\u6c42\u8f6c\u6210\u53ef\u5ba1\u6279\u3001\u53ef\u6062\u590d\u3001\u8bc1\u636e\u9a71\u52a8\u7684\u5de5\u4f5c\uff0c\u5e76\u6309\u9700\u5339\u914d Specialist\u3002",
   "author": {
     "name": "zhujufeng"

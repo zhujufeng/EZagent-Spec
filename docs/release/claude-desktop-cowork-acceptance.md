@@ -9,7 +9,7 @@ Claude 插件目前要求付费计划；公司 Team / Enterprise 账号还可能
 1. 打开 Claude Desktop，进入 `Customize → Plugins`。
 2. 在 Personal plugins 区域点击 `+`，选择 `Add marketplace`。
 3. 选择从 GitHub repository 或 git URL 添加，输入 `https://github.com/zhujufeng/EZagent-Spec`。
-4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.7.1`。
+4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.7.2`。
 5. 完全退出并重开 Claude Desktop，再新建一个 Cowork 任务。
 
 如果界面没有 Plugins、Add marketplace 或 Cowork，先检查账号计划、桌面版更新和组织管理员策略；不要把仓库文件手动复制进未知的 Claude 配置目录。Claude Desktop 的 `.mcpb` Desktop Extension 是本地 MCP 的另一种分发格式，EZagent 当前是 Claude Plugin，不需要改名或伪装成 `.mcpb`。

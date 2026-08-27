@@ -8,7 +8,7 @@
 
 1. GitHub Release 中存在目标版本，tag、提交和 CHANGELOG 一致；不要分发 `main` 分支快照。
 2. Windows、macOS 与 Linux CI 全绿，插件确定性构建检查通过。
-3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.7.1`、状态为 enabled，并在 Codex `/hooks` 中信任 EZagent 的 `UserPromptSubmit` Hook。
+3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.7.2`、状态为 enabled，并在 Codex `/hooks` 中信任 EZagent 的 `UserPromptSubmit` Hook。
 4. 完全退出宿主并新建任务；不要用发布前已经打开的任务验收新版 Skill。
 5. 在临时项目执行一次初始化预览，确认用户批准前项目字节不变。
 6. 批准初始化后，新建任务并验证 Consult、Quick 和至少一个 Brief Work Preview。

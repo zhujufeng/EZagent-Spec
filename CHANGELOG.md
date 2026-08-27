@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.2 - 2026-08-28
+
+### 跨平台验证
+
+- GitHub Actions 现在在 macOS、Windows 与 Linux 上执行相同的类型检查、完整测试、确定性插件检查和构建门，补齐此前未进入真实 CI 矩阵的 Linux 运行环境。
+
+### 重构
+
+- 将 active experts 投影和 active work、Specialist Plan、delegation receipt 与 coverage 读取校验从 `service.ts` 提取为两个内聚模块；审批哈希、workspace 锁与原子 mutation 仍留在核心服务，运行行为保持不变。
+
+### 文档
+
+- 将新手 FAQ、维护者分发清单、同事首日验收脚本和 Claude Desktop Cowork 实验验收流程拆入独立文档，README 保留清晰入口，宿主契约测试同步跟随新位置。
+
+### 兼容性说明
+
+- 没有新增或修改持久化 schema、CLI 命令或插件权限；现有 v1/v2 Work Item 保持兼容。从旧版本升级后仍需刷新插件、完全退出宿主并新建任务，以加载 `0.7.2` 的 Skills、CLI 与 lifecycle Hook。
+
 ## 0.7.1 - 2026-08-27
 
 ### 提纲与预览准确性

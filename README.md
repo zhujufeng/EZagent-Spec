@@ -34,16 +34,16 @@
 
 ## 分发者先看
 
-本教程对应 `v0.7.1`。正式分发时只使用 GitHub Releases 中带 `v0.7.1` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 与 lifecycle Hook 生效。
+本教程对应 `v0.7.2`。正式分发时只使用 GitHub Releases 中带 `v0.7.2` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 与 lifecycle Hook 生效。
 
-`v0.7.1` 让依赖项目现状的提纲先做有界只读预检；CodeGraph 只是可选加速工具，没有安装时会使用普通文件搜索和读取。Side Effect 的批准哈希现在由 Core 从精确 payload 字节计算，并在 Apply 时重新校验；普通预览与 Evidence 仍保持紧凑，完整合同、Journal、Evidence 和 Decision 继续保存在可检查的 `.ezagent/` 文件中。
+`v0.7.2` 将 Linux 纳入与 macOS、Windows 相同的 CI 门，并把 active experts 投影、active work 记录和 delegation coverage 校验从 workflow service 拆到独立模块；FAQ 与验收清单拆入 `docs/`，运行行为、schema 与 CLI 契约保持不变。
 
 如果你是维护者，正式通知同事“可以安装”之前，请确认：
 
-- GitHub Release 页面已经出现 `v0.7.1`；
+- GitHub Release 页面已经出现 `v0.7.2`；
 - Release 对应的 tag 和提交正确；
 - Windows、macOS 与 Linux CI 都通过；
-- 安装得到的插件报告版本为 `0.7.1` 且 enabled；
+- 安装得到的插件报告版本为 `0.7.2` 且 enabled；
 - Codex 中打开 `/hooks`，确认并信任 EZagent 的 `UserPromptSubmit` Hook；
 - 至少完成一次真实宿主初始化预览，确认写入前工作区不变；
 - 同事收到的是本 README 的正式 Release 版本，而不是本地未提交文档。
@@ -62,7 +62,7 @@
 
 Anthropic 当前说明，插件 Skills 可以用于 Claude 网页 Chat、Claude Desktop Chat 和 Cowork，但 Hooks 与 sub-agent 只在 Cowork 运行。EZagent 在支持 Hook 的宿主使用每回合 Router 激活，在不支持 Hook 的界面退回 Skills 与项目规则；Specialist 仍必须使用真实隔离 sub-agent，而且完整流程还要执行打包的本地 CLI、读写已连接项目。因此桌面版请优先在 Cowork 测试，不要在 Chat 中把“Skill 能显示”误判为“整个 Work Harness 已验收”。官方边界见 [Use plugins in Claude](https://support.claude.com/en/articles/13837440-use-plugins-in-claude) 和 [Install Claude Desktop](https://support.claude.com/en/articles/10065433/install-claude-desktop)。
 
-`v0.7.1` 可以分发给 Codex、Claude Code 和 OpenCode 同事。给 Claude Desktop 同事分发时，必须同时标注“Cowork 实验性支持”，并请他们按后文清单回传结果；在真实 Cowork 验收完成前，不得宣传为 Claude Desktop 全能力正式支持。
+`v0.7.2` 可以分发给 Codex、Claude Code 和 OpenCode 同事。给 Claude Desktop 同事分发时，必须同时标注“Cowork 实验性支持”，并请他们按后文清单回传结果；在真实 Cowork 验收完成前，不得宣传为 Claude Desktop 全能力正式支持。
 
 ## 快速导航
 
