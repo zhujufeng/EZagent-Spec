@@ -29,7 +29,6 @@ const CANCELLATION_SKILLS = [
   "ezagent-review",
 ] as const;
 const JSON_INPUT_SKILLS = [
-  "ezagent-router",
   "ezagent-context",
   "ezagent-spec",
   "ezagent-execute",
@@ -200,6 +199,17 @@ describe("Codex Skill contracts", () => {
       expect(skill.body).toMatch(/argv.*记录.*敏感.*关闭失败/su);
       expect(skill.body).toMatch(/不得退回 PTY 试探/u);
     }
+  });
+
+  test("keeps Router JSON transport focused on its only JSON-input command", async () => {
+    const router = await readSkill("ezagent-router");
+
+    expect(router.body).toMatch(/Router.*只有.*knowledge-context.*JSON 输入/su);
+    expect(router.body).toMatch(/PTY.*stdin.*EOF.*--input-file/su);
+    expect(router.body).toMatch(/--input-json.*24.?576.*UTF-8/su);
+    expect(router.body).toMatch(/argv.*记录.*敏感.*关闭失败/su);
+    expect(router.body).not.toMatch(/预览与 Apply.*完全相同.*文件/su);
+    expect(Buffer.byteLength(router.body, "utf8")).toBeLessThan(14_000);
   });
 
   test("takes transition revisions only from the latest active work item context", async () => {
