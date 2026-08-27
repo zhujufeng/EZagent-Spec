@@ -17,7 +17,7 @@ describe("Claude Code and OpenCode compatibility", () => {
     expect(manifest).toMatchObject({
       name: "ezagent-spec",
       displayName: "EZagent Work Harness",
-      version: "0.5.1",
+      version: "0.6.0",
       author: { name: "zhujufeng" },
       repository: "https://github.com/zhujufeng/EZagent-Spec",
       license: "MIT",
@@ -32,11 +32,25 @@ describe("Claude Code and OpenCode compatibility", () => {
       plugins: [{
         name: "ezagent-spec",
         source: "./plugins/ezagent-spec",
-        description: "中文、本地优先的通用 Agent Work Harness。",
-        version: "0.5.1",
+        description: "面向 Codex、Claude Code 和 OpenCode 的本地优先 Agent Work Harness：把自然语言需求转成可审批、可恢复、证据驱动的工作，并按需匹配 Specialist。",
+        version: "0.6.0",
         category: "Developer Tools",
       }],
     });
+  });
+
+  test("documents Claude Desktop as an honest Cowork experiment instead of inheriting Claude Code support", async () => {
+    const readme = await readFile(resolve(ROOT, "README.md"), "utf8");
+
+    expect(readme).toContain("Claude Desktop Chat | 有限支持");
+    expect(readme).toContain("Claude Desktop Cowork | 实验性支持，待同事实机验收");
+    expect(readme).toContain("Hooks 与 sub-agent 只在 Cowork 运行");
+    expect(readme).toContain("Customize → Plugins");
+    expect(readme).toContain("https://github.com/zhujufeng/EZagent-Spec");
+    expect(readme).toContain("第一次验收如果提示安装 Node，先不要批准");
+    expect(readme).toContain("Specialist 真实 sub-agent：通过 / blocked / 失败");
+    expect(readme).toContain("至少获得一台 macOS 和一台 Windows 的完整回报");
+    expect(readme).toContain("不能继承 Cowork 或 Claude Code 的结论");
   });
 
   test("uses a package root that can be installed directly as .opencode", async () => {

@@ -1,8 +1,8 @@
 {
   "name": "ezagent-spec",
   "displayName": "EZagent Work Harness",
-  "version": "0.5.1",
-  "description": "中文、本地优先的通用 Agent Work Harness。",
+  "version": "0.6.0",
+  "description": "面向 Codex、Claude Code 和 OpenCode 的本地优先 Agent Work Harness：把自然语言需求转成可审批、可恢复、证据驱动的工作，并按需匹配 Specialist。",
   "author": {
     "name": "zhujufeng"
   },

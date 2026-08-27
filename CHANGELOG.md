@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0 - 2026-08-27
+
+### 运行环境自助准备
+
+- Initialize 在执行任何 EZagent JavaScript 前验证 Node.js 版本；缺失、无法解析或低于 22 时，不再只让用户自行处理，而是按操作系统只读发现 `winget`、Homebrew、Node.js 官方 macOS 安装包或现有 Linux 包管理器。完整决策树拆分为按需读取的初始化参考，避免其他正常初始化占用无关上下文。
+- 找到可靠安装渠道后，Agent 必须先展示包来源、精确 argv、联网范围、管理员权限和全局影响；用户单独批准后才执行一次，并在新进程中复检 Node 版本。失败不会静默换源、提权、重试或修改 `PATH`。
+- Windows 使用官方 `OpenJS.NodeJS.LTS` winget 包；macOS 优先使用已经存在的 Homebrew，无 Homebrew 时从 `nodejs.org` 解析精确 LTS、下载通用 `.pkg`，并校验 SHA-256、包签名和 Gatekeeper 后交给系统安装器；Linux 仅在现有系统仓库能证明候选 Node major 至少为 22 时自动安装。全平台禁止远程安装脚本和擅自添加第三方软件源。
+- README 面向非开发同事说明了插件安装前与首次初始化前的边界。插件 CLI 已打包运行时依赖，不会在业务项目运行 `npm install` 或修改其 package metadata。
+
+### 面向团队的完整教程
+
+- README 从插件安装、Node 预检、新建任务、项目初始化、Router 选择、Work Preview、规划人工闸门、Slice 执行、Evidence Review、恢复、取消到最终 Decision 给出可直接照做的中文流程。
+- 新增完整生命周期图、各阶段可观察结果和四类互不复用的批准说明，帮助非开发同事判断 Agent 当前在做什么、为什么暂停，以及哪次确认只授权了什么。
+- 新增八个 canonical Skill 的职责边界、七句日常操作话术、维护者分发检查清单和同事第一天验收脚本。
+- 新增 Claude Desktop 支持矩阵：Claude Code 保持正式支持，Desktop Chat 明确为有限支持，Cowork 标记为待同事实机验证的实验性支持；附 Marketplace 安装、一次性文件夹验收和脱敏回报模板，避免把 Claude Code 测试结果冒充桌面版认证。
+- 明确正式分发必须使用带 tag 的 Release，安装或升级后完全重启宿主并新建任务；`main` 分支快照和未提交工作区不属于可分发版本。
+
+### 兼容性说明
+
+- 没有新增 schema、CLI 命令或持久化字段；既有 v2 Work Item、旧版 v1 工作项和 0.5.1 的 Planning-first 流程保持兼容。
+- Node.js 最低版本仍为 22；变化是 Initialize 现在可以在获得独立明确批准后协助准备受支持的 Node 环境。系统软件安装批准、项目初始化批准、Work Preview 批准与 Side Effect 批准互不复用。
+- 从旧版本升级后需要重新安装或刷新插件、完全退出宿主并新建任务，才能加载 0.6.0 Skills。
+
 ## 0.5.1 - 2026-08-26
 
 ### Planning-first 自适应策略

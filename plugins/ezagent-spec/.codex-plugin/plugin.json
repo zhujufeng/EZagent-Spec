@@ -1,7 +1,7 @@
 {
   "name": "ezagent-spec",
-  "version": "0.5.1",
-  "description": "\u4e2d\u6587\u3001\u672c\u5730\u4f18\u5148\u7684\u901a\u7528 Agent Work Harness\u3002",
+  "version": "0.6.0",
+  "description": "\u9762\u5411 Codex\u3001Claude Code \u548c OpenCode \u7684\u672c\u5730\u4f18\u5148 Agent Work Harness\uff1a\u628a\u81ea\u7136\u8bed\u8a00\u9700\u6c42\u8f6c\u6210\u53ef\u5ba1\u6279\u3001\u53ef\u6062\u590d\u3001\u8bc1\u636e\u9a71\u52a8\u7684\u5de5\u4f5c\uff0c\u5e76\u6309\u9700\u5339\u914d Specialist\u3002",
   "author": {
     "name": "zhujufeng"
   },
@@ -17,8 +17,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "EZagent Work Harness",
-    "shortDescription": "\u8ba9\u4efb\u610f Agent \u5de5\u4f5c\u66f4\u6709\u7ed3\u6784\u548c\u8bc1\u636e",
-    "longDescription": "\u521d\u59cb\u5316\u4e00\u6b21\u540e\uff0c\u628a\u6a21\u7cca\u8bf7\u6c42\u6574\u7406\u4e3a Brief\u3001Work Spec\u3001Slices\u3001Evidence \u4e0e Decision\uff1b\u4eba\u5458\u548c\u4e13\u5bb6\u5747\u4e0d\u8bbe\u56fa\u5b9a\u7c7b\u578b\u3002",
+    "shortDescription": "\u628a\u81ea\u7136\u8bed\u8a00\u9700\u6c42\u53d8\u6210\u53ef\u5ba1\u6279\u3001\u53ef\u6062\u590d\u3001\u8bc1\u636e\u9a71\u52a8\u7684\u5de5\u4f5c",
+    "longDescription": "\u5728\u9879\u76ee\u4e2d\u521d\u59cb\u5316\u4e00\u6b21\uff0c\u628a\u81ea\u7136\u8bed\u8a00\u9700\u6c42\u8f6c\u6362\u4e3a Brief\u3001Work Spec\u3001Slices\u3001Evidence \u4e0e Decision\uff1b\u6309\u9700\u5339\u914d\u9694\u79bb Specialist\uff0c\u5e76\u4e3a\u89c4\u5212\u6210\u679c\u548c\u5916\u90e8 Side Effect \u4fdd\u7559\u72ec\u7acb\u4eba\u5de5\u5ba1\u6279\u3002",
     "developerName": "zhujufeng",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/zhujufeng/EZagent-Spec",
