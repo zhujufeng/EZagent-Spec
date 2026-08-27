@@ -5,6 +5,7 @@
 ### 跨平台验证
 
 - GitHub Actions 现在在 macOS、Windows 与 Linux 上执行相同的类型检查、完整测试、确定性插件检查和构建门，补齐此前未进入真实 CI 矩阵的 Linux 运行环境。
+- 重型文件系统工作流复用 Windows 专项超时预算，避免共享 CI runner 短时 I/O 降速造成误报，同时保持 macOS 与 Linux 的原有上限。
 
 ### 重构
 

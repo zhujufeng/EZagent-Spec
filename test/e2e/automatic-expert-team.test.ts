@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { buildPlugin } from "../../scripts/build-plugin.js";
+import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "../..");
 const temporaryRoots: string[] = [];
@@ -131,7 +132,7 @@ beforeAll(async () => {
   temporaryRoots.push(pluginRoot);
   await buildPlugin(pluginRoot);
   cliPath = join(pluginRoot, "dist", "ezagent-cli.mjs");
-}, 30_000);
+}, slowTestTimeoutForPlatform(process.platform));
 
 afterAll(async () => {
   await Promise.all(
@@ -252,5 +253,5 @@ describe.sequential("automatic expert-team packaged workflow", () => {
     }>(highRoot, "context");
     expect(highContext.state.activeWorkItem.status).toBe("planned");
     await expect(lstat(join(REPOSITORY_ROOT, ".ezagent"))).rejects.toMatchObject({ code: "ENOENT" });
-  }, 30_000);
+  }, slowTestTimeoutForPlatform(process.platform));
 });

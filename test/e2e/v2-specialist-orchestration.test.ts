@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { buildPlugin } from "../../scripts/build-plugin.js";
+import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 import {
   CONTROLLED_ACTION_CONTENT_HASH,
   controlledActionDraft,
@@ -207,7 +208,7 @@ beforeAll(async () => {
   temporaryRoots.push(pluginRoot);
   await buildPlugin(pluginRoot);
   cliPath = join(pluginRoot, "dist", "ezagent-cli.mjs");
-}, 30_000);
+}, slowTestTimeoutForPlatform(process.platform));
 
 afterAll(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -279,7 +280,7 @@ describe.sequential("v2 Specialist orchestration packaged workflow", () => {
     ), "utf8")).resolves.toContain(applied.specialistPlan.planFingerprint);
     const receiptRoots = await readdir(join(root, ".ezagent", "experts", "receipts", applied.workItem.id));
     expect(receiptRoots).toHaveLength(applied.specialistPlan.delegations.length);
-  }, 30_000);
+  }, slowTestTimeoutForPlatform(process.platform));
 
   test("uses a distinct reviewer plus human Evidence and retires the mixed-review Agents", async () => {
     const root = await initializedProject("Mixed Review Specialist 路径");
@@ -319,5 +320,5 @@ describe.sequential("v2 Specialist orchestration packaged workflow", () => {
     expect(await generatedAgents(root)).toEqual([]);
     await expect(lstat(join(root, ".ezagent", "experts", "receipts", applied.workItem.id)))
       .resolves.toMatchObject({});
-  }, 30_000);
+  }, slowTestTimeoutForPlatform(process.platform));
 });

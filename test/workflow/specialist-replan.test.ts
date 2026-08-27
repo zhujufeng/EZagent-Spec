@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 import {
   cleanupWorkflowTeamFixtures,
   createWorkflowTeamFixture,
@@ -134,7 +135,7 @@ describe("Specialist-only replan", () => {
     await second.service.delegationStart(secondApplied.specialistPlan.delegations[0]!.id);
     await expect(second.service.specialistReplanPreview({ specialistAssessment: NOT_NEEDED }))
       .rejects.toThrow(/unfinished Delegation/u);
-  });
+  }, slowTestTimeoutForPlatform(process.platform));
 
   test("reuses a completed unchanged Delegation receipt across Specialist Plan revisions", async () => {
     const fixture = await createWorkflowTeamFixture();

@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 import {
   cleanupWorkflowTeamFixtures,
   createWorkflowTeamFixture,
@@ -255,7 +256,7 @@ describe("Agent Work Harness service", () => {
       .resolves.toContain("experts: []");
     await expect(readFile(join(fixture.root, ".ezagent", completed.receiptPath), "utf8"))
       .resolves.toContain('"status": "completed"');
-  }, 30_000);
+  }, slowTestTimeoutForPlatform(process.platform));
 
   test("rejects a blocked Specialist Plan without mutating the workspace", async () => {
     const fixture = await createWorkflowTeamFixture();
