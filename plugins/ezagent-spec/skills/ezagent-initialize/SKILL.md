@@ -1,6 +1,6 @@
 ---
 name: ezagent-initialize
-description: 当用户明确要求在当前项目启用、初始化或安装 EZagent Work Harness 时，执行一次性环境检测、写入预览、确认和本地初始化；若同一请求还包含后续工作，初始化成功后立即交回 EZagent Router。
+description: 当用户明确要求在当前项目启用、初始化或安装 EZagent Work Harness 时，执行一次性环境检测、经确认补齐受支持的 Node.js、写入预览和本地初始化；若同一请求还包含后续工作，初始化成功后立即交回 EZagent Router。
 ---
 
 # EZagent Initialize
@@ -11,7 +11,7 @@ description: 当用户明确要求在当前项目启用、初始化或安装 EZa
 
 必须使用支持 argv 数组的进程执行接口，禁止拼接 shell 字符串。每个动态值必须作为一个独立 argv 元素。若宿主只支持 shell 字符串，必须按当前 shell 的 literal 规则完整编码每个参数；无法证明编码正确就关闭失败，不得仅自行添加双引号。
 
-1. 用系统内置命令检测操作系统：macOS/Linux 使用第一个 argv；Windows 使用第二个 argv 或当前 shell 的等价内置命令。操作系统检测之后，单独用第三个 argv 检测 Node；这些检测不得依赖 EZagent JavaScript。
+1. 在执行任何 EZagent JavaScript 之前，用系统内置命令检测操作系统：macOS/Linux 使用第一个 argv；Windows 使用第二个 argv 或当前 shell 的等价内置命令。操作系统检测之后，单独用第三个 argv 检测 Node；这些检测不得依赖 EZagent JavaScript。只有输出是可解析的 `v<major>.<minor>.<patch>` 且 major 至少为 22，才通过运行时预检。
 
 ```json
 ["uname", "-s"]
@@ -25,7 +25,9 @@ description: 当用户明确要求在当前项目启用、初始化或安装 EZa
 ["node", "--version"]
 ```
 
-Node.js 缺失或低于 22 时，只说明需要受支持的 Node.js LTS；联网或调用系统安装机制必须先获得用户明确同意，完成后重新检测。
+插件内的 CLI 已打包运行时 JavaScript 依赖。普通使用者不得在业务项目运行 `npm install`、`pnpm install`、`yarn install` 或 `bun install` 来准备 EZagent，也不得修改业务项目的 `package.json` 或 lockfile。
+
+Node.js 缺失、版本无法解析或低于 22 时，不得只让用户自行安装或直接结束。必须完整读取 [references/node-bootstrap.md](references/node-bootstrap.md)，按当前操作系统完成只读安装器发现、精确计划、独立批准、安装和复检；用户拒绝或没有可靠安装渠道时保持项目不变。只有复检达到 22 或更高才继续第 2 步。
 
 2. 未初始化时只使用当前宿主明确提供的 workspace root。存在多个 root、嵌套 root 或无法确定时，展示绝对候选并让用户先确认；不得只把 cwd 当项目根。项目名也从这次确认结果中明确取得。
 

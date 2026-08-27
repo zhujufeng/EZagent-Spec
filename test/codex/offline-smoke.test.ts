@@ -40,6 +40,7 @@ const EXPECTED_PLUGIN_FILES = [
   "skills/ezagent-execute/SKILL.md",
   "skills/ezagent-implement/SKILL.md",
   "skills/ezagent-initialize/SKILL.md",
+  "skills/ezagent-initialize/references/node-bootstrap.md",
   "skills/ezagent-light/SKILL.md",
   "skills/ezagent-review/SKILL.md",
   "skills/ezagent-router/SKILL.md",

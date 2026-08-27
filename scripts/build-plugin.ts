@@ -36,6 +36,7 @@ const SKILLS = [
   "ezagent-review",
 ] as const;
 const SKILL_REFERENCES = [
+  "skills/ezagent-initialize/references/node-bootstrap.md",
   "skills/ezagent-spec/references/planning-first.md",
   "skills/ezagent-spec/references/work-contract-v2.md",
 ] as const;
@@ -76,6 +77,7 @@ const ALLOWED_PLUGIN_DIRECTORIES = new Set([
   "licenses/npm/zod@4.4.3",
   "skills",
   ...SKILLS.map((skill) => `skills/${skill}`),
+  "skills/ezagent-initialize/references",
   "skills/ezagent-spec/references",
 ]);
 const MAX_SMALL_SOURCE_BYTES = 4 * 1_048_576;

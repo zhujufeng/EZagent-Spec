@@ -414,6 +414,96 @@ describe("Codex Skill contracts", () => {
     expect(initialize.body).toMatch(/操作系统.*之后.*单独.*Node/su);
   });
 
+  test("offers an approved cross-platform Node bootstrap before any EZagent CLI call", async () => {
+    const initialize = await readSkill("ezagent-initialize");
+    const bootstrapPath = `${SKILLS_ROOT}ezagent-initialize/references/node-bootstrap.md`;
+    const bootstrapBody = await readFile(bootstrapPath, "utf8");
+    const bootstrap: SkillDocument = {
+      directory: "ezagent-initialize/references/node-bootstrap.md",
+      frontmatter: {},
+      body: bootstrapBody,
+    };
+    const examples = argvExamples(bootstrap);
+    const nodeCheck = initialize.body.indexOf('["node", "--version"]');
+    const bootstrapRouting = initialize.body.indexOf("references/node-bootstrap.md");
+    const integrationPreview = initialize.body.indexOf("integration-preview");
+
+    expect(nodeCheck).toBeGreaterThanOrEqual(0);
+    expect(bootstrapRouting).toBeGreaterThan(nodeCheck);
+    expect(integrationPreview).toBeGreaterThan(bootstrapRouting);
+    expect(bootstrapBody).toMatch(/只读安装器发现.*精确计划.*独立批准.*安装.*复检/su);
+    expect(examples).toContainEqual(["winget", "--version"]);
+    expect(examples).toContainEqual(["apt-get", "--version"]);
+    expect(examples).toContainEqual(["dnf", "--version"]);
+    expect(examples).toContainEqual(["pacman", "--version"]);
+    expect(examples).toContainEqual(["zypper", "--version"]);
+    expect(examples).toContainEqual(["apt-cache", "policy", "nodejs"]);
+    expect(examples).toContainEqual(["dnf", "info", "nodejs"]);
+    expect(examples).toContainEqual(["pacman", "--sync", "--info", "nodejs"]);
+    expect(examples).toContainEqual(["zypper", "info", "nodejs"]);
+    expect(examples).toContainEqual(["apt-get", "install", "--yes", "nodejs"]);
+    expect(examples).toContainEqual(["dnf", "install", "--assumeyes", "nodejs"]);
+    expect(examples).toContainEqual([
+      "pacman",
+      "--sync",
+      "--needed",
+      "--noconfirm",
+      "nodejs",
+    ]);
+    expect(examples).toContainEqual([
+      "zypper",
+      "--non-interactive",
+      "install",
+      "nodejs",
+    ]);
+    expect(examples).toContainEqual([
+      "winget",
+      "install",
+      "--exact",
+      "--id",
+      "OpenJS.NodeJS.LTS",
+      "--source",
+      "winget",
+      "--accept-package-agreements",
+      "--accept-source-agreements",
+    ]);
+    expect(examples).toContainEqual(["brew", "install", "node"]);
+    expect(examples).toContainEqual([
+      "pkgutil",
+      "--check-signature",
+      "<absolute-temp-pkg-path>",
+    ]);
+    expect(examples).toContainEqual([
+      "spctl",
+      "--assess",
+      "--type",
+      "install",
+      "--verbose=4",
+      "<absolute-temp-pkg-path>",
+    ]);
+    expect(examples).toContainEqual(["open", "<absolute-temp-pkg-path>"]);
+    expect(examples).toContainEqual([
+      "/usr/sbin/installer",
+      "-pkg",
+      "<absolute-temp-pkg-path>",
+      "-target",
+      "/",
+    ]);
+    expect(bootstrapBody).toMatch(/精确 argv.*联网范围.*管理员权限.*安装范围/su);
+    expect(bootstrapBody).toMatch(/项目初始化.*批准.*不得.*复用.*系统软件安装批准/su);
+    expect(bootstrapBody).toMatch(/安装结束后.*重新执行.*node --version/su);
+    expect(bootstrapBody).toMatch(/不得修改.*PATH.*shell profile/su);
+    expect(bootstrapBody).toMatch(/不得执行.*curl \| sh.*远程安装脚本.*添加软件源/su);
+    expect(initialize.body).toMatch(/不得在业务项目运行.*npm install.*pnpm install.*yarn install.*bun install/su);
+    expect(bootstrapBody).toMatch(/没有 Homebrew.*Node\.js 官方.*\.pkg/su);
+    expect(bootstrapBody).toMatch(/dist\/index\.json.*lts.*major.*22/su);
+    expect(bootstrapBody).toMatch(/SHA-256.*SHASUMS256\.txt/su);
+    expect(bootstrapBody).toContain('"pkgutil", "--check-signature"');
+    expect(bootstrapBody).toMatch(/Gatekeeper.*安装评估/su);
+    expect(bootstrapBody).toMatch(/不得.*(?:请求|传递|保存).*密码/su);
+    expect(bootstrapBody).toMatch(/不得自行添加.*sudo/su);
+  });
+
   test("uses confirmed workspace-root metadata instead of cwd during initialization", async () => {
     const initialize = await readSkill("ezagent-initialize");
     const selection = structuredContract(initialize, "projectRootSelection");
@@ -536,11 +626,13 @@ describe("Codex Skill contracts", () => {
     expect(execute.body).toMatch(/不得用 replan 覆盖未完成委派/u);
   });
 
-  test("ships only the intentional Work Contract references without placeholders", async () => {
+  test("ships only the intentional workflow references without placeholders", async () => {
     for (const directory of EXPECTED_SKILLS) {
       const skillDirectory = `${SKILLS_ROOT}${directory}/`;
       expect((await readdir(skillDirectory)).sort()).toEqual(
-        directory === "ezagent-spec" ? ["SKILL.md", "references"] : ["SKILL.md"],
+        ["ezagent-initialize", "ezagent-spec"].includes(directory)
+          ? ["SKILL.md", "references"]
+          : ["SKILL.md"],
       );
       const path = `${skillDirectory}SKILL.md`;
       const contents = await readFile(path, "utf8");
@@ -548,9 +640,14 @@ describe("Codex Skill contracts", () => {
     }
     expect((await readdir(`${SKILLS_ROOT}ezagent-spec/references/`)).sort())
       .toEqual(["planning-first.md", "work-contract-v2.md"]);
-    for (const reference of ["planning-first.md", "work-contract-v2.md"]) {
+    const references = [
+      "ezagent-initialize/references/node-bootstrap.md",
+      "ezagent-spec/references/planning-first.md",
+      "ezagent-spec/references/work-contract-v2.md",
+    ];
+    for (const reference of references) {
       expect(await readFile(
-        `${SKILLS_ROOT}ezagent-spec/references/${reference}`,
+        `${SKILLS_ROOT}${reference}`,
         "utf8",
       )).not.toMatch(/TODO|TBD|\[TODO:/u);
     }
