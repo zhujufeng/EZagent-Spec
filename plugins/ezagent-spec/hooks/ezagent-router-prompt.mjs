@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -49,17 +50,25 @@ function findInitializedProject(start) {
   }
 }
 
-function writeContext() {
+function sessionKey(value) {
+  if (typeof value !== "string" || value === "") return undefined;
+  return `session-${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function writeContext(key) {
+  const context = key === undefined
+    ? ROUTER_CONTEXT
+    : `${ROUTER_CONTEXT}\n本回合 EZagent session key：\`${key}\`。Router 及其后续 Skill 调用 EZagent CLI 时必须把它作为独立的 \`--session\` 参数传递；不得输出或持久化宿主原始 session_id。`;
   if (process.env.PLUGIN_ROOT || process.env.PLUGIN_DATA) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "UserPromptSubmit",
-        additionalContext: ROUTER_CONTEXT,
+        additionalContext: context,
       },
     }));
     return;
   }
-  process.stdout.write(ROUTER_CONTEXT);
+  process.stdout.write(context);
 }
 
 function finish() {
@@ -71,7 +80,7 @@ function finish() {
       ? event.cwd
       : process.cwd();
     if (findInitializedProject(cwd) === undefined) return;
-    writeContext();
+    writeContext(sessionKey(event.session_id));
   } catch {
     // Hooks are advisory. Invalid or unavailable input must never block a turn.
   }

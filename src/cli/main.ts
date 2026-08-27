@@ -274,10 +274,10 @@ export interface CliRuntime {
   readonly nodeVersion: string;
   readonly lstat: (path: string) => Promise<{ readonly isDirectory: () => boolean }>;
   readonly access: (path: string, mode: number) => Promise<void>;
-  readonly createRepository: (root: string) => WorkspaceRepository;
+  readonly createRepository: (root: string, sessionKey?: string) => WorkspaceRepository;
   readonly codexIntegrationRuntime: CodexIntegrationRuntime;
   readonly stdin: JsonInputSource;
-  readonly createWorkflowService: (root: string) => AgentWorkHarnessService;
+  readonly createWorkflowService: (root: string, sessionKey?: string) => AgentWorkHarnessService;
   readonly readRuntimeCatalog: () => Promise<RuntimeCatalog>;
   readonly inspectCodexTeam: (
     root: string,
@@ -292,10 +292,10 @@ const defaultRuntime: CliRuntime = {
   nodeVersion: process.version,
   lstat,
   access,
-  createRepository: (root) => new WorkspaceRepository(root),
+  createRepository: (root, sessionKey) => new WorkspaceRepository(root, sessionKey),
   codexIntegrationRuntime: nodeCodexIntegrationRuntime,
   stdin: { chunks: process.stdin },
-  createWorkflowService: (root) => new AgentWorkHarnessService(root),
+  createWorkflowService: (root, sessionKey) => new AgentWorkHarnessService(root, undefined, sessionKey),
   readRuntimeCatalog: loadDefaultRuntimeCatalog,
   inspectCodexTeam: inspectCodexExpertTeam,
   reconcileCodexTeam: reconcileCodexExpertTeam,
@@ -312,6 +312,7 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
   const spec = COMMAND_SPECS[command];
   const valueOptions = new Set([
     ...spec.valueOptions,
+    "--session",
     ...(JSON_INPUT_COMMANDS.has(command) ? ["--input-file", "--input-json"] : []),
   ]);
   const booleanOptions = new Set(spec.booleanOptions);
@@ -374,6 +375,15 @@ function projectName(value: string): string {
     throw new Error(`project name must be 1-${PROJECT_NAME_MAX_LENGTH} printable characters`);
   }
   return normalized;
+}
+
+function sessionKey(parsed: ParsedCommand): string | undefined {
+  const value = valueOption(parsed, "--session");
+  if (value === undefined) return undefined;
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,94}[a-z0-9])?$/u.test(value)) {
+    throw new Error("--session must be a 1-96 character lowercase portable identifier");
+  }
+  return value;
 }
 
 function workItemStatus(value: string): WorkItemStatus {
@@ -475,7 +485,8 @@ export async function runCli(
     return;
   }
 
-  const repository = runtime.createRepository(root);
+  const currentSession = sessionKey(parsed);
+  const repository = runtime.createRepository(root, currentSession);
   if (parsed.command === "init") {
     const name = projectName(requiredValueOption(parsed, "--name"));
     await repository.initialize({ schemaVersion: 1, name, gitTracking: "none" });
@@ -483,7 +494,7 @@ export async function runCli(
     return;
   }
 
-  const workflow = runtime.createWorkflowService(root);
+  const workflow = runtime.createWorkflowService(root, currentSession);
 
   if (parsed.command === "work-cancel") {
     const revision = canonicalRevision(requiredValueOption(parsed, "--revision"));
@@ -694,6 +705,7 @@ export async function runCli(
       : await runtime.inspectCodexTeam(root, await runtime.readRuntimeCatalog());
     writeJson(io, {
       ...base,
+      ...(currentSession === undefined ? {} : { session: currentSession }),
       requirement: resumed.requirement,
       spec: resumed.spec,
       task: resumed.task,

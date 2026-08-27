@@ -762,6 +762,46 @@ describe("WorkspaceRepository.initialize", () => {
 });
 
 describe("WorkspaceRepository reads", () => {
+  test("keeps each session's current work item independent and inspectable", async () => {
+    const root = await temporaryProject();
+    const bootstrap = new WorkspaceRepository(root);
+    await bootstrap.initialize(demoConfig);
+    const first = new WorkspaceRepository(root, "session-a");
+    const second = new WorkspaceRepository(root, "session-b");
+    const firstTask = {
+      id: "TASK-20260827-001",
+      kind: "task" as const,
+      status: "planned" as const,
+      risk: "brief" as const,
+      revision: 1,
+    };
+    const secondTask = { ...firstTask, id: "TASK-20260827-002" };
+
+    await first.recordState({
+      ...(await first.readState()),
+      revision: 1,
+      activeWorkItem: firstTask,
+    }, 0, "session-task-selected");
+    expect((await second.readState()).activeWorkItem).toBeNull();
+    await second.recordState({
+      ...(await second.readState()),
+      revision: 2,
+      activeWorkItem: secondTask,
+    }, 1, "session-task-selected");
+
+    expect((await first.readState()).activeWorkItem).toEqual(firstTask);
+    expect((await second.readState()).activeWorkItem).toEqual(secondTask);
+    const stored = JSON.parse(await readFile(workspacePaths(root).state, "utf8")) as {
+      readonly activeWorkItem: unknown;
+      readonly sessions: readonly { readonly key: string; readonly activeWorkItem: unknown }[];
+    };
+    expect(stored.activeWorkItem).toBeNull();
+    expect(stored.sessions).toEqual([
+      { key: "session-a", activeWorkItem: firstTask },
+      { key: "session-b", activeWorkItem: secondTask },
+    ]);
+  });
+
   test.each(["readProject", "readState"] as const)(
     "%s reports an uninitialized workspace with path and cause",
     async (method) => {

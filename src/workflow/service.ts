@@ -175,7 +175,7 @@ export interface TeamWorkflowRuntime {
   readonly now: () => Date;
   readonly canonicalRoot: (root: string) => Promise<string>;
   readonly readCatalog: () => Promise<RuntimeCatalog>;
-  readonly createRepository: (root: string) => WorkspaceRepository;
+  readonly createRepository: (root: string, sessionKey?: string) => WorkspaceRepository;
   readonly readActiveExperts: (root: string) => Promise<ActiveExperts>;
 }
 
@@ -474,7 +474,7 @@ const defaultRuntime: TeamWorkflowRuntime = {
   now: () => new Date(),
   canonicalRoot: realpath,
   readCatalog: loadDefaultRuntimeCatalog,
-  createRepository: (root) => new WorkspaceRepository(root),
+  createRepository: (root, sessionKey) => new WorkspaceRepository(root, sessionKey),
   readActiveExperts: async (root) => new ActiveExpertRepository(root).read(),
 };
 
@@ -1426,15 +1426,17 @@ async function readKnowledgeCandidates(root: string): Promise<readonly Knowledge
 export class ExpertTeamWorkflowService {
   readonly projectRoot: string;
   readonly runtime: TeamWorkflowRuntime;
+  readonly sessionKey: string | undefined;
 
-  constructor(projectRoot: string, runtime: TeamWorkflowRuntime = defaultRuntime) {
+  constructor(projectRoot: string, runtime: TeamWorkflowRuntime = defaultRuntime, sessionKey?: string) {
     this.projectRoot = projectRoot;
     this.runtime = runtime;
+    this.sessionKey = sessionKey;
   }
 
   private async context(requireIdleWorkspace = true) {
     const canonicalRoot = await this.runtime.canonicalRoot(this.projectRoot);
-    const repository = this.runtime.createRepository(canonicalRoot);
+    const repository = this.runtime.createRepository(canonicalRoot, this.sessionKey);
     const context = await repository.readContext();
     if (requireIdleWorkspace) requireIdle(context.state);
     return { canonicalRoot, repository, context };

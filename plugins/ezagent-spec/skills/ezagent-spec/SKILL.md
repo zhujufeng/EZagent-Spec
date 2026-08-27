@@ -72,7 +72,14 @@ Router 已选择的模式由用户请求本身决定。源码、样本数据或�
 ["node", "<absolute-cli-path>", "work-preview", "--root", "<absolute-project-root>"]
 ```
 
-向用户展示 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设和未决问题，并展示 Specialist Assessment、确定性生成的 delegations、未覆盖能力与 blockers。不得把 Specialist Plan 另拆成一次例行确认；`brief`、`standard`、`controlled` 都只确认这一份合并预览。存在 blocker 时先修正 Capability Need 或说明能力缺口，不得 Apply。Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
+`work-preview` 的返回值始终是完整合同；不得删除、缩减或改写任何 Work Contract 字段，也不得因为默认展示更短而改变 Preview 与 Apply 使用的 JSON 字节。显示层按风险分级：
+
+- Brief 与 Standard 默认只显示目标、交付物、完成条件、执行步骤，以及非空的风险、假设、未决问题和批准点。执行步骤是 Slice 的短标题与依赖摘要；完成条件是 Acceptance Criteria 的可读摘要。Mode 只需在一处附带说明，不逐字段复述 Canonical Terms、Evidence kinds、Review Policy、空 Specialist Assessment、内部 ID 或 approval token。
+- 用户要求“展开完整合同”、逐项审查或调试预览时，展示完整 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设、未决问题、Specialist Assessment、delegations、未覆盖能力与 blockers。
+- Controlled 必须完整展示 Boundaries、Approval Points、资源访问、Review Policy、人工判断和 Side Effect 风险；不得使用紧凑展示隐藏安全信息。Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
+- Specialist Assessment 为 `required`、存在未覆盖能力或 blocker 时，即使是 Brief 或 Standard，也必须展示相应计划和本 Skill 规定的“委派边界”。`not-needed` 且无 blocker 时只需一句“无需额外 Specialist”。
+
+紧凑预览仍是同一份合并预览，Brief、Standard 和 Controlled 都只请求一次合同批准，不得把 Specialist Plan 另拆成一次例行确认。存在 blocker 时先修正 Capability Need 或说明能力缺口，不得 Apply。批准前说明：批准后完整 Brief、Work Spec、Work Item 与 Specialist Plan（如有）会分别以可读文件保存在 `.ezagent/requirements/`、`.ezagent/specs/`、`.ezagent/tasks/` 和 `.ezagent/experts/plans/`；用户随后可以直接检查这些文件。预览阶段保持零写入，因此用户需要批准前查看全部字段时必须在对话中展开，不得先写临时合同到项目目录。
 
 批准前必须明确说明：所有 expert ID 和 delegation 都只是计划，project Agent 尚未物化、Specialist 尚未实际委派、尚未发生独立审查。没有匹配的 completion receipt 时不得声称“已完成审查”“审查结论”或 reviewer 已工作；协调器在预览阶段做的判断只能称为风险预检、方案自检或待审查问题。预览还必须说明批准后的执行边界：dispatch 只包含获批的 Work Item ID、Work Spec ID、Slice ID、delegation ID、scope、deliverables 与 Evidence requirements，并且 Specialist 只回传有界结果摘要、result hash 和最小 Evidence pointers。
 

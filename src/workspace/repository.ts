@@ -52,6 +52,7 @@ import {
 import { workspaceInitializeRetryRuntime } from "./retry-runtime.js";
 import {
   parseProjectConfig,
+  parseSessionKey,
   parseWorkspaceState,
   serializeProjectConfig,
   type ProjectConfig,
@@ -169,7 +170,38 @@ function isInitialState(state: WorkspaceState): boolean {
   return state.schemaVersion === INITIAL_STATE.schemaVersion
     && state.revision === INITIAL_STATE.revision
     && state.activeWorkItem === INITIAL_STATE.activeWorkItem
+    && (state.sessions?.length ?? 0) === 0
     && state.safeMode === INITIAL_STATE.safeMode;
+}
+
+function stateForSession(state: WorkspaceState, sessionKey: string | undefined): WorkspaceState {
+  if (sessionKey === undefined) return state;
+  const sessions = state.sessions ?? [];
+  const selected = sessions.find(({ key }) => key === sessionKey)?.activeWorkItem
+    ?? (sessions.length === 0 ? state.activeWorkItem : null);
+  return parseWorkspaceState({ ...state, activeWorkItem: selected });
+}
+
+function mergeSessionState(
+  current: WorkspaceState,
+  requested: WorkspaceState,
+  sessionKey: string,
+): WorkspaceState {
+  const currentSessions = current.sessions ?? [];
+  const hasSession = currentSessions.some(({ key }) => key === sessionKey);
+  const adoptsLegacy = !hasSession && currentSessions.length === 0 && current.activeWorkItem !== null;
+  const sessions = currentSessions.filter(({ key }) => key !== sessionKey);
+  if (requested.activeWorkItem !== null) {
+    sessions.push({ key: sessionKey, activeWorkItem: requested.activeWorkItem });
+  }
+  sessions.sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
+  return parseWorkspaceState({
+    schemaVersion: current.schemaVersion,
+    revision: requested.revision,
+    activeWorkItem: adoptsLegacy ? null : current.activeWorkItem,
+    ...(sessions.length === 0 ? {} : { sessions }),
+    safeMode: requested.safeMode,
+  });
 }
 
 async function inspectInitialState(path: string): Promise<boolean> {
@@ -290,8 +322,9 @@ export type { WorkspaceMutationWrite } from "./mutation.js";
 export class WorkspaceRepository {
   readonly projectRoot: string;
   private readonly projectRootIdentity: StableFileIdentity;
+  private readonly sessionKey: string | undefined;
 
-  constructor(projectRoot: string) {
+  constructor(projectRoot: string, sessionKey?: string) {
     if (typeof projectRoot !== "string" || projectRoot.length === 0 || projectRoot.includes("\0")) {
       throw new TypeError("project root must be a non-empty path");
     }
@@ -302,6 +335,7 @@ export class WorkspaceRepository {
       throw new TypeError("project root must be a real directory with a stable identity");
     }
     this.projectRootIdentity = identity;
+    this.sessionKey = sessionKey === undefined ? undefined : parseSessionKey(sessionKey);
   }
 
   private async assertProjectRootIdentity(): Promise<void> {
@@ -429,7 +463,7 @@ export class WorkspaceRepository {
     await this.readProject();
     const paths = workspacePaths(this.projectRoot);
     await validateExistingWorkspaceDirectoryChains(nodeWorkspaceDirectoryRuntime, paths.root, ["state"]);
-    return readProjectionState(paths.state);
+    return stateForSession(await readProjectionState(paths.state), this.sessionKey);
   }
 
   async commitMutation(
@@ -440,7 +474,7 @@ export class WorkspaceRepository {
     metadata: AuditMetadata = {},
   ): Promise<void> {
     // Normalize the complete request before lock acquisition or any filesystem side effect.
-    const mutation = normalizeWorkspaceMutation(next, expectedRevision, eventType, writes, metadata);
+    const request = normalizeWorkspaceMutation(next, expectedRevision, eventType, writes, metadata);
     await withWorkspaceLock(this.projectRoot, async () => {
       await this.assertProjectRootIdentity();
       await this.readProject();
@@ -477,6 +511,15 @@ export class WorkspaceRepository {
       if (current.safeMode) {
         throw new WorkspaceCorruptError("workspace is in safe mode; mutation is disabled");
       }
+      const mutation = this.sessionKey === undefined
+        ? request
+        : normalizeWorkspaceMutation(
+          mergeSessionState(current, request.next, this.sessionKey),
+          request.expectedRevision,
+          request.eventType,
+          request.writes,
+          request.metadata,
+        );
       if (current.revision !== mutation.expectedRevision) {
         throw new Error(
           `revision conflict: expected ${mutation.expectedRevision}, actual ${current.revision}`,
@@ -552,7 +595,7 @@ export class WorkspaceRepository {
     try {
       events = await readAuditEvents(paths.audit);
     } catch {
-      return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+      return { project, state: stateForSession({ ...SAFE_INITIAL_STATE }, this.sessionKey), recovered: false };
     }
 
     let projectedState: WorkspaceState | undefined;
@@ -566,22 +609,22 @@ export class WorkspaceRepository {
     try {
       pendingObservation = await nodePendingMarkerStore.readPendingMarker(paths.pendingMutation);
     } catch {
-      return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+      return { project, state: stateForSession({ ...SAFE_INITIAL_STATE }, this.sessionKey), recovered: false };
     }
     const pending = pendingObservation?.marker;
     if (pending !== undefined) {
       const recovered = recoverState(events);
       if (!await pendingMutationIsCommitted(paths, pending, recovered, events)) {
-        return { project, state: { ...SAFE_INITIAL_STATE }, recovered: false };
+        return { project, state: stateForSession({ ...SAFE_INITIAL_STATE }, this.sessionKey), recovered: false };
       }
       if (projectedState === undefined || !isDeepStrictEqual(projectedState, recovered)) {
-        return { project, state: recovered, recovered: true };
+        return { project, state: stateForSession(recovered, this.sessionKey), recovered: true };
       }
     }
 
     if (projectedState !== undefined && stateMatchesAudit(projectedState, events)) {
-      return { project, state: projectedState, recovered: false };
+      return { project, state: stateForSession(projectedState, this.sessionKey), recovered: false };
     }
-    return { project, state: recoverState(events), recovered: true };
+    return { project, state: stateForSession(recoverState(events), this.sessionKey), recovered: true };
   }
 }

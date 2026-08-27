@@ -79,6 +79,9 @@ describe("EZagent per-prompt Router hook", () => {
       expect(output.hookSpecificOutput?.hookEventName).toBe("UserPromptSubmit");
       expect(output.hookSpecificOutput?.additionalContext)
         .toMatch(/ezagent-spec:ezagent-router.*\$ezagent-router/su);
+      expect(output.hookSpecificOutput?.additionalContext)
+        .toMatch(/session-[0-9a-f]{64}.*--session/su);
+      expect(output.hookSpecificOutput?.additionalContext).not.toContain("test-session");
       expect(result.stdout).not.toContain(prompt);
     }
   });

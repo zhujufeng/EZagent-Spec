@@ -299,6 +299,76 @@ describe.sequential("ezagent CLI", () => {
     });
   });
 
+  test("selects the current Work Item from the supplied session", async () => {
+    const root = await temporaryProject();
+    const bootstrap = new WorkspaceRepository(root);
+    await bootstrap.initialize({ schemaVersion: 1, name: "Sessions", gitTracking: "none" });
+    const session = new WorkspaceRepository(root, "session-a");
+    const activeWorkItem = {
+      id: "TASK-20260827-001",
+      kind: "task" as const,
+      status: "planned" as const,
+      risk: "brief" as const,
+      revision: 1,
+    };
+    await session.recordState({
+      ...(await session.readState()),
+      revision: 1,
+      activeWorkItem,
+    }, 0, "session-task-selected");
+    const writes: string[] = [];
+
+    await runCliInProcess(
+      ["context", "--root", root, "--json", "--session", "session-a"],
+      { stdout: { write: (contents) => writes.push(contents) } },
+    );
+
+    expect(JSON.parse(writes[0]!)).toMatchObject({
+      session: "session-a",
+      state: { activeWorkItem },
+    });
+  });
+
+  test("keeps two session-scoped Work Items active in one project", async () => {
+    const root = await temporaryProject();
+    const bootstrap = new WorkspaceRepository(root);
+    await bootstrap.initialize({ schemaVersion: 1, name: "Parallel sessions", gitTracking: "none" });
+    const inputJson = JSON.stringify(genericWorkContractDraft);
+
+    async function invoke(args: readonly string[]): Promise<Record<string, unknown>> {
+      const writes: string[] = [];
+      await runCliInProcess(args, { stdout: { write: (contents) => writes.push(contents) } });
+      return JSON.parse(writes[0]!) as Record<string, unknown>;
+    }
+
+    const taskIds: string[] = [];
+    for (const session of ["session-a", "session-b"]) {
+      const preview = await invoke([
+        "work-preview", "--root", root, "--session", session, "--input-json", inputJson,
+      ]);
+      const applied = await invoke([
+        "work-apply", "--root", root, "--session", session,
+        "--approval-token", preview.approvalToken as string, "--input-json", inputJson,
+      ]);
+      taskIds.push((applied.workItem as { readonly id: string }).id);
+    }
+
+    expect(new Set(taskIds).size).toBe(2);
+    for (const [index, session] of ["session-a", "session-b"].entries()) {
+      const context = await invoke(["context", "--root", root, "--json", "--session", session]);
+      expect(context).toMatchObject({
+        session,
+        state: { activeWorkItem: { id: taskIds[index] } },
+      });
+    }
+    const stored = JSON.parse(await readFile(workspacePaths(root).state, "utf8")) as {
+      readonly activeWorkItem: unknown;
+      readonly sessions: readonly unknown[];
+    };
+    expect(stored.activeWorkItem).toBeNull();
+    expect(stored.sessions).toHaveLength(2);
+  });
+
   test("shares project context, selects Knowledge, and promotes one Pattern through bounded JSON stdin", async () => {
     const root = await temporaryProject();
     expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Shared Context"]));

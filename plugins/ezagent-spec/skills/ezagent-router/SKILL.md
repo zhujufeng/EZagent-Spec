@@ -11,6 +11,8 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 支持 lifecycle Hook 的宿主会在每个用户回合重新声明 Router 所有权。Hook 注入只表示本次请求必须重新路由，不代表已读取状态、已选择 Work Mode 或已完成 Skill 转交；不得沿用上一需求的 Router 结论。
 
+Hook 同时提供由宿主 session ID 单向哈希得到的 `session key` 时，本回合及转交后的所有 EZagent CLI 调用都必须把它作为独立的 `--session` 参数传递。不得自行改写、缩短或使用原始宿主 session ID。Hook 没有提供 session key 的宿主省略该参数，继续使用向后兼容的项目级单任务模式。
+
 编码、分析、文档、策划以及其他 Agent 工作使用同一套路由原则；这些是非穷尽任务示例，不对应固定人员范围。
 
 先取当前 `SKILL.md` 所在目录，再向上两级得到 `<plugin-root>`，把 `dist/ezagent-cli.mjs` 解析为 `<absolute-cli-path>` 绝对路径；不要在 `PATH` 中搜索其他 EZagent，也不要要求用户输入或运行 CLI。
@@ -41,6 +43,14 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 
 取消后重新执行 `context`，只有确认 `state.activeWorkItem` 为 null 且平台同步状态不再有该任务的 active Agents，才可为新请求继续路由。
 
+## 状态、继续与完成
+
+用户询问状态或进度时只读，不得启动 Slice、调用 mutation 或改变路由状态。使用同一 `session key` 重新执行 `context`，只展示一份紧凑视图：目标、进度（accepted / total）、最近结果（Journal 或 Evidence）、阻塞、下一步、工件目录。完整状态仍可在 `.ezagent/state/workspace.json` 查看，Plan、Spec、Task、Evidence 与 Decision 仍保留在核心返回的可见路径中。
+
+用户要求继续时，先展示同一份紧凑视图，再按当前状态转交：v2 的 pending、executing 或 revise 转 `$ezagent-execute`，verifying 转 `$ezagent-review`；v1 只走下述旧适配器。不得重新创建 Work Item 或重复已经 accepted 的 Slice。
+
+用户要求完成时不得跳过 Evidence 或 Review：存在 pending、executing 或 revise Slice 时先转 `$ezagent-execute`，verifying 时转 `$ezagent-review`；只有全部 Slice accepted 且 Decision 经核心验证、`context` 确认 active item 已清空后，才能声称完成。
+
 安全模式或 `inspection-required` 只做诊断。若存在 active Work Item：
 
 - `sourceSchemaVersion: 2` 且有 pending、executing 或 revise Slice：转 `$ezagent-execute`。
@@ -48,6 +58,14 @@ description: 在已初始化项目中，把编码、分析、文档、策划及�
 - `sourceSchemaVersion: 1`：保持旧编码适配器，planned/implementing 转 `$ezagent-implement`，verifying 转 `$ezagent-review`。
 
 ## 选择最轻 Work Mode
+
+用户可见体验只分三档，内部仍保留完整 Work Mode 和状态机：
+
+- **直接工作**：Consult 与 Quick，直接回答或完成局部修改。
+- **普通工作**：Brief 与 Standard，用一份紧凑预览确认目标、交付和完成条件后执行。
+- **受控工作**：Controlled，完整展示边界、批准点和外部 Side Effect 风险。
+
+Router 仍必须记录精确 Mode 和下一个 Skill，但对用户先使用上述普通语言，可在同一短句中附上内部 Mode；不得要求用户理解或记忆五种 Mode 才能继续工作。
 
 - `Consult`：用户要求的结果本身只是解释、只读咨询或一次性判断，且没有要求产出、修改或开始项目流程；直接回答，不持久化请求。
 - `Quick`：目标清楚、局部、低影响、可逆、单会话完成；转 `$ezagent-light`。只有已知是单点表现修改且不改变行为、数据契约或外部消费者时才走 Quick。

@@ -282,10 +282,65 @@ describe("Codex Skill contracts", () => {
     expect(execute.body).toContain("work-review");
     expect(review.body).toContain("work-complete");
     expect(implement.body).toMatch(/v1.*兼容/su);
+    expect(implement.body).toMatch(/已退役.*升级前.*已经存在.*不得创建、规划或 Apply 新任务/su);
     expect(implement.body).toContain("platformSyncStatus");
     expect(implement.body).toContain("ready");
     expect(implement.body).toContain("replan-preview");
     expect(review.body).toMatch(/v1.*旧编码.*适配/su);
+  });
+
+  test("keeps full work artifacts inspectable behind a compact default experience", async () => {
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+
+    expect(router.body).toMatch(/直接工作.*普通工作.*受控工作/su);
+    expect(spec.body).toMatch(/Brief.*Standard.*默认.*目标.*交付物.*完成条件.*执行步骤/su);
+    expect(spec.body).toMatch(/不得删除、缩减或改写.*Work Contract.*字段/su);
+    expect(spec.body).toMatch(/用户.*展开.*完整.*预览/su);
+    expect(spec.body).toMatch(/批准后.*完整.*可读文件.*保存在/su);
+    for (const path of [
+      ".ezagent/requirements/",
+      ".ezagent/specs/",
+      ".ezagent/tasks/",
+      ".ezagent/experts/plans/",
+    ]) {
+      expect(spec.body).toContain(path);
+    }
+    expect(spec.body).toMatch(/Controlled.*完整展示.*Boundaries.*Approval Points/su);
+  });
+
+  test("propagates the hook session key without exposing the host session ID", async () => {
+    const router = await readSkill("ezagent-router");
+
+    expect(router.body).toMatch(/session key.*所有 EZagent CLI.*--session/su);
+    expect(router.body).toMatch(/不得.*原始宿主 session ID/su);
+    expect(router.body).toMatch(/没有提供 session key.*向后兼容.*项目级单任务/su);
+  });
+
+  test("uses one compact status view for status, continue, and finish intents", async () => {
+    const router = await readSkill("ezagent-router");
+    const review = await readSkill("ezagent-review");
+
+    expect(router.body).toMatch(/状态.*只读.*不得.*启动 Slice/su);
+    expect(router.body).toMatch(/目标.*进度.*最近结果.*阻塞.*下一步.*工件目录/su);
+    expect(router.body).toMatch(/继续.*pending.*executing.*revise.*\$ezagent-execute/su);
+    expect(router.body).toMatch(/完成.*不得.*跳过.*Evidence.*Review/su);
+    expect(review.body).toMatch(/默认.*不执行 Git 写操作/su);
+    expect(review.body).toMatch(/提交计划.*用户.*明确批准.*git commit/su);
+    expect(review.body).toMatch(/未识别.*dirty.*不得.*包含/su);
+  });
+
+  test("derives routine Evidence without asking the user to fill its schema", async () => {
+    const execute = await readSkill("ezagent-execute");
+    const review = await readSkill("ezagent-review");
+
+    expect(execute.body).toMatch(/自动生成.*Evidence Bundle/su);
+    expect(execute.body).toMatch(/command.*实际.*命令.*exit code.*environment/su);
+    expect(execute.body).toMatch(/artifact.*SHA-256.*准确路径/su);
+    expect(execute.body).toMatch(/checklist.*实际检查.*结论/su);
+    expect(execute.body).toMatch(/不得要求用户.*Evidence ID.*Criterion ID.*content hash/su);
+    expect(execute.body).toMatch(/work-review.*\.ezagent\/quality\/runs.*可读.*JSON/su);
+    expect(review.body).toMatch(/默认只展示.*通过.*缺失.*Evidence 文件路径/su);
   });
 
   test("selects Planning-first explicitly or adaptively without inflating small work", async () => {

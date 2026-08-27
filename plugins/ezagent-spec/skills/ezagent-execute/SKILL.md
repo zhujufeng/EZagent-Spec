@@ -75,6 +75,15 @@ Apply 后必须确认新的 plan revision 与 project Agents 已同步；token �
 
 完成 Slice 后，按其 Criterion 收集真实 Evidence。可用 kinds 为 `command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval`、`external-record`；每条 Evidence 必须绑定 `Work Item ID`、`Work Spec ID`、`Slice ID` 和 Criterion IDs。不要把“我认为完成了”当 Evidence。
 
+协调器必须从本轮真实工具结果自动生成完整 Evidence Bundle，不得把 Evidence schema 暴露成用户表单：
+
+- `command` 使用实际执行的命令、exit code、environment、时间和真实结果；没有运行的命令不得补写为通过。
+- `artifact` 在产物写入后读取准确路径，计算实际内容的 SHA-256，记录检查方法和结果；不得根据预期内容猜测 content hash。
+- `checklist` 从已经逐项完成的实际检查和结论生成，每项保留 passed、failed 或 blocked；不得把计划中的检查当成已执行。
+- `comparison`、`citation`、`external-record` 也从实际观察生成；`human-approval` 仍只能来自用户对当前内容版本的明确决定，不能自动生成。
+
+Evidence ID、Criterion ID、Slice ID、observedAt 和绑定关系由协调器从当前 Work Contract 与 Slice 自动填充；不得要求用户填写 Evidence ID、Criterion ID 或 content hash。一个真实观察可以绑定同一 Slice 中所有要求该 kind 且确由它支持的 Criterion，但不得为了补 coverage 绑定无关 Criterion。失败结果也必须如实进入 Bundle；只有通过结果计入 coverage。
+
 当前 Slice 为 `humanCheckpoint: true` 时，先完成并收集所有非人工 Evidence，向用户展示可审查的交付物、准确路径、对应 Criterion 和仍缺少的人工判断，然后停止并请求明确批准。不得把 Work Preview 的合同批准、初始化批准、沉默或含糊回复记录成 `human-approval`。用户后续明确认可当前交付物版本时，才把该决定作为绑定当前 Slice 与 Criterion 的 `human-approval` Evidence，并随完整 Evidence Bundle 调用 `work-review`。用户拒绝或要求修改时不得创建 `human-approval`；记录反馈、修正交付物，并让 Slice 保持 executing 或经正常 Review 进入 `revise`，不得启动任何依赖它的下游 Slice。
 
 把完整 Evidence Bundle 从 stdin 提交给本地核心：
@@ -82,6 +91,8 @@ Apply 后必须确认新的 plan revision 与 project Agents 已同步；token �
 ```json
 ["node", "<absolute-cli-path>", "work-review", "--root", "<absolute-project-root>"]
 ```
+
+`work-review` 会把完整 Bundle 保存为 `.ezagent/quality/runs/<work-item>/<slice>/<revision>.json` 的可读 JSON，并返回精确 `evidencePath`。默认只向用户摘要哪些完成条件已覆盖、哪些仍缺失和该文件路径；用户要求时再展开完整 Evidence，不得只在聊天中保留证据。
 
 `coverage.complete: false` 或 `delegationCoverage.complete: false` 时只修正返回的 missing Criterion 或未完成 delegation，Journal 记录失败方法后重新开始该 Slice；两类 coverage 都完整后才继续下一个可执行 Slice。Review Policy 要求 independent-agent、human 或 mixed 时转 `$ezagent-review` 完成对应的独立或人工判断。
 

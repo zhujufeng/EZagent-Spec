@@ -94,6 +94,24 @@ describe("workspace state schema", () => {
     });
   });
 
+  test("accepts bounded session-scoped active work items", () => {
+    const sessions = [{ key: "session-a", activeWorkItem: validState.activeWorkItem! }];
+
+    expect(parseWorkspaceState({ ...validState, activeWorkItem: null, sessions })).toEqual({
+      ...validState,
+      activeWorkItem: null,
+      sessions,
+    });
+    expect(() => parseWorkspaceState({
+      ...validState,
+      sessions: [...sessions, ...sessions],
+    })).toThrow(/session key.*unique/iu);
+    expect(() => parseWorkspaceState({
+      ...validState,
+      sessions: [{ key: "../escape", activeWorkItem: validState.activeWorkItem! }],
+    })).toThrow();
+  });
+
   test("rejects invalid workspace and active item values", () => {
     for (const revision of [-1, 0.5]) {
       expect(() => parseWorkspaceState({ ...validState, revision })).toThrow();

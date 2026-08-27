@@ -22,8 +22,10 @@ function assertAllowedKeys(value: unknown, allowedKeys: readonly string[], label
 }
 
 const projectConfigKeys = ["schemaVersion", "name", "gitTracking"] as const;
-const workspaceStateKeys = ["schemaVersion", "revision", "activeWorkItem", "safeMode"] as const;
+const workspaceStateKeys = ["schemaVersion", "revision", "activeWorkItem", "sessions", "safeMode"] as const;
 const activeWorkItemKeys = ["id", "kind", "status", "risk", "revision"] as const;
+const sessionKeys = ["key", "activeWorkItem"] as const;
+const SESSION_KEY = /^[a-z0-9](?:[a-z0-9-]{0,94}[a-z0-9])?$/u;
 
 const projectConfigSchema = z.object({
   schemaVersion: z.literal(1),
@@ -44,12 +46,35 @@ const activeWorkItemSchema = z.object({
   }
 });
 
+const sessionSchema = z.object({
+  key: z.string().min(1).max(96).regex(SESSION_KEY),
+  activeWorkItem: activeWorkItemSchema,
+}).strict();
+
 const workspaceStateSchema = z.object({
   schemaVersion: z.literal(1),
   revision: z.number().int().nonnegative(),
   activeWorkItem: activeWorkItemSchema.nullable(),
+  sessions: z.array(sessionSchema).max(128).optional(),
   safeMode: z.boolean(),
-}).strict();
+}).strict().superRefine((state, context) => {
+  const sessionKeys = new Set<string>();
+  const workItemIds = new Set<string>();
+  for (const [index, session] of (state.sessions ?? []).entries()) {
+    if (sessionKeys.has(session.key)) {
+      context.addIssue({ code: "custom", path: ["sessions", index, "key"], message: "session key must be unique" });
+    }
+    sessionKeys.add(session.key);
+    if (workItemIds.has(session.activeWorkItem.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["sessions", index, "activeWorkItem", "id"],
+        message: "active Work Item must belong to only one session",
+      });
+    }
+    workItemIds.add(session.activeWorkItem.id);
+  }
+});
 
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 export type WorkItemState = z.infer<typeof activeWorkItemSchema>;
@@ -74,5 +99,24 @@ export function parseWorkspaceState(value: unknown): WorkspaceState {
     const activeWorkItem = (value as { activeWorkItem?: unknown }).activeWorkItem;
     assertAllowedKeys(activeWorkItem, activeWorkItemKeys, "active work item");
   }
+  if (value !== null && typeof value === "object" && "sessions" in value) {
+    const sessions = (value as { sessions?: unknown }).sessions;
+    if (Array.isArray(sessions)) {
+      for (const session of sessions) {
+        assertAllowedKeys(session, sessionKeys, "workspace session");
+        if (session !== null && typeof session === "object" && "activeWorkItem" in session) {
+          assertAllowedKeys(
+            (session as { activeWorkItem?: unknown }).activeWorkItem,
+            activeWorkItemKeys,
+            "session active work item",
+          );
+        }
+      }
+    }
+  }
   return workspaceStateSchema.parse(value);
+}
+
+export function parseSessionKey(value: unknown): string {
+  return z.string().min(1).max(96).regex(SESSION_KEY).parse(value);
 }

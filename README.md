@@ -10,6 +10,28 @@
                          ↘ 精确批准的 Side Effect
 ```
 
+## 日常使用：三句话就够
+
+1. 首次在项目中说：“请在当前项目启用 EZagent，先预览。”
+2. 之后直接描述需求；普通工作只确认目标、交付物、完成条件和执行步骤。
+3. 随时说“状态”“继续”或“完成”；EZagent 会恢复当前会话的工作，不要求你填写 ID、Evidence 哈希或 CLI 参数。
+
+界面默认简洁不等于文件被隐藏。批准后，完整工件都在项目目录的 `.ezagent/` 下可见：
+
+```text
+.ezagent/
+├── state/workspace.json          # 当前状态与各会话 active Work Item
+├── requirements/                 # Brief
+├── specs/                        # Work Spec
+├── tasks/                        # Work Item 与 Slices
+├── experts/plans/                # Specialist Plan（如有）
+├── journals/                     # 恢复日志
+├── quality/runs/                 # 完整 Evidence JSON
+└── knowledge/decisions/          # 完成后的 Decision
+```
+
+这些文件由本地核心维护，可以直接检查，但不要手工修改。需要看完整合同或逐条 Evidence 时，直接说“展开完整合同”或“展开完整证据”。详细安装、宿主兼容与安全说明仍在下文，日常使用无需先读完。
+
 ## 分发者先看
 
 本教程对应 `v0.6.1`。正式分发时只使用 GitHub Releases 中带 `v0.6.1` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 与 lifecycle Hook 生效。
@@ -145,15 +167,7 @@ Router 会自动选择最轻且够用的方式：简单解释直接回答，局�
 
 ### 第 6 步：看懂并确认 Work Preview
 
-持久化任务开始前，Agent 会展示一份预览。非开发同事只需检查七件事：
-
-1. Outcome：最后要得到什么？
-2. Scope：这次会做哪些事？
-3. Non-goals：哪些事明确不做？
-4. Deliverables：最后会交付哪些文件或结果？
-5. Acceptance Criteria：怎样才算完成？
-6. Slices：会按什么小步骤推进？
-7. Approval Points：哪些动作必须再次问你？
+持久化任务开始前，Agent 会展示一份紧凑预览。普通工作只需检查目标、交付物、完成条件和执行步骤；存在风险、假设、问题或批准点时才额外显示。受控工作仍完整展示边界与批准点。完整 Work Contract 不会被删减，用户随时可以要求“展开完整合同”。
 
 不满意就直接用自然语言纠正，例如：“不要改数据库，只输出迁移建议”“最终文档要给客服新人看”“增加一次独立安全审查”。预览修改正确后再回复：
 
@@ -195,7 +209,7 @@ Planning-first 从正式版 `v0.5.1` 开始提供。使用更早版本的同事�
 
 ### 第 7 步：执行、暂停、恢复和取消
 
-执行时 EZagent 一次推进一个 Slice，保存必要 Journal，并逐条收集 Evidence。换电脑、关闭任务或第二天继续时，在新任务里说：
+执行时 EZagent 一次推进一个 Slice，保存必要 Journal，并从实际命令、文件哈希和检查结果自动形成常规 Evidence；用户不需要填写 Evidence ID、Criterion ID 或内容哈希。换电脑、关闭任务或第二天继续时，在新任务里说：
 
 > 请恢复当前 EZagent 工作项，告诉我已经完成什么、下一步是什么，然后继续。
 
@@ -207,7 +221,7 @@ Planning-first 从正式版 `v0.5.1` 开始提供。使用更早版本的同事�
 
 任务完成后，所有 Slice 必须已经通过 Evidence Review。EZagent 会从最新持久化 Evidence 生成 Decision，清空 active item，并退役只属于该任务的托管 Specialist；Work Spec、Plan、Receipt、Evidence、Journal 和 Decision 历史仍然保留。
 
-同一个项目默认只允许一个 active Work Item。看到“已有 active item”时只有两条正确路径：恢复并继续，或者明确取消；不要让 Agent 偷偷覆盖旧任务，也不要手动改 `.ezagent/state`。
+支持 lifecycle session 的宿主在同一个项目里可让不同会话各自保留一个 active Work Item；同一会话内仍只有一个。完整映射可在 `.ezagent/state/workspace.json` 查看。没有 session 能力的宿主继续使用兼容的项目级单任务模式。看到当前会话“已有 active item”时应恢复、完成或明确取消，不要覆盖旧任务，也不要手动修改 `.ezagent/state`。
 
 ### 同事只需记住的七句话
 
@@ -392,7 +406,7 @@ Router 总是选择“最轻且足够可靠”的模式：
 
 模式不等于人员类型。库存负责人可以同时做 Consult、Quick 或 Standard；同一个运营请求也可能因为包含对外发布而进入 Controlled。项目里有哪些岗位，对核心状态机没有影响。
 
-## 八个 Skill 如何协作
+## 七个日常 Skill 如何协作
 
 普通同事不需要手动点名 Skill，但了解分工有助于判断 Agent 有没有走偏：
 
@@ -405,9 +419,8 @@ Router 总是选择“最轻且足够可靠”的模式：
 | `ezagent-execute` | 按已批准合同一次推进一个 Slice，维护 Journal，调用获批 Specialist 并提交 Evidence | 不擅自扩大范围，不跳过人工检查点 |
 | `ezagent-review` | 按每条 Acceptance Criterion 核验真实 Evidence，决定 accepted 或 revise | 不把“Agent 说做完了”当成证据 |
 | `ezagent-context` | 读取当前工作状态和少量相关 Decision / Pattern；显式管理共享摘要 | 不复制整段聊天，也不等同于 Router 模式选择 |
-| `ezagent-implement` | 恢复并完成 `sourceSchemaVersion: 1` 的旧版编码工作项 | 不用于新建 v2 通用工作项 |
 
-一个典型的持久化任务会经过 `router → context → spec → execute → review`；初始化项目时先由 `initialize` 建立入口，Quick 请求由 `light` 直接完成，只有旧任务才进入 `implement`。宿主可以调用其他写作、测试、浏览或代码能力，但它们应作为获批 Slice 内的执行工具，不能取代 Router 和工作契约。
+一个典型的持久化任务会经过 `router → context → spec → execute → review`；初始化项目时先由 `initialize` 建立入口，Quick 请求由 `light` 直接完成。已退役的 `ezagent-implement` 只作为 `sourceSchemaVersion: 1` 编码兼容适配器保留，用于让升级前已存在的旧任务完成，不再进入新任务的默认路径。宿主可以调用其他写作、测试、浏览或代码能力，但它们应作为获批 Slice 内的执行工具，不能取代 Router 和工作契约。
 
 ## 一次普通工作的样子
 
@@ -449,7 +462,7 @@ Router 会先确认真正影响结果的少量问题，然后生成一份合并�
 
 第一版保持一次推进一个 Slice；同一 Slice 内真正独立的专家工作可以并行，多个 Slice 同时进入执行状态留待后续版本。
 
-原来的自动专家团队、Requirement / Spec / Task、Plan / replan 和质量门流程继续作为 `sourceSchemaVersion: 1` 的编码兼容适配器保留；旧项目可以恢复和完成，新工作默认进入通用 v2 Work Harness。
+原来的自动专家团队、Requirement / Spec / Task、Plan / replan 和质量门流程已经从默认产品路径退役；只保留 `sourceSchemaVersion: 1` 的只恢复兼容适配器，确保旧项目可以继续和完成。所有新工作只进入通用 v2 Work Harness。
 
 ## Controlled Side Effect
 

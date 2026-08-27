@@ -53,6 +53,8 @@ Review Policy 为 `independent-agent` 或 `mixed` 时，只能使用当前 Slice
 
 核心分别返回 Criterion Evidence coverage 与 required Delegation coverage。任一缺失或 blocked 时 Slice 进入 `revise`，转回 `$ezagent-execute` 只修复该 Slice；二者都完整时才进入 `accepted`。已接受 Slice 也允许被真正独立的失败证据重新打开，不得用旧结论掩盖新发现。
 
+普通 Brief / Standard 默认只展示哪些完成条件通过、哪些缺失，以及核心返回的 Evidence 文件路径；完整 Bundle 已持久化为可读 JSON，用户要求逐项审查时再从该路径展开。Controlled、人工判断、失败 Evidence 或独立审查结论仍展示与安全和返工有关的完整细节。
+
 所有 Slice 都 accepted 且 Work Item 为 verifying 后，重新读取持久化 Evidence，并形成有界 Decision：标题、摘要、决策、约束和后续事项。不要复制聊天、长文、完整提示或测试输出。把 `schemaVersion: 3` 的 Decision JSON 从 stdin 传入：
 
 ```json
@@ -60,6 +62,12 @@ Review Policy 为 `independent-agent` 或 `mixed` 时，只能使用当前 Slice
 ```
 
 核心会重新验证每个 Slice 的最新 Evidence，原子写入 Decision、完成 Work Item 并清空 active item。随后再次执行 `context`，确认 active item 为空且 Decision 可按返回 path 与 hash 读回；失败就保持关闭失败。
+
+## 可选 Git 收尾
+
+默认不执行 Git 写操作。Work Item 成功完成后，只有用户明确要求 Git 收尾时，才先用只读的 `git status --short` 和 `git log -5 --oneline` 区分本次工作改动与既有改动，并给出包含文件和提交信息的提交计划。未识别的 dirty 文件不得包含在提交计划中，除非用户另行明确批准。
+
+只有用户对这份精确提交计划明确批准后，才可执行相应的 `git add` 与 `git commit`，随后只读验证提交和剩余状态。`push`、PR、发布或上传始终需要用户分别明确要求。
 
 ## v1：旧编码 Task 审查适配器
 
@@ -91,4 +99,4 @@ high risk 返工关闭失败；transition 失败时关闭失败，不得转入 I
 
 每次 `transition` 前都重新执行 `context`；若 `state.activeWorkItem` 为空就不得执行 transition。`--revision` 只取最近一次 `context` JSON 的 `state.activeWorkItem.revision`，绝不得使用 `state.revision`。v1 Knowledge 只保存决策、约束、验证证据、逐 gate PASS 回执与后续事项，不保存聊天、完整用户提示或完整专家提示；完成后必须写入、读回、验证再声称 completed。
 
-不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件，不得自动执行任何 Git 写操作，不得自动发布或上传项目。
+不得直接编辑 `.ezagent/**`。所有状态变化由本地核心验证。不得自动联网或安装软件；除上述用户明确批准的可选 Git 收尾外，不得执行任何 Git 写操作。不得自动发布或上传项目。
