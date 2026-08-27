@@ -34,16 +34,16 @@
 
 ## 分发者先看
 
-本教程对应 `v0.7.0`。正式分发时只使用 GitHub Releases 中带 `v0.7.0` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 与 lifecycle Hook 生效。
+本教程对应 `v0.7.1`。正式分发时只使用 GitHub Releases 中带 `v0.7.1` 标签的版本，不要把 `main` 分支压缩包或开发中的工作区直接发给同事。安装或升级后必须完全退出并重开 Agent 宿主，再新建任务，让新版 Skills 与 lifecycle Hook 生效。
 
-`v0.7.0` 把日常路径收敛为直接工作、普通工作和受控工作三种用户体验；普通预览与 Evidence 默认紧凑展示，完整合同、Journal、Evidence 和 Decision 仍保存在可检查的 `.ezagent/` 文件中。支持 lifecycle session 的宿主现在可以在同一项目中让不同会话各自恢复一个 active Work Item；状态、继续和完成使用统一视图，旧 v1 编码流程只保留恢复兼容入口。
+`v0.7.1` 让依赖项目现状的提纲先做有界只读预检；CodeGraph 只是可选加速工具，没有安装时会使用普通文件搜索和读取。Side Effect 的批准哈希现在由 Core 从精确 payload 字节计算，并在 Apply 时重新校验；普通预览与 Evidence 仍保持紧凑，完整合同、Journal、Evidence 和 Decision 继续保存在可检查的 `.ezagent/` 文件中。
 
 如果你是维护者，正式通知同事“可以安装”之前，请确认：
 
-- GitHub Release 页面已经出现 `v0.7.0`；
+- GitHub Release 页面已经出现 `v0.7.1`；
 - Release 对应的 tag 和提交正确；
 - Windows 与 macOS CI 都通过；
-- 安装得到的插件报告版本为 `0.7.0` 且 enabled；
+- 安装得到的插件报告版本为 `0.7.1` 且 enabled；
 - Codex 中打开 `/hooks`，确认并信任 EZagent 的 `UserPromptSubmit` Hook；
 - 至少完成一次真实宿主初始化预览，确认写入前工作区不变；
 - 同事收到的是本 README 的正式 Release 版本，而不是本地未提交文档。
@@ -62,7 +62,7 @@
 
 Anthropic 当前说明，插件 Skills 可以用于 Claude 网页 Chat、Claude Desktop Chat 和 Cowork，但 Hooks 与 sub-agent 只在 Cowork 运行。EZagent 在支持 Hook 的宿主使用每回合 Router 激活，在不支持 Hook 的界面退回 Skills 与项目规则；Specialist 仍必须使用真实隔离 sub-agent，而且完整流程还要执行打包的本地 CLI、读写已连接项目。因此桌面版请优先在 Cowork 测试，不要在 Chat 中把“Skill 能显示”误判为“整个 Work Harness 已验收”。官方边界见 [Use plugins in Claude](https://support.claude.com/en/articles/13837440-use-plugins-in-claude) 和 [Install Claude Desktop](https://support.claude.com/en/articles/10065433/install-claude-desktop)。
 
-`v0.7.0` 可以分发给 Codex、Claude Code 和 OpenCode 同事。给 Claude Desktop 同事分发时，必须同时标注“Cowork 实验性支持”，并请他们按后文清单回传结果；在真实 Cowork 验收完成前，不得宣传为 Claude Desktop 全能力正式支持。
+`v0.7.1` 可以分发给 Codex、Claude Code 和 OpenCode 同事。给 Claude Desktop 同事分发时，必须同时标注“Cowork 实验性支持”，并请他们按后文清单回传结果；在真实 Cowork 验收完成前，不得宣传为 Claude Desktop 全能力正式支持。
 
 ## 快速导航
 
@@ -313,7 +313,7 @@ Specialist 的任务类型也跟你这次真正要求的一致：只要求分析
 
 1. GitHub Release 中存在目标版本，tag、提交和 CHANGELOG 一致；不要分发 `main` 分支快照。
 2. Windows 与 macOS CI 全绿，插件确定性构建检查通过。
-3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.7.0`、状态为 enabled，并在 Codex `/hooks` 中信任 EZagent 的 `UserPromptSubmit` Hook。
+3. 在一台未装旧缓存的测试宿主中安装，确认版本为 `0.7.1`、状态为 enabled，并在 Codex `/hooks` 中信任 EZagent 的 `UserPromptSubmit` Hook。
 4. 完全退出宿主并新建任务；不要用发布前已经打开的任务验收新版 Skill。
 5. 在临时项目执行一次初始化预览，确认用户批准前项目字节不变。
 6. 批准初始化后，新建任务并验证 Consult、Quick 和至少一个 Brief Work Preview。
@@ -535,7 +535,7 @@ Claude 插件目前要求付费计划；公司 Team / Enterprise 账号还可能
 1. 打开 Claude Desktop，进入 `Customize → Plugins`。
 2. 在 Personal plugins 区域点击 `+`，选择 `Add marketplace`。
 3. 选择从 GitHub repository 或 git URL 添加，输入 `https://github.com/zhujufeng/EZagent-Spec`。
-4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.7.0`。
+4. 在新出现的 Marketplace 中安装 `ezagent-spec`，确认显示名为 `EZagent Work Harness`、版本为 `0.7.1`。
 5. 完全退出并重开 Claude Desktop，再新建一个 Cowork 任务。
 
 如果界面没有 Plugins、Add marketplace 或 Cowork，先检查账号计划、桌面版更新和组织管理员策略；不要把仓库文件手动复制进未知的 Claude 配置目录。Claude Desktop 的 `.mcpb` Desktop Extension 是本地 MCP 的另一种分发格式，EZagent 当前是 Claude Plugin，不需要改名或伪装成 `.mcpb`。

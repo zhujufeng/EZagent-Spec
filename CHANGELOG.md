@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.1 - 2026-08-27
+
+### 提纲与预览准确性
+
+- 依赖现有项目事实的 Work Preview 现在先做一次有界只读预检；CodeGraph 可用时作为加速器，不可用时自动使用普通文件列举、搜索和读取，不再要求同事额外安装 CodeGraph。
+- 提纲只把实际观察到的路径写成现状，新文件明确标为拟新增；尚无精确 payload 的外部动作会先停留在草稿阶段，不再生成猜测或复用的内容哈希。
+
+### Side Effect 内容校验
+
+- Core 在 `side-effect-preview` 与 `side-effect-apply` 两个边界读取同一精确 payload 文件并计算 SHA-256；内容与 Work Spec、批准 token 或预览时字节不一致时关闭失败。
+- 持久化 schema 和旧 Work Item 保持兼容；直接调用这两个内部 CLI 命令时需要新增 `--payload-file`，插件 Skills 已同步使用新契约。
+
+### 效率
+
+- Router 只保留自身唯一 JSON 输入命令 `knowledge-context` 的传输规则，减少每个初始化项目请求都会加载的固定上下文，同时保留敏感内容和 PTY 关闭失败边界。
+
+### 兼容性说明
+
+- 从旧版本升级后需刷新插件、完全退出宿主并新建任务，以加载 `0.7.1` 的 Skills、CLI 与 lifecycle Hook。
+
 ## 0.7.0 - 2026-08-27
 
 ### 更轻的日常工作流
