@@ -326,6 +326,9 @@ describe("Codex Skill contracts", () => {
     expect(router.body).toMatch(/Work Preview.*准确性.*现有项目事实.*有界、定向、只读.*事实预检/su);
     expect(router.body).toMatch(/已有.*结构化索引.*否则.*文件列举.*文本搜索.*读取/su);
     expect(router.body).toMatch(/不得要求用户.*安装或初始化 CodeGraph.*不得.*阻塞.*预览/su);
+    expect(router.body).toMatch(/CodeGraph.*所有模式.*Consult.*Quick.*可选加速器/su);
+    expect(router.body).toMatch(/未提供或返回未初始化.*文件列举.*文本搜索.*读取/su);
+    expect(router.body).toMatch(/不得仅为当前请求.*询问、安装或初始化 CodeGraph/su);
     expect(router.body).toMatch(/最多 2 次定向搜索.*最多 8 个直接相关文件/su);
     expect(router.body).toMatch(/只有已实际观察到的现有路径.*事实.*新路径.*建议或拟新增/su);
     expect(spec.body).toMatch(/事实预检.*Source Pointers.*不得.*臆造.*文件名.*模块/su);

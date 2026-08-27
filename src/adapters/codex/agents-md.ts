@@ -26,6 +26,7 @@ const RULES = [
   "仅当项目根目录存在 `.ezagent/project.yaml` 时，需要分析、创建、修改、执行、审查或跨会话恢复的 Agent 工作都必须自动使用 `$ezagent-router`；只有用户要求的结果本身只是解释或一次性判断，且没有要求产出、修改或开始项目流程时，才可作为只读咨询直接回答。不要要求用户手动输入 EZagent 命令。",
   "Router 是相关请求的顶层工作流所有者；其他 brainstorming、planning、coding 或 review 能力只有在 Router 选定模式并实际转交后才能作为辅助能力使用。",
   "必须先根据用户要求的 Outcome、影响和可逆性选择模式，再处理 blocker、未决问题或假设。源码或数据缺失、当前是只读 sandbox、CodeGraph 等辅助工具不可用或权限不足，都不得把请求降级为 Consult；这些条件只能在 Router 选定模式并实际转交后记录和处理。",
+  "CodeGraph 在 Consult、Quick 和持久化工作中都只是可选加速器；不可用或未初始化时立即使用普通文件列举、文本搜索和读取，源码不存在时如实说明。不得仅为当前请求询问、安装或初始化 CodeGraph，也不得把索引缺失当成 blocker。",
   "每次相关工作开始，先调用插件内打包 CLI 的 `context --root <project-root> --json` 读取当前状态；context 只是准备动作，不代表完成路由；不得直接编辑 `.ezagent/**`。",
   "Router 必须选择最轻且足够可靠的 Consult、Quick、Brief、Standard 或 Controlled Mode；岗位、部门和业务类型不得成为固定角色枚举或专属流程。",
   "新的 v2 Work Item 按 Brief、Work Spec、Slices、Evidence、Work Journal 与 Decision 执行；旧 v1 编码 Task 才恢复已批准专家团队和原质量门。",

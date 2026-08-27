@@ -119,6 +119,8 @@ describe("mergeEzagentAgentsBlock", () => {
     expect(merged).toContain("不得直接编辑 `.ezagent/**`");
     expect(merged).toMatch(/Consult、Quick、Brief、Standard 或 Controlled/u);
     expect(merged).toMatch(/岗位、部门和业务类型不得成为固定角色枚举/u);
+    expect(merged).toMatch(/CodeGraph.*Consult、Quick.*可选加速器/su);
+    expect(merged).toMatch(/不得仅为当前请求.*询问、安装或初始化 CodeGraph/su);
     expect(merged).toMatch(/v2 Work Item.*Brief、Work Spec、Slices、Evidence、Work Journal 与 Decision/u);
     expect(merged).toMatch(/Specialist 与多 Agent 不是默认前置/u);
     expect(merged).toMatch(/v2 Work Contract.*显式记录 Specialist Assessment/u);
