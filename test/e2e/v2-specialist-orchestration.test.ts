@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { buildPlugin } from "../../scripts/build-plugin.js";
 import {
+  CONTROLLED_ACTION_CONTENT_HASH,
   controlledActionDraft,
   genericEvidenceBundle,
   genericWorkContractDraft,
@@ -302,7 +303,7 @@ describe.sequential("v2 Specialist orchestration packaged workflow", () => {
         observedAt: "2026-08-24T08:10:00.000Z",
         summary: "内容审查者明确批准匹配 hash 的发布草稿。",
         approvalPointId: "approval-publish",
-        contentHash: `sha256:${"b".repeat(64)}`,
+        contentHash: CONTROLLED_ACTION_CONTENT_HASH,
         conclusion: "approved" as const,
       }],
     };

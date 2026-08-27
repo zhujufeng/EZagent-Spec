@@ -100,16 +100,16 @@ Evidence ID、Criterion ID、Slice ID、observedAt 和绑定关系由协调器�
 
 本地分析、草拟和验证可以按 Slice 进行；发送、发布、外部系统写入、预算承诺等真实 Side Effect 必须命中 Work Spec 中目标完全一致的 Approval Point。先生成只读预览：
 
-调用预览前，必须用实际哈希工具重新计算当前实际 payload 的 content hash，并与 Work Spec 的 `contentHash` 比较；不一致时不得调用 `side-effect-preview` 或 `side-effect-apply`，也不得沿用旧授权。Core 当前绑定合同中的 hash，但不会替宿主读取或重新计算最终外发 payload，因此无法取得精确字节时必须关闭失败。
+调用预览前准备包含当前实际 payload 精确字节的普通文件；payload 来自消息或内存草稿时，使用宿主文件能力写入项目外、权限受限的临时文件。Core 会读取该 payload 文件并计算 SHA-256，再与 Work Spec 的 `contentHash` 比较；不一致时 `side-effect-preview` 和 `side-effect-apply` 都会关闭失败。Preview 与 Apply 必须使用同一个文件和完全相同的字节；Apply、拒绝或流程终止后删除临时文件。无法取得精确字节时不得预览或批准。
 
 ```json
-["node", "<absolute-cli-path>", "side-effect-preview", "--root", "<absolute-project-root>", "--approval-point", "<approval-point-id>"]
+["node", "<absolute-cli-path>", "side-effect-preview", "--root", "<absolute-project-root>", "--approval-point", "<approval-point-id>", "--payload-file", "<exact-payload-file>"]
 ```
 
 向用户展示 action、target、content summary、content hash、impact、reversible、verification 和 recovery。只有用户明确批准这份精确预览后才写入本地授权：
 
 ```json
-["node", "<absolute-cli-path>", "side-effect-apply", "--root", "<absolute-project-root>", "--approval-point", "<approval-point-id>", "--approval-token", "<approval-token>"]
+["node", "<absolute-cli-path>", "side-effect-apply", "--root", "<absolute-project-root>", "--approval-point", "<approval-point-id>", "--approval-token", "<approval-token>", "--payload-file", "<exact-payload-file>"]
 ```
 
 Apply 只生成 `externalActionExecuted: false` 的授权记录，不会执行外部动作。随后也只能按用户刚批准的 action、target 和 content hash 调用对应外部能力；任一内容或目标漂移都必须重新预览和批准。执行后用 `external-record` Evidence 记录真实外部状态，失败时按 recovery 处理并如实报告。

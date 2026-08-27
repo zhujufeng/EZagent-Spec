@@ -441,10 +441,11 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/Controlled.*批准不等于.*Side Effect.*授权/su);
     expect(spec.body).toMatch(/contentHash.*精确 payload.*实际.*SHA-256.*不得.*猜测.*复用/su);
     expect(spec.body).toMatch(/payload.*尚未产生.*不得.*Side Effect.*新的 Controlled Work Contract/su);
-    expect(argvFor(execute, "side-effect-preview")).toBeDefined();
-    expect(argvFor(execute, "side-effect-apply")).toBeDefined();
+    expect(argvFor(execute, "side-effect-preview")).toContain("--payload-file");
+    expect(argvFor(execute, "side-effect-apply")).toContain("--payload-file");
     expect(execute.body).toMatch(/action、target.*content hash/su);
-    expect(execute.body).toMatch(/重新计算.*实际 payload.*content hash.*不一致.*不得.*side-effect-preview/su);
+    expect(execute.body).toMatch(/Preview 与 Apply.*同一个文件.*相同.*字节/su);
+    expect(execute.body).toMatch(/Core.*读取.*payload.*计算.*SHA-256/su);
     expect(execute.body).toContain("externalActionExecuted: false");
     expect(execute.body).toMatch(/Apply 只生成.*授权记录.*不会执行外部动作/u);
     expect(execute.body).toMatch(/漂移.*重新预览和批准/u);

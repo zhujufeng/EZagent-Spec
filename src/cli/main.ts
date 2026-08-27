@@ -29,6 +29,7 @@ import {
   readBoundedJsonArgument,
   readBoundedJsonFile,
   readBoundedJsonInput,
+  readBoundedPayloadFile,
   type JsonInputSource,
 } from "./json-input.js";
 
@@ -184,14 +185,14 @@ const COMMAND_SPECS: Readonly<Record<Command, CommandSpec>> = {
     requiredOptions: ["--root"],
   },
   "side-effect-preview": {
-    valueOptions: ["--root", "--approval-point"],
+    valueOptions: ["--root", "--approval-point", "--payload-file"],
     booleanOptions: [],
-    requiredOptions: ["--root", "--approval-point"],
+    requiredOptions: ["--root", "--approval-point", "--payload-file"],
   },
   "side-effect-apply": {
-    valueOptions: ["--root", "--approval-point", "--approval-token"],
+    valueOptions: ["--root", "--approval-point", "--approval-token", "--payload-file"],
     booleanOptions: [],
-    requiredOptions: ["--root", "--approval-point", "--approval-token"],
+    requiredOptions: ["--root", "--approval-point", "--approval-token", "--payload-file"],
   },
   "team-select-preview": {
     valueOptions: ["--root"],
@@ -587,7 +588,10 @@ export async function runCli(
   }
 
   if (parsed.command === "side-effect-preview") {
-    writeJson(io, await workflow.sideEffectPreview(requiredValueOption(parsed, "--approval-point")));
+    writeJson(io, await workflow.sideEffectPreview(
+      requiredValueOption(parsed, "--approval-point"),
+      await readBoundedPayloadFile(resolve(runtime.cwd(), requiredValueOption(parsed, "--payload-file"))),
+    ));
     return;
   }
 
@@ -595,6 +599,9 @@ export async function runCli(
     writeJson(io, await workflow.sideEffectApply({
       approvalPointId: requiredValueOption(parsed, "--approval-point"),
       approvalToken: requiredValueOption(parsed, "--approval-token"),
+      payload: await readBoundedPayloadFile(
+        resolve(runtime.cwd(), requiredValueOption(parsed, "--payload-file")),
+      ),
     }));
     return;
   }

@@ -20,7 +20,7 @@
 - assumption source: `user`、`project`、`agent-recommendation`。
 - pointer kind: `file`、`document`、`dataset`、`application`、`external-system`、`other`。
 - `workSpec` 精确字段：`mode`、`outcome`、`scope`、`nonGoals`、`deliverableInterfaces`、`acceptanceCriteria`、`boundaries`、`approvalPoints`、`reviewPolicy`、`slicePlan`。
-- Approval Point 的 `contentHash` 必须是精确 payload 或其本地产物经实际工具计算的 SHA-256，不得使用占位值、示例值、旧值或 content summary 的 hash。payload 尚未产生时，本 Work Contract 只交付并审查草稿；草稿确定后另建 Controlled Work Contract 承载真实外部动作。
+- Approval Point 的 `contentHash` 必须是精确 payload 或其本地产物经实际工具计算的 SHA-256，不得使用占位值、示例值、旧值或 content summary 的 hash。payload 尚未产生时，本 Work Contract 只交付并审查草稿；草稿确定后另建 Controlled Work Contract 承载真实外部动作。执行 Side Effect 时 Core 还会读取同一 payload 的精确字节并重新计算，hash 不一致即拒绝授权。
 - Deliverable kind: `code`、`document`、`analysis`、`dataset`、`visual`、`draft-action`、`other`。
 - Evidence kind 只能是：`command`、`artifact`、`checklist`、`comparison`、`citation`、`human-approval`、`external-record`。
 - Boundary dimension: `resource`、`data`、`people`、`time`、`budget`、`system`、`operation`。Boundary 顶层始终只有 `id`、`dimension`、`rule`、`resources`，不得在 Boundary 顶层填写 `access`。`access` 只属于 `resources` 中的 resource 元素；非空元素精确形状为 `{kind,locator,purpose,access}`，其中 access 为 `read`、`draft`、`write` 或 `publish`。

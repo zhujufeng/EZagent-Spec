@@ -6,6 +6,7 @@ import {
 } from "../../src/workflow/evidence.js";
 import { parseWorkContractDraft } from "../../src/workflow/work-contract.js";
 import {
+  CONTROLLED_ACTION_CONTENT_HASH,
   controlledActionDraft,
   genericWorkContractDraft,
 } from "../fixtures/work-contract-fixture.js";
@@ -101,7 +102,7 @@ describe("Evidence", () => {
           observedAt: "2026-08-24T08:10:00.000Z",
           summary: "内容审查者批准了待发布内容。",
           approvalPointId: "approval-publish",
-          contentHash: `sha256:${"b".repeat(64)}`,
+          contentHash: CONTROLLED_ACTION_CONTENT_HASH,
           conclusion: "approved" as const,
         },
       ],

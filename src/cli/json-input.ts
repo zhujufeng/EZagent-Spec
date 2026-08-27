@@ -2,9 +2,11 @@ import { constants, type Stats } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 
 import { readBoundedFileHandle } from "../experts/bounded-read.js";
+import { SIDE_EFFECT_PAYLOAD_MAX_BYTES } from "../workflow/side-effect.js";
 
 export const CLI_JSON_INPUT_MAX_BYTES = 65_536;
 export const CLI_JSON_ARGV_MAX_BYTES = 24_576;
+export const CLI_SIDE_EFFECT_PAYLOAD_MAX_BYTES = SIDE_EFFECT_PAYLOAD_MAX_BYTES;
 
 export interface JsonInputSource {
   readonly chunks: AsyncIterable<Uint8Array | string>;
@@ -75,16 +77,20 @@ export async function readBoundedJsonInput(source: JsonInputSource): Promise<unk
   return parseJsonBytes(Buffer.concat(chunks, bytes), "JSON stdin");
 }
 
-export async function readBoundedJsonFile(path: string): Promise<unknown> {
+async function readBoundedRegularFile(
+  path: string,
+  label: "JSON input file" | "Side Effect payload file",
+  maximumBytes: number,
+): Promise<Buffer> {
   if (typeof path !== "string" || path.length === 0) {
-    throw new TypeError("JSON input file path is invalid");
+    throw new TypeError(`${label} path is invalid`);
   }
   const before = await lstat(path);
   if (before.isSymbolicLink() || !before.isFile() || before.size < 1) {
-    throw new TypeError("JSON input file must be a non-empty regular file");
+    throw new TypeError(`${label} must be a non-empty regular file`);
   }
-  if (before.size > CLI_JSON_INPUT_MAX_BYTES) {
-    throw new TypeError(`JSON input file exceeds ${CLI_JSON_INPUT_MAX_BYTES} bytes`);
+  if (before.size > maximumBytes) {
+    throw new TypeError(`${label} exceeds ${maximumBytes} bytes`);
   }
 
   let handle: Awaited<ReturnType<typeof open>> | undefined;
@@ -94,14 +100,29 @@ export async function readBoundedJsonFile(path: string): Promise<unknown> {
       : constants.O_NOFOLLOW;
     handle = await open(path, constants.O_RDONLY | noFollow);
     const opened = await handle.stat();
-    if (!sameFile(before, opened)) throw new TypeError("JSON input file changed before read");
-    const bytes = await readBoundedFileHandle(handle, opened, CLI_JSON_INPUT_MAX_BYTES);
+    if (!sameFile(before, opened)) throw new TypeError(`${label} changed before read`);
+    const bytes = await readBoundedFileHandle(handle, opened, maximumBytes);
     const [after, pathAfter] = await Promise.all([handle.stat(), lstat(path)]);
     if (!sameFile(opened, after) || !sameFile(opened, pathAfter)) {
-      throw new TypeError("JSON input file changed during read");
+      throw new TypeError(`${label} changed during read`);
     }
-    return parseJsonBytes(bytes, "JSON input file");
+    return bytes;
   } finally {
     if (handle !== undefined) await handle.close();
   }
+}
+
+export async function readBoundedJsonFile(path: string): Promise<unknown> {
+  return parseJsonBytes(
+    await readBoundedRegularFile(path, "JSON input file", CLI_JSON_INPUT_MAX_BYTES),
+    "JSON input file",
+  );
+}
+
+export async function readBoundedPayloadFile(path: string): Promise<Buffer> {
+  return readBoundedRegularFile(
+    path,
+    "Side Effect payload file",
+    CLI_SIDE_EFFECT_PAYLOAD_MAX_BYTES,
+  );
 }

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import { isWorkItemId } from "../domain/id.js";
@@ -15,6 +17,20 @@ export interface SideEffectAuthorization {
   readonly status: "approved";
   readonly approvedAt: string;
   readonly externalActionExecuted: false;
+}
+
+// ponytail: bounded in-memory hashing covers text and ordinary document payloads;
+// switch to a stable streaming reader if real media publishing is added.
+export const SIDE_EFFECT_PAYLOAD_MAX_BYTES = 16 * 1024 * 1024;
+
+export function sideEffectPayloadHash(value: unknown): `sha256:${string}` {
+  if (!(value instanceof Uint8Array) || value.byteLength < 1) {
+    throw new TypeError("Side Effect payload must be non-empty bytes");
+  }
+  if (value.byteLength > SIDE_EFFECT_PAYLOAD_MAX_BYTES) {
+    throw new TypeError(`Side Effect payload exceeds ${SIDE_EFFECT_PAYLOAD_MAX_BYTES} bytes`);
+  }
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 const CONTROL = /[\u0000-\u001f\u007f]/u;

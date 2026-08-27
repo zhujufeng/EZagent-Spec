@@ -297,7 +297,7 @@ Specialist 的任务类型也跟你这次真正要求的一致：只要求分析
 
 “为什么总会看到一串 content hash，甚至不同内容还是同一个？”
 
-它应该是当前精确 payload 的 SHA-256 指纹；内容不同却反复出现同一个值是不正常的。Core 会把 Work Contract 提供的 hash 绑定到授权 token，但不会替宿主重新读取最终外发 payload。当前规则因此禁止猜测或复用 hash：只有 payload 已存在并经过实际工具计算时才能进入 Side Effect；如果内容还没写完，先完成并审查草稿，再用草稿的真实 hash 创建一个新的 Controlled 工作项。
+它是当前精确 payload 的 SHA-256 指纹；内容不同却反复出现同一个值是不正常的。Side Effect 预览和 Apply 都会让 Core 读取同一 payload 文件的真实字节并重新计算 hash，和 Work Contract 不一致就拒绝授权。只有 payload 已存在时才能进入 Side Effect；如果内容还没写完，先完成并审查草稿，再用草稿的真实 hash 创建一个新的 Controlled 工作项。
 
 ### 分发和安全边界
 
@@ -475,11 +475,13 @@ Router 会先确认真正影响结果的少量问题，然后生成一份合并�
 本地分析、草拟和验证不等于授权真实外部动作。发送消息、发布内容、写入外部系统、预算承诺等动作必须：
 
 1. 在 Work Spec 中声明目标匹配的 Approval Point。
-2. 向用户展示 action、target、content summary、content hash、影响、可逆性、验证与恢复方法。
+2. Core 从精确 payload 文件计算 content hash，并向用户展示 action、target、content summary、content hash、影响、可逆性、验证与恢复方法。
 3. 用户明确批准这份精确预览后，本地核心才写入授权记录。
 4. 授权记录固定为 `externalActionExecuted: false`；它本身不会调用外部系统。
-5. 宿主执行器应只使用刚批准的目标和内容；发生漂移必须重新预览。Core 负责本地记录和漂移校验，不声称能替外部宿主证明最终 payload。
+5. Preview 与 Apply 必须读取同一 payload 文件和字节；宿主执行器也应只使用刚批准的目标和内容。Core 能拒绝本地 payload 漂移，但不声称能替外部平台证明最终实际发送的字节。
 6. 动作后以 External Record Evidence 记录真实结果。
+
+单次 Side Effect payload 文件当前上限为 16 MiB；这覆盖消息和普通文档，较大的媒体文件需要后续流式哈希支持。
 
 结构化资产和 Journal 会拒绝明显的邮箱、手机号、身份证、私钥、Bearer token 和凭据赋值等高置信敏感内容。更复杂的数据分类仍应遵循公司的权限与合规制度。
 

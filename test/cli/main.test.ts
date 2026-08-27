@@ -21,6 +21,8 @@ import {
 } from "../../src/workflow/knowledge.js";
 import { slowTestTimeoutForPlatform } from "../../vitest.config.js";
 import {
+  CONTROLLED_ACTION_CONTENT_HASH,
+  CONTROLLED_ACTION_PAYLOAD,
   controlledActionDraft,
   genericEvidenceBundle,
   genericWorkContractDraft,
@@ -820,6 +822,8 @@ describe.sequential("ezagent CLI", () => {
   test("keeps external execution off after a Side Effect approval command", async () => {
     const root = await temporaryProject();
     const draft = controlledActionDraft();
+    const payloadPath = join(root, "approved payload.txt");
+    await writeFile(payloadPath, CONTROLLED_ACTION_PAYLOAD, "utf8");
     expectJsonSuccess(await runCli(["init", "--root", root, "--name", "Controlled Work"]));
     const workPreview = expectJsonSuccess(await runCli(
       ["work-preview", "--root", root],
@@ -831,14 +835,20 @@ describe.sequential("ezagent CLI", () => {
       PROJECT_ROOT,
       { input: `${JSON.stringify(draft)}\n` },
     ));
+    expectSingleLineFailure(await runCli([
+      "side-effect-preview", "--root", root, "--approval-point", "approval-publish",
+    ]), "--payload-file is required");
     const sideEffect = expectJsonSuccess(await runCli([
       "side-effect-preview", "--root", root, "--approval-point", "approval-publish",
-    ])) as { readonly approvalToken: string };
+      "--payload-file", payloadPath,
+    ])) as { readonly approvalToken: string; readonly contentHash: string };
+    expect(sideEffect.contentHash).toBe(CONTROLLED_ACTION_CONTENT_HASH);
 
     expect(expectJsonSuccess(await runCli([
       "side-effect-apply", "--root", root,
       "--approval-point", "approval-publish",
       "--approval-token", sideEffect.approvalToken,
+      "--payload-file", payloadPath,
     ]))).toMatchObject({
       status: "approved",
       approvalPointId: "approval-publish",

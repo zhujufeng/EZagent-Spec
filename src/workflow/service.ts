@@ -157,6 +157,7 @@ import {
 import {
   parseSideEffectAuthorization,
   serializeSideEffectAuthorization,
+  sideEffectPayloadHash,
   sideEffectAuthorizationPath,
   type SideEffectAuthorization,
 } from "./side-effect.js";
@@ -1241,12 +1242,15 @@ function parseSpecialistReplanApplyInput(value: unknown): {
 function parseSideEffectApplyInput(value: unknown): {
   readonly approvalPointId: string;
   readonly approvalToken: `sha256:${string}`;
+  readonly contentHash: `sha256:${string}`;
 } {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Side Effect approval input must be an object");
   }
   const record = value as Record<string, unknown>;
-  const unsupported = Object.keys(record).find((key) => !["approvalPointId", "approvalToken"].includes(key));
+  const unsupported = Object.keys(record).find((key) => (
+    !["approvalPointId", "approvalToken", "payload"].includes(key)
+  ));
   if (unsupported !== undefined) throw new TypeError(`unsupported Side Effect approval input: ${unsupported}`);
   if (typeof record.approvalPointId !== "string" || record.approvalPointId.length === 0) {
     throw new TypeError("Side Effect approvalPointId is invalid");
@@ -1257,6 +1261,7 @@ function parseSideEffectApplyInput(value: unknown): {
   return Object.freeze({
     approvalPointId: record.approvalPointId,
     approvalToken: record.approvalToken as `sha256:${string}`,
+    contentHash: sideEffectPayloadHash(record.payload),
   });
 }
 
@@ -2008,7 +2013,10 @@ export class ExpertTeamWorkflowService {
     });
   }
 
-  private async prepareSideEffect(approvalPointId: string): Promise<PreparedSideEffect> {
+  private async prepareSideEffect(
+    approvalPointId: string,
+    contentHash: `sha256:${string}`,
+  ): Promise<PreparedSideEffect> {
     const { canonicalRoot, repository, context } = await this.context(false);
     if (context.state.safeMode) throw new Error("workspace is in safe mode");
     const records = await readActiveWorkRecordsV2(canonicalRoot, context.state);
@@ -2018,6 +2026,9 @@ export class ExpertTeamWorkflowService {
     }
     const point = records.workSpec.workSpec.approvalPoints.find(({ id }) => id === approvalPointId);
     if (point === undefined) throw new Error("Side Effect Approval Point is not declared by the active Work Spec");
+    if (point.contentHash !== contentHash) {
+      throw new Error("Side Effect payload hash does not match the active Work Spec Approval Point");
+    }
     const matchesRiskyResource = records.workSpec.workSpec.boundaries.some((boundary) => (
       boundary.resources.some((resource) => (
         resource.locator === point.target && (resource.access === "write" || resource.access === "publish")
@@ -2034,7 +2045,7 @@ export class ExpertTeamWorkflowService {
       action: point.action,
       target: point.target,
       contentSummary: point.contentSummary,
-      contentHash: point.contentHash,
+      contentHash,
       impact: point.impact,
       reversible: point.reversible,
       verification: point.verification,
@@ -2050,8 +2061,11 @@ export class ExpertTeamWorkflowService {
     });
   }
 
-  async sideEffectPreview(approvalPointId: string): Promise<SideEffectPreview> {
-    const prepared = await this.prepareSideEffect(approvalPointId);
+  async sideEffectPreview(
+    approvalPointId: string,
+    payload?: Uint8Array,
+  ): Promise<SideEffectPreview> {
+    const prepared = await this.prepareSideEffect(approvalPointId, sideEffectPayloadHash(payload));
     return Object.freeze({
       workItemId: prepared.workItemId,
       workSpecId: prepared.workSpecId,
@@ -2072,7 +2086,7 @@ export class ExpertTeamWorkflowService {
 
   async sideEffectApply(inputValue: unknown): Promise<SideEffectApplyResult> {
     const input = parseSideEffectApplyInput(inputValue);
-    const prepared = await this.prepareSideEffect(input.approvalPointId);
+    const prepared = await this.prepareSideEffect(input.approvalPointId, input.contentHash);
     if (prepared.approvalToken !== input.approvalToken) {
       throw new Error("Side Effect approval token no longer matches the current action or workspace");
     }

@@ -1,3 +1,10 @@
+import { createHash } from "node:crypto";
+
+export const CONTROLLED_ACTION_PAYLOAD = "活动标题\n活动正文\n风险提示：内容将公开可见。\n";
+export const CONTROLLED_ACTION_CONTENT_HASH = `sha256:${createHash("sha256")
+  .update(CONTROLLED_ACTION_PAYLOAD, "utf8")
+  .digest("hex")}` as `sha256:${string}`;
+
 export const genericWorkContractDraft = {
   schemaVersion: 2,
   specialistAssessment: {
@@ -166,7 +173,7 @@ export function controlledActionDraft() {
         action: "发布已审查内容",
         target: "content-platform:brand-channel",
         contentSummary: "发布一条已完成审查的活动内容",
-        contentHash: `sha256:${"b".repeat(64)}`,
+        contentHash: CONTROLLED_ACTION_CONTENT_HASH,
         impact: "内容将对外可见",
         reversible: true,
         verification: "读取发布记录并核对内容 hash",
