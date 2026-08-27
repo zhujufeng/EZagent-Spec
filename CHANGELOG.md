@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 - 2026-08-27
+
+### 更轻的日常工作流
+
+- 用户可见体验收敛为直接工作、普通工作和受控工作三档。Brief / Standard 默认只展示目标、交付物、完成条件和执行步骤；完整 Work Contract 仍写入 `.ezagent/requirements/`、`specs/`、`tasks/` 与 `experts/plans/`，可随时检查或展开。
+- Execute 从实际命令、工件 SHA-256 和检查结果自动形成常规 Evidence，不再要求用户填写 Evidence ID、Criterion ID 或内容哈希；完整 Bundle 保存在 `.ezagent/quality/runs/`。
+- Router 统一“状态 / 继续 / 完成”视图和恢复规则；Review 可在 Work Item 完成后生成 Git 提交计划，只有用户对精确计划另行批准才执行提交。
+
+### 多会话恢复
+
+- 支持 lifecycle session 的宿主会把原始 session ID 单向哈希为 portable session key，同一项目中的不同会话可以各自保留一个 active Work Item；没有 session 能力的宿主继续使用项目级单任务兼容模式。
+- `.ezagent/state/workspace.json` 继续是可读的完整状态文件，新增有界 `sessions` 映射；旧状态无需迁移即可被首个 session 安全接管。
+
+### 兼容性说明
+
+- 新工作只进入通用 v2 Work Harness；`sourceSchemaVersion: 1` 编码流程退出默认路径，但升级前已存在的旧任务仍可恢复、审查和完成。
+- 从旧版本升级后需重新安装或刷新插件、完全退出宿主并新建任务，以加载 `0.7.0` 的 Skills、CLI 与 lifecycle Hook。
+
 ## 0.6.1 - 2026-08-27
 
 ### 持续 Router 激活修复
