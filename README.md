@@ -159,6 +159,8 @@ Agent 会先展示初始化预览，通常只涉及：
 
 Router 会自动选择最轻且够用的方式：简单解释直接回答，局部小改快速完成，长任务则生成可恢复的 Work Contract。需要专家时，核心根据自然语言里的能力需求自动选择 Specialist；普通任务没有 Specialist 是正常结果，不代表插件失效。用户不需要知道或填写专家 ID。
 
+如果 Work Preview 要引用现有代码、配置、测试、文档或数据结构，Router 会先做一次有上限的只读事实预检，再生成提纲。它会优先使用宿主已经具备的结构化索引；没有时直接使用普通的文件列举、文本搜索和读取能力，不要求同事额外安装 CodeGraph。未实际读到的现有文件不会被写成事实，拟新增路径会明确标注。
+
 如果你希望“先把事情想清楚，再开始改”，可以直接说：
 
 > 先写 PRD、技术设计和实施计划，给我确认后再编码。
@@ -283,7 +285,7 @@ Specialist 的任务类型也跟你这次真正要求的一致：只要求分析
 
 “Agent 说 CodeGraph、源码、数据或写权限没准备好，然后就不走 EZagent 了？”
 
-这不正常。缺少分析工具、业务文件、样本或权限可以成为 blocker，但不能把原本的 Brief、Standard 或 Controlled 请求降成 Consult。0.5.0 会先按你要求的结果选择模式，再把缺口放进 Work Preview、Tracer Slice 或一个必要的澄清问题；只读环境仍可生成预览，只是不能执行获批后的写入。如果 Agent 没有说明模式和下一个 Skill，请升级插件、新建任务后重试。
+这不正常。CodeGraph 只是可选加速工具，不是使用插件的前提；没有它时会改用普通文件搜索和读取。缺少业务文件、样本或权限可以成为 blocker，但不能把原本的 Brief、Standard 或 Controlled 请求降成 Consult。当前版本会先按你要求的结果选择模式，必要时做有界只读预检，再把剩余缺口放进 Work Preview、Tracer Slice 或一个必要的澄清问题；只读环境仍可生成预览，只是不能执行获批后的写入。如果 Agent 没有说明模式和下一个 Skill，请升级插件、新建任务后重试。
 
 “Windows 路径有空格，会不会失败？”
 
@@ -292,6 +294,10 @@ Specialist 的任务类型也跟你这次真正要求的一致：只要求分析
 “批准 Side Effect 后，消息是不是已经发送了？”
 
 不是。EZagent Core 只写入 `externalActionExecuted: false` 的本地授权记录；真正发送、发布或外部写入由宿主能力执行。执行前仍要核对目标、账号和内容，执行后还要保存 `external-record` Evidence。
+
+“为什么总会看到一串 content hash，甚至不同内容还是同一个？”
+
+它应该是当前精确 payload 的 SHA-256 指纹；内容不同却反复出现同一个值是不正常的。Core 会把 Work Contract 提供的 hash 绑定到授权 token，但不会替宿主重新读取最终外发 payload。当前规则因此禁止猜测或复用 hash：只有 payload 已存在并经过实际工具计算时才能进入 Side Effect；如果内容还没写完，先完成并审查草稿，再用草稿的真实 hash 创建一个新的 Controlled 工作项。
 
 ### 分发和安全边界
 

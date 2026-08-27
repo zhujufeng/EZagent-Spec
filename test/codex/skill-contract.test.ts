@@ -309,6 +309,19 @@ describe("Codex Skill contracts", () => {
     expect(spec.body).toMatch(/Controlled.*完整展示.*Boundaries.*Approval Points/su);
   });
 
+  test("grounds factual Work Previews with a bounded tool-independent preflight", async () => {
+    const router = await readSkill("ezagent-router");
+    const spec = await readSkill("ezagent-spec");
+
+    expect(router.body).toMatch(/Work Preview.*准确性.*现有项目事实.*有界、定向、只读.*事实预检/su);
+    expect(router.body).toMatch(/已有.*结构化索引.*否则.*文件列举.*文本搜索.*读取/su);
+    expect(router.body).toMatch(/不得要求用户.*安装或初始化 CodeGraph.*不得.*阻塞.*预览/su);
+    expect(router.body).toMatch(/最多 2 次定向搜索.*最多 8 个直接相关文件/su);
+    expect(router.body).toMatch(/只有已实际观察到的现有路径.*事实.*新路径.*建议或拟新增/su);
+    expect(spec.body).toMatch(/事实预检.*Source Pointers.*不得.*臆造.*文件名.*模块/su);
+    expect(spec.body).toMatch(/依据：.*Source Pointers/su);
+  });
+
   test("propagates the hook session key without exposing the host session ID", async () => {
     const router = await readSkill("ezagent-router");
 
@@ -397,7 +410,7 @@ describe("Codex Skill contracts", () => {
     expect(router.body).toMatch(/询问.*角色.*开始分析.*行为.*数据契约.*至少.*Standard/su);
     expect(router.body).toMatch(/仅.*明确要求实施.*Work Item.*Outcome.*变更.*implementation/su);
     expect(router.body).toMatch(/仅.*分析.*analysis.*不得.*未来.*implementation/su);
-    expect(router.body).toMatch(/Work Contract.*定义.*不得.*CodeGraph.*枚举.*业务文件.*Tracer Slice/su);
+    expect(router.body).toMatch(/Work Contract.*准确性不依赖.*现有项目事实.*直接定义/su);
     expect(assessment).toBeGreaterThan(shared);
     expect(preview).toBeGreaterThan(assessment);
     expect(spec.body).toMatch(/specialistAssessment.*每次.*必须.*显式/su);
@@ -426,9 +439,12 @@ describe("Codex Skill contracts", () => {
     const execute = await readSkill("ezagent-execute");
 
     expect(spec.body).toMatch(/Controlled.*批准不等于.*Side Effect.*授权/su);
+    expect(spec.body).toMatch(/contentHash.*精确 payload.*实际.*SHA-256.*不得.*猜测.*复用/su);
+    expect(spec.body).toMatch(/payload.*尚未产生.*不得.*Side Effect.*新的 Controlled Work Contract/su);
     expect(argvFor(execute, "side-effect-preview")).toBeDefined();
     expect(argvFor(execute, "side-effect-apply")).toBeDefined();
     expect(execute.body).toMatch(/action、target.*content hash/su);
+    expect(execute.body).toMatch(/重新计算.*实际 payload.*content hash.*不一致.*不得.*side-effect-preview/su);
     expect(execute.body).toContain("externalActionExecuted: false");
     expect(execute.body).toMatch(/Apply 只生成.*授权记录.*不会执行外部动作/u);
     expect(execute.body).toMatch(/漂移.*重新预览和批准/u);

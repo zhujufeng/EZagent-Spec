@@ -33,7 +33,9 @@ Hook 同时提供由宿主 session ID 单向哈希得到的 `session key` 时，
 
 必须先根据用户要求的 Outcome、影响与可逆性选择模式，再处理 blocker、未决问题或假设。源码或数据缺失、当前是只读 sandbox、CodeGraph 等辅助工具不可用或未初始化、当前权限不足，都不得把 Quick、Brief、Standard 或 Controlled 请求降级为 Consult。当前条件不能实施时仍须完成路由并实际转交；由下一个 Skill 记录缺口、形成安全预览或只追问一个会改变结果的问题。工具和权限状态不改变用户要求本身。
 
-用户请求与可信 `context` 已足以定义 Outcome、边界和验收方式时，Work Contract 应直接定义；在预览前不得调用或初始化 CodeGraph，也不得枚举业务文件来补全实现细节。只有一个有界、定向的只读检查会实质改变安全边界或模式时才允许先查；其他源码发现统一进入第一个 Tracer Slice。
+用户请求与可信 `context` 已足以定义 Outcome、边界和验收方式，且 Work Contract 的准确性不依赖现有项目事实时，直接定义。
+
+若 Work Preview 的准确性取决于现有项目事实，例如现有代码、配置、测试拓扑、文档结构或数据 schema，生成合同前必须做一次有界、定向、只读的事实预检。已有可用的结构化索引时使用它；否则使用宿主自带的文件列举、文本搜索和读取能力。不得要求用户安装或初始化 CodeGraph，也不得因此阻塞预览。预检最多 2 次定向搜索、最多 8 个直接相关文件读取；不得全库爬取、读取密钥或个人敏感信息、构建、测试、安装或写入。只记录会改变范围、交付物、Slice 或验收条件的简短事实和精确 Source Pointers；只有已实际观察到的现有路径才能写成事实，新路径必须标记为建议或拟新增。未解决的实现细节记为假设、未决问题或放入第一个 Tracer Slice；预检无法实质提高可验证性时跳过。
 
 若用户明确要求取消或放弃当前 active Work Item，先展示将终止的 Work Item、当前状态，以及 Plan、Receipt、Evidence 与 Journal 历史仍会保留；不得把范围变化或执行困难自行解释为取消。重新执行 `context` 取得最近的 `state.activeWorkItem.revision`，active item 已为空时不得调用取消命令：
 

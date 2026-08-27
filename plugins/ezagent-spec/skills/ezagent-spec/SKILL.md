@@ -45,6 +45,7 @@ description: 在已初始化项目中，把需要跨步骤、跨会话或受控�
 - 当前版本逐 Slice Review，`reviewAfterSlices` 必须为 `1`。标记 `humanCheckpoint: true` 的 Slice 必须至少有一个要求 `human-approval` Evidence 的 Criterion。
 - Deliverable Interface 描述结构、不可破坏的约束和消费者，不预先臆造大段正文或实现细节。
 - 外部写入或发布只能进入 `controlled`，且目标必须有精确 Approval Point。Controlled Review 必须包含 human 或 mixed 判断以及 `human-approval` Evidence。
+- Approval Point 的 `contentHash` 只能来自精确 payload 或其本地产物经实际哈希工具计算的 SHA-256；不得猜测、复用旧值或示例值，也不得用 content summary 冒充 payload。payload 尚未产生时，当前 Work Contract 不得包含真实 Side Effect；先完成并审查草稿，草稿确定后再为外部动作创建新的 Controlled Work Contract，并使用该版本的实际 hash。
 
 合同必须保持最小必要：默认使用 1–3 个 Slice、1–3 个 Deliverable Interface 和 3–6 条 Acceptance Criteria；只有真实依赖或安全边界证明需要时才增加。每个字段写可验证的最短内容，不重复同一风险、范围或证据要求。对同一 Slice 中 purpose 相同、能力与隔离原因相同的工作，合并为一个 Capability Need；不要按设计、编码、测试等阶段机械复制专家，也不要为每条 Criterion 单独建 Need。实现与 `independent-review` purpose 必须保持分离，不能为了缩短合同而合并。
 
@@ -62,7 +63,7 @@ Specialist 和多 Agent 的实际执行仍是可选手段，但 `specialistAsses
 
 在 Codex 的命令工具或 PTY 中，JSON 不得通过 `printf`、shell 管道、重定向、命令替换或超长内联原文送入 CLI；优先按本 Skill 开头的规则使用 stdin 或项目外 `--input-file`，文件能力被拒绝时才使用有界 `--input-json` 兜底。公开输入契约只有 stdin、`--input-file` 和 `--input-json`；不得执行 `work-preview --help`、无参 CLI，或搜索 `dist` 来重新发现 schema。只读 `work-preview` 也遵守此规则。同一份合同不得重复启动 `work-preview` 来试探输入通道；只有正常结束的校验结果才能触发一次有界修正。
 
-Router 已选择的模式由用户请求本身决定。源码、样本数据或权限暂缺，或者 CodeGraph 等辅助分析工具不可用、未初始化或要求另行批准，都不得把请求退回 Consult，也不得在 Outcome、边界和验收方式已经可以定义时阻止 Work Preview。把必要的发现、数据校验或工具准备放进第一个 Tracer Slice，把未知项记录为有来源的假设、未决问题或 blocker；只有缺失答案会实质改变 Outcome 或安全边界且无法用上述方式表达时，才暂停并只问一个问题。
+Router 已选择的模式由用户请求本身决定。源码、样本数据或权限暂缺，或者 CodeGraph 等辅助分析工具不可用、未初始化或要求另行批准，都不得把请求退回 Consult，也不得在 Outcome、边界和验收方式已经可以定义时阻止 Work Preview。Router 已产出事实预检摘要与 Source Pointers 时，合同必须复用其中的观察事实：现有路径只能来自实际观察，新路径必须标记为建议或拟新增；没有相应 Source Pointer 时，不得把臆造的文件名、模块或数据结构写成项目事实。把剩余的必要发现、数据校验或工具准备放进第一个 Tracer Slice，把未知项记录为有来源的假设、未决问题或 blocker；只有缺失答案会实质改变 Outcome 或安全边界且无法用上述方式表达时，才暂停并只问一个问题。
 
 只读 sandbox 不阻止只读的 `work-preview`，只会阻止获批后的 `work-apply` 与实际实施。先生成并展示安全预览；不得因为当前不能写业务文件就声称请求是 Consult、跳过 Specialist Assessment 或结束已完成的 Router 转交。
 
@@ -74,7 +75,7 @@ Router 已选择的模式由用户请求本身决定。源码、样本数据或�
 
 `work-preview` 的返回值始终是完整合同；不得删除、缩减或改写任何 Work Contract 字段，也不得因为默认展示更短而改变 Preview 与 Apply 使用的 JSON 字节。显示层按风险分级：
 
-- Brief 与 Standard 默认只显示目标、交付物、完成条件、执行步骤，以及非空的风险、假设、未决问题和批准点。执行步骤是 Slice 的短标题与依赖摘要；完成条件是 Acceptance Criteria 的可读摘要。Mode 只需在一处附带说明，不逐字段复述 Canonical Terms、Evidence kinds、Review Policy、空 Specialist Assessment、内部 ID 或 approval token。
+- Brief 与 Standard 默认只显示目标、交付物、完成条件、执行步骤，以及非空的风险、假设、未决问题和批准点。执行步骤是 Slice 的短标题与依赖摘要；完成条件是 Acceptance Criteria 的可读摘要。事实预检确实帮助用户核对提纲时，可附一行“依据：”列出最关键的 Source Pointers，不倾倒搜索过程。Mode 只需在一处附带说明，不逐字段复述 Canonical Terms、Evidence kinds、Review Policy、空 Specialist Assessment、内部 ID 或 approval token。
 - 用户要求“展开完整合同”、逐项审查或调试预览时，展示完整 Outcome、Mode、Scope / Non-goals、Deliverable Interfaces、Acceptance Criteria、Slices、Review Policy、Approval Points、关键假设、未决问题、Specialist Assessment、delegations、未覆盖能力与 blockers。
 - Controlled 必须完整展示 Boundaries、Approval Points、资源访问、Review Policy、人工判断和 Side Effect 风险；不得使用紧凑展示隐藏安全信息。Controlled 的 Work Contract 批准不等于任何具体 Side Effect 授权。
 - Specialist Assessment 为 `required`、存在未覆盖能力或 blocker 时，即使是 Brief 或 Standard，也必须展示相应计划和本 Skill 规定的“委派边界”。`not-needed` 且无 blocker 时只需一句“无需额外 Specialist”。

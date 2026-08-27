@@ -100,6 +100,8 @@ Evidence ID、Criterion ID、Slice ID、observedAt 和绑定关系由协调器�
 
 本地分析、草拟和验证可以按 Slice 进行；发送、发布、外部系统写入、预算承诺等真实 Side Effect 必须命中 Work Spec 中目标完全一致的 Approval Point。先生成只读预览：
 
+调用预览前，必须用实际哈希工具重新计算当前实际 payload 的 content hash，并与 Work Spec 的 `contentHash` 比较；不一致时不得调用 `side-effect-preview` 或 `side-effect-apply`，也不得沿用旧授权。Core 当前绑定合同中的 hash，但不会替宿主读取或重新计算最终外发 payload，因此无法取得精确字节时必须关闭失败。
+
 ```json
 ["node", "<absolute-cli-path>", "side-effect-preview", "--root", "<absolute-project-root>", "--approval-point", "<approval-point-id>"]
 ```
