@@ -87,7 +87,7 @@ Agent 请求联网或修改插件配置时，确认目标确实是 `zhujufeng/EZ
 
 这是最容易漏掉的一步。插件安装或升级完成后，不要继续使用安装前已经打开的旧任务；请在 Codex 侧边栏或对应宿主中新建一个任务。新任务启动时才会加载最新版 Skills 与插件 Hook。
 
-Codex 第一次看到新增或变化的非托管 Hook 时会先跳过执行，直到用户审查其精确内容。在 Codex CLI 中打开 `/hooks`，找到 EZagent 的 `UserPromptSubmit` Hook，确认命令只运行插件内 `hooks/ezagent-router-prompt.mjs` 后选择信任。若不完成这一步，`AGENTS.md` 仍可作为新任务启动时的兜底，但不能保证每个后续 prompt 都重新触发 Router。
+> **必须手动允许：** 安装或升级插件不会自动授权 Hook。在新任务中打开 `/hooks`，找到 EZagent 的 `UserPromptSubmit` Hook，确认命令只运行插件内 `hooks/ezagent-router-prompt.mjs`，然后选择“允许/信任（Allow/Trust）”。新增或变化的非托管 Hook 在获准前会被跳过；若不完成这一步，`AGENTS.md` 只能作为新任务启动时的兜底，不能保证每个后续 prompt 都重新触发 Router。
 
 ### 第 3 步：打开项目文件夹并初始化
 
@@ -486,7 +486,7 @@ codex plugin marketplace add zhujufeng/EZagent-Spec
 codex plugin add ezagent-spec@ezagent
 ```
 
-安装或更新后新建一个 Codex 任务，让新 Skills 与 Hook 生效；随后打开 `/hooks`，审查并信任来自 `ezagent-spec` 的 `UserPromptSubmit` Hook。Hook 默认启用，但新增或变化的非托管 Hook 在信任前会被跳过。
+安装或更新后新建一个 Codex 任务，让新 Skills 与 Hook 生效；随后必须手动打开 `/hooks`，审查并允许来自 `ezagent-spec` 的 `UserPromptSubmit` Hook。Hook 默认启用不等于已经获得信任，新增或变化的非托管 Hook 在手动允许前会被跳过。
 
 ### Claude Code
 
